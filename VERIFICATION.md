@@ -110,4 +110,14 @@ headless 组合没有命令分发面（斜杠命令由客户端 UI 驱动），`
 - 仓库：https://github.com/PerryLink/dsh-permission-rules （public，默认分支 `main`，初始提交 `c0bd092`）
 - 协议：Apache License 2.0（`LICENSE` + package.json `license` 字段；五语 README 同步更新）
 - Topics：`dsh` `dsh-plugin` `deepseek-harness` `deepseek` `cordis` `permission-rules` `approval` `ai-safety`
-- 提交树经密钥扫描（`ghp_*`/常见凭据模式）无命中；`.gitignore` 排除 `node_modules/`、`lib/`、`vendor/`、`.verification/` 与 `*.tgz`。
+- 提交树经密钥扫描（`ghp_*`/常见凭据模式）无命中；`.gitignore` 排除 `node_modules/`、`lib/`、`.verification/` 与 `*.tgz`（`vendor/dsh-auto-review-0.1.0.tgz` 为集成测试 fixture，显式保留在树内）。
+
+## 7. git 安装通道实测（2026-08-14，提交 `8e6d1eb`）
+
+`dsh plugin --profile permission-rules-demo add "github:PerryLink/dsh-permission-rules#8e6d1eb…"`（README 承诺的安装路径）：
+
+1. pnpm 首次因 git 包 `prepare` 构建未获 allowBuilds 许可而拒绝，CLI 打印精确的 `allowBuilds` 键 → 加入 profile 的 `pnpm-workspace.yaml` 后重装成功。
+2. 隔离 prepare 环境实测暴露两个仓库缺陷并已修复：
+   - `vendor/dsh-auto-review-0.1.0.tgz`（devDep 的 `file:` 目标）被 gitignore 导致隔离 `pnpm install` ENOENT → **改为随仓库提交**；
+   - package.json 的 `pnpm.neverBuiltDependencies` 在 pnpm 11 被忽略 → **改为在仓库自带 `pnpm-workspace.yaml` 声明 `allowBuilds: { esbuild: true }`**（隔离 prepare 读取依赖方随包发布的工作区文件）。
+3. 修复后 git 安装：隔离 prepare 构建通过（`prepare: Done`），`dsh --dump-config` 显示 `permission-rules` 行，headless deny 冒烟（fixture-deny 回放）产出 `permissionRules/decision`(deny, "禁止 push 到受保护路径") ✅。
