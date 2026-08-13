@@ -104,3 +104,10 @@ headless 组合没有命令分发面（斜杠命令由客户端 UI 驱动），`
 - `fixture-deny.session.jsonl` / `fixture-ask.session.jsonl` — llm-replay 回放脚本
 - `dump-config.txt` — `--dump-config` 完整输出
 - `dump-session.ts` — zstd 会话日志解帧工具（帧扫描复用 harness 的 `scanZstdFrames`）
+
+## 6. GitHub 发布（2026-08-14）
+
+- 仓库：https://github.com/PerryLink/dsh-permission-rules （public，默认分支 `main`，初始提交 `c0bd092`）
+- 协议：Apache License 2.0（`LICENSE` + package.json `license` 字段；五语 README 同步更新）
+- Topics：`dsh` `dsh-plugin` `deepseek-harness` `deepseek` `cordis` `permission-rules` `approval` `ai-safety`
+- 提交树经密钥扫描（`ghp_*`/常见凭据模式）无命中；`.gitignore` 排除 `node_modules/`、`lib/`、`vendor/`、`.verification/` 与 `*.tgz`。
