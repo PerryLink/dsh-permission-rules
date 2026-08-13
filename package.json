@@ -78,10 +78,5 @@
     "test": "vitest run",
     "prepare": "node scripts/prepare.mjs"
   },
-  "pnpm": {
-    "neverBuiltDependencies": [
-      "esbuild"
-    ]
-  },
   "license": "Apache-2.0"
 }

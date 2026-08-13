@@ -32,6 +32,8 @@ Standalone DeepSeek Harness plugin repository (`dsh-permission-rules`). Developm
 
 `typescript` + `tsdown` are regular `dependencies` on purpose: pnpm does not install devDependencies of git-hosted packages, and the git channel's `prepare` must build with production dependencies alone. `scripts/prepare.mjs` is the single build entry; it runs tsdown FIRST, then tsc declarations into `lib/types` — tsdown's `clean: true` wipes `lib/`, so the reverse order would delete the fresh declarations.
 
+The repo's `pnpm-workspace.yaml` declares `allowBuilds: { esbuild: true }`: pnpm's isolated prepare env for git-hosted packages reads the dependency's shipped workspace file, and without that entry both local installs and git installs fail with `ERR_PNPM_IGNORED_BUILDS` on esbuild's (harmless platform-binary validation) postinstall. The package.json `pnpm` field is NOT usable for this — pnpm 11 ignores it. Git users still need the single `allowBuilds` key for `dsh-permission-rules` itself, which the `dsh` CLI prints verbatim.
+
 ## Checks
 
 `pnpm run typecheck && pnpm test && pnpm run build && pnpm pack`.
