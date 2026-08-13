@@ -1,5 +1,5 @@
 node_modules/
 lib/
 *.tgz
-vendor/
+!vendor/dsh-auto-review-0.1.0.tgz
 .verification/
