@@ -121,3 +121,10 @@ headless 组合没有命令分发面（斜杠命令由客户端 UI 驱动），`
    - `vendor/dsh-auto-review-0.1.0.tgz`（devDep 的 `file:` 目标）被 gitignore 导致隔离 `pnpm install` ENOENT → **改为随仓库提交**；
    - package.json 的 `pnpm.neverBuiltDependencies` 在 pnpm 11 被忽略 → **改为在仓库自带 `pnpm-workspace.yaml` 声明 `allowBuilds: { esbuild: true }`**（隔离 prepare 读取依赖方随包发布的工作区文件）。
 3. 修复后 git 安装：隔离 prepare 构建通过（`prepare: Done`），`dsh --dump-config` 显示 `permission-rules` 行，headless deny 冒烟（fixture-deny 回放）产出 `permissionRules/decision`(deny, "禁止 push 到受保护路径") ✅。
+
+## 8. GitHub CI 与 Release（2026-08-14）
+
+- 新增 `.github/workflows/ci.yml`（pnpm 11.7.0 + Node 22：`install --frozen-lockfile` → `typecheck` → `test` → `build`），提交 `38c28c0` 的 Actions 运行 **success**。
+- tag `v0.1.0` + GitHub Release：https://github.com/PerryLink/dsh-permission-rules/releases/tag/v0.1.0 ，附件 `dsh-permission-rules-0.1.0.tgz`（61,771 bytes）。
+- 演示 profile 已重装到最新提交 `38c28c0`（git 通道 + `allowBuilds` 键），`--dump-config` 行生效、headless deny 冒烟通过。
+- profile 的 `pnpm peers check` 显示 rc.6 peers 缺失属预期（`autoInstallPeers: false` 的 profile 惯例）：运行时经 `$DSH_HOME/profiles/node_modules` healed fallback 解析，`--dump-config` 与 headless 运行均已实证可加载。
