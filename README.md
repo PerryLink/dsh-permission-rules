@@ -88,7 +88,7 @@ rules:
 dsh --profile web --dump-config | grep -A4 'id: permission-rules'   # verify the row
 ```
 
-A complete 5-rule security baseline and the full schema live in [docs/rules-format.md](docs/rules-format.md).
+A complete 5-rule security baseline and the full schema live in [docs/rules-format.en.md](docs/rules-format.en.md).
 
 ## Configuration
 

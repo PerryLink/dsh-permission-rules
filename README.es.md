@@ -88,7 +88,7 @@ rules:
 dsh --profile web --dump-config | grep -A4 'id: permission-rules'   # verifica la fila
 ```
 
-Una línea base de seguridad completa de 5 reglas y el esquema completo están en [docs/rules-format.md](docs/rules-format.md).
+Una línea base de seguridad completa de 5 reglas y el esquema completo están en [docs/rules-format.en.md](docs/rules-format.en.md).
 
 ## Configuración
 

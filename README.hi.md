@@ -88,7 +88,7 @@ rules:
 dsh --profile web --dump-config | grep -A4 'id: permission-rules'   # पंक्ति सत्यापित करें
 ```
 
-5 नियमों वाली पूरी सुरक्षा बेसलाइन और पूरा schema [docs/rules-format.md](docs/rules-format.md) में है।
+5 नियमों वाली पूरी सुरक्षा बेसलाइन और पूरा schema [docs/rules-format.en.md](docs/rules-format.en.md) में है।
 
 ## कॉन्फ़िगरेशन
 
