@@ -1,0 +1,15 @@
+# dsh-permission-rules bundle patch: mount the declarative permission-rule
+# listener. `name` is the package name, resolved through the profile's
+# node_modules. An id-targeted override replaces the whole config row —
+# restate every key when overriding.
+- insert:
+    - id: permission-rules
+      name: dsh-permission-rules
+      config:
+        # Rule file discovered per session cwd (<cwd>/.dsh/rules.yaml);
+        # see README.md for the full schema and the shipped example.
+        rulesFile: .dsh/rules.yaml
+        badFilePolicy: fail
+        maxRules: 256
+        patternMode: glob
+        watch: true
