@@ -18,6 +18,7 @@ import { resolveConfig } from './config.ts'
 import type { Config, ResolvedConfig } from './config.ts'
 import { compileRules, describeRule, matchRules, parseRulesDocument, RuleError } from './rules.ts'
 import type { CompiledRuleset, RuleHit } from './rules.ts'
+import type { AuditAppend } from './events.ts'
 
 export const name = 'permission-rules'
 
@@ -172,9 +173,11 @@ export class PermissionRulesRuntime {
 
   /**
    * Append the log-only `permissionRules/decision` audit event for every
-   * hit AND every passthrough. Agentless calls have no session to audit;
-   * append failures are contained so an audit hiccup can never change a
-   * permission decision.
+   * hit AND every passthrough, requesting the envelope's `ignorable: true`
+   * marker so any harness build can load the log (readers that do not know
+   * the type skip the audit record instead of refusing the session).
+   * Agentless calls have no session to audit; append failures are contained
+   * so an audit hiccup can never change a permission decision.
    * @param exec - the pending call.
    * @param loaded - the rules in effect.
    * @param hit - the first matching rule, or undefined for passthrough.
@@ -183,13 +186,13 @@ export class PermissionRulesRuntime {
     const agent = exec.agent
     if (agent === undefined) return
     try {
-      agent.session.append('permissionRules/decision', {
+      ;(agent.session.append as unknown as AuditAppend)('permissionRules/decision', {
         toolName: exec.name,
         callId: exec.callId,
         source: loaded.source,
         action: hit === undefined ? 'passthrough' : hit.rule.action,
         ...hit !== undefined ? { ruleIndex: hit.ruleIndex, reason: hit.rule.reason } : {},
-      })
+      }, { ignorable: true })
     } catch (error: unknown) {
       this.ctx.logger.warn(`permission-rules: audit append failed: ${String(error)}`)
     }

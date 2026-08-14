@@ -134,7 +134,7 @@ La salida de los comandos es solo UI: el modelo aprende las reglas únicamente a
 
 ## Limitaciones conocidas
 
-- Los eventos de sesión de plugins externos (`permissionRules/decision`) son rechazados por lectores de primera parte que no conocen el tipo: ruidoso, no silencioso (postura pre-release del harness; compartida por todos los eventos de plugins externos).
+- `permissionRules/decision` se escribe con el marcador de envoltura `ignorable: true`, de modo que cualquier build del harness carga el registro: los lectores que no conocen el tipo fuera del repositorio simplemente omiten el evento de auditoría en lugar de rechazar la sesión. (Los hosts rc.6 aceptan e ignoran el marcador, conservando exactamente el comportamiento anterior.)
 - Los candidatos de `paths` son heurísticos: solo las claves de argumentos documentadas alimentan la coincidencia de rutas.
 - Los globs son un subconjunto conservador (sin expansión de llaves): escribe dos patrones o usa el modo regex.
 

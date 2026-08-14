@@ -134,7 +134,7 @@ dsh --profile web --dump-config | grep -A4 'id: permission-rules'   # 验证挂�
 
 ## 已知局限
 
-- 仓库外插件事件（`permissionRules/decision`）会被不认识该类型的第一方读取器拒绝重建——响亮而非静默（harness 预发布立场；所有仓库外插件事件皆如此）。
+- `permissionRules/decision` 以信封 `ignorable: true` 标记写入，任何 harness 构建都能加载日志——不认识该仓库外类型的第一方读取器会跳过这条审计记录而不是拒绝整个会话。（rc.6 宿主会接受并忽略该标记，行为与打标前完全一致。）
 - `paths` 候选是启发式的：只有文档化的参数键进入路径匹配。
 - glob 是保守子集（不支持花括号展开）——写两条模式，或用 regex 模式。
 

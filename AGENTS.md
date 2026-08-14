@@ -8,16 +8,17 @@ Standalone DeepSeek Harness plugin repository (`dsh-permission-rules`). Developm
 - `src/config.ts` — Schemastery schema + explicit `resolveConfig` (no hidden `?? default` in `run()` paths).
 - `src/glob.ts` — strict glob→RegExp compiler; bad globs throw at compile time (load), never silently match nothing.
 - `src/rules.ts` — the pure core: YAML document validation, pattern compilation, first-match evaluation, path-candidate extraction/normalization. No fs/clock/process state.
-- `src/events.ts` — `permissionRules/decision` SessionEventMap member (declaration merging).
+- `src/events.ts` — `permissionRules/decision` SessionEventMap member (declaration merging) + `AuditAppend`, the append surface that requests the envelope's `ignorable: true` marker.
 - `src/runtime.ts` — `tools/pre-execute` listener, per-cwd rule loading (project file → fallback → empty), `permissionRules/decision` audit, `/rules` command, Chokidar watch.
 - `test/` — vitest; real `Context` + real `Session`/`Commands`/`ApprovalService` from the `0.1.0-rc.6` peers; chokidar mocked with a fake EventEmitter; the dsh-auto-review integration uses its tarball with a scripted reviewer mock.
 - `docs/rules-format.md` — the rule file schema and the 5-rule security baseline.
+- `scripts/repair-session-logs.mjs` — one-off repair for session logs written before the marker: rewrites targeted audit rows to carry `ignorable: true` (frame-preserving zstd rewrite, backups, `scan`/`repair`/`--dry-run` modes).
 
 ## Hard rules applied here
 
 - Waterfall listener (`tools/pre-execute`) always calls `next()` unless it claims the call with `deny`/`ask`. An `allow` hit is NEVER short-circuited.
 - Model-visible ⟺ logged: the only model-visible plugin content is the deny/ask reason materialized by the tools registry into the tool result; the `permissionRules/decision` audit event carries the same `callId` and reason for reconstruction.
-- Log-only audit: `permissionRules/decision` is never injected into the model context.
+- Log-only audit: `permissionRules/decision` is never injected into the model context, and is appended with `{ ignorable: true }` via the `AuditAppend` surface (rc.6 hosts ignore the options bag — same event, no marker; post-rc.6 hosts stamp the marker so any build loads the log).
 - Loud misconfiguration: invalid YAML, unknown fields, unknown actions, bad globs/regexes, and rule counts over `maxRules` fail the load (`badFilePolicy` chooses fail vs ignore-with-warning). Deployment-level files (absolute `rulesFile`, `fallbackPath`) fail the mount.
 - Watch failures warn only: a bad HMR reload keeps the previous rules and never crashes the process.
 - No reviewer subagents, no model calls, no OS-sandbox changes — `ask` ends at the official approval seam; the answerer role belongs to `dsh-auto-review`.

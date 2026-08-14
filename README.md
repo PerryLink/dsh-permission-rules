@@ -134,7 +134,7 @@ Command output is UI-only — the model learns the rules only through the tool r
 
 ## Known limitations
 
-- Out-of-repo session events (`permissionRules/decision`) are rejected by first-party readers that do not know the type — loud, not silent (the harness's pre-release stance; shared by all out-of-repo plugin events).
+- `permissionRules/decision` is appended with the envelope's `ignorable: true` marker, so any harness build loads the log — readers that do not know the out-of-repo type simply skip the audit record instead of refusing the session. (rc.6 hosts accept and ignore the marker, keeping the exact pre-marker behavior.)
 - `paths` candidates are heuristic: only documented argument keys feed path matching.
 - Globs are a conservative subset (no brace expansion) — write two patterns, or use regex mode.
 

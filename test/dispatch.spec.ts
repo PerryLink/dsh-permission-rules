@@ -7,7 +7,7 @@
 
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { CallId } from '@deepseek-ai/dsh-llm'
 import type { PreToolDecision } from '@deepseek-ai/dsh-tools'
 import { dispatchPreExecute, makeExec, mountHarness, removeWorkspace, tempWorkspace } from './harness.ts'
@@ -176,6 +176,23 @@ describe('tools/pre-execute dispatch', () => {
         makeExec({ name: 'write', arguments: { path: 'a.txt' }, callId: CallId('call-42'), agent: harness.agent }),
       )
       expect(decisionEvents(harness.session.events).at(-1)).toMatchObject({ callId: 'call-42' })
+    } finally {
+      removeWorkspace(cwd)
+    }
+  })
+
+  it('requests the ignorable envelope marker so any harness build can load the log', async () => {
+    const cwd = workspaceWithRules()
+    const harness = await mountHarness({}, { cwd })
+    try {
+      const append = vi.spyOn(harness.session, 'append')
+      await dispatchPreExecute(
+        harness.ctx,
+        makeExec({ name: 'bash', arguments: { command: 'git push origin main', cwd: 'src/secrets/app' }, agent: harness.agent }),
+      )
+      const call = append.mock.calls.find(([type]) => type === 'permissionRules/decision')
+      expect(call).toBeDefined()
+      expect(call?.[2]).toEqual({ ignorable: true })
     } finally {
       removeWorkspace(cwd)
     }
