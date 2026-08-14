@@ -9,17 +9,20 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { EventEmitter } from 'node:events'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
-import { dispatchPreExecute, makeExec, mountHarness, removeWorkspace, tempWorkspace } from './harness.ts'
+import { SessionId } from '@deepseek-ai/dsh-session'
+import { dispatchPreExecute, makeAgent, makeExec, mountHarness, removeWorkspace, tempWorkspace } from './harness.ts'
+import type { PermissionRulesRuntime } from '../src/runtime.ts'
 
 /** Hoisted mock controls: chokidar is replaced by a fake EventEmitter watcher. */
 const watchHarness = vi.hoisted(() => ({
   watchers: [] as FakeWatcher[],
+  closed: [] as FakeWatcher[],
 }))
 interface FakeWatcher extends EventEmitter {
   path: string
   close(): Promise<void>
 }
-const { watchers } = watchHarness
+const { watchers, closed } = watchHarness
 
 vi.mock('chokidar', () => ({
   default: {
@@ -27,7 +30,9 @@ vi.mock('chokidar', () => ({
       const emitter = new EventEmitter()
       const watcher = emitter as FakeWatcher
       watcher.path = path
-      watcher.close = async () => undefined
+      watcher.close = async () => {
+        closed.push(watcher)
+      }
       watchers.push(watcher)
       return watcher
     },
@@ -153,6 +158,95 @@ describe('rule-file watching', () => {
       expect(watchers.length).toBe(before)
     } finally {
       removeWorkspace(cwd)
+    }
+  })
+
+  it('a source switch to the fallback closes the watcher on the previous source', async () => {
+    const cwd = workspaceWithRules()
+    const fallbackDir = tempWorkspace()
+    const fallback = join(fallbackDir, 'fallback.yaml')
+    writeFileSync(fallback, 'rules:\n  - match: { tools: [bash] }\n    action: deny\n    reason: fallback rules\n', 'utf8')
+    const harness = await mountHarness({ watch: true, watchStabilityThresholdMs: 10, fallbackPath: fallback }, { cwd })
+    try {
+      await dispatchPreExecute(harness.ctx, makeExec({ name: 'bash', arguments: {}, agent: harness.agent }))
+      const workspaceWatcher = watchers.at(-1)
+      expect(workspaceWatcher).toBeDefined()
+      rmSync(join(cwd, '.dsh', 'rules.yaml'))
+      workspaceWatcher?.emit('unlink', join(cwd, '.dsh', 'rules.yaml'))
+      // The fallback takes over and the stale watcher on the deleted project
+      // file is closed (no unbounded watcher accumulation).
+      await vi.waitFor(async () => {
+        const decision = await dispatchPreExecute(
+          harness.ctx,
+          makeExec({ name: 'bash', arguments: {}, agent: harness.agent }),
+        )
+        expect(decision).toEqual({ kind: 'deny', reason: 'fallback rules' })
+      })
+      expect(closed.includes(workspaceWatcher as FakeWatcher)).toBe(true)
+    } finally {
+      removeWorkspace(cwd)
+      removeWorkspace(fallbackDir)
+    }
+  })
+
+  it('maxCachedWorkspaces evicts the least-recently-USED workspace (LRU, not insertion order)', async () => {
+    const cwd1 = workspaceWithRules()
+    const cwd2 = workspaceWithRules()
+    const cwd3 = workspaceWithRules()
+    const harness = await mountHarness({ watch: true, maxCachedWorkspaces: 2 }, { cwd: cwd1 })
+    const session1 = harness.ctx.sessions.create(SessionId('lru-1'), { meta: { cwd: cwd1 } })
+    const session2 = harness.ctx.sessions.create(SessionId('lru-2'), { meta: { cwd: cwd2 } })
+    const session3 = harness.ctx.sessions.create(SessionId('lru-3'), { meta: { cwd: cwd3 } })
+    const agent1 = makeAgent(session1)
+    const agent2 = makeAgent(session2)
+    const agent3 = makeAgent(session3)
+    try {
+      await dispatchPreExecute(harness.ctx, makeExec({ name: 'bash', arguments: {}, agent: agent1 }))
+      await dispatchPreExecute(harness.ctx, makeExec({ name: 'bash', arguments: {}, agent: agent2 }))
+      const watcher1 = watchers.at(-2)
+      const watcher2 = watchers.at(-1)
+      expect(watcher1).toBeDefined()
+      expect(watcher2).toBeDefined()
+      // Touch cwd1: it becomes the most recently used, so the NEXT eviction
+      // must drop cwd2 — even though cwd2 was inserted later.
+      await dispatchPreExecute(harness.ctx, makeExec({ name: 'bash', arguments: {}, agent: agent1 }))
+      const decision3 = await dispatchPreExecute(harness.ctx, makeExec({ name: 'bash', arguments: {}, agent: agent3 }))
+      expect(decision3).toEqual({ kind: 'deny', reason: 'no bash v1' })
+      expect(closed.includes(watcher2 as FakeWatcher)).toBe(true)
+      expect(closed.includes(watcher1 as FakeWatcher)).toBe(false)
+      // A later dispatch on the evicted workspace reloads from scratch.
+      const decision2 = await dispatchPreExecute(harness.ctx, makeExec({ name: 'bash', arguments: {}, agent: agent2 }))
+      expect(decision2).toEqual({ kind: 'deny', reason: 'no bash v1' })
+    } finally {
+      for (const dir of [cwd1, cwd2, cwd3]) removeWorkspace(dir)
+    }
+  })
+
+  it('pruning a watcher on a source switch also clears its pending debounce timer', async () => {
+    const cwd = workspaceWithRules()
+    const fallbackDir = tempWorkspace()
+    const fallback = join(fallbackDir, 'fallback.yaml')
+    writeFileSync(fallback, 'rules:\n  - match: { tools: [bash] }\n    action: deny\n    reason: fallback rules\n', 'utf8')
+    const harness = await mountHarness({ watch: true, watchStabilityThresholdMs: 5000, fallbackPath: fallback }, { cwd })
+    const runtime = harness.ctx.get('permissionRulesRuntime') as PermissionRulesRuntime
+    try {
+      await dispatchPreExecute(harness.ctx, makeExec({ name: 'bash', arguments: {}, agent: harness.agent }))
+      const workspaceWatcher = watchers.at(-1)
+      expect(workspaceWatcher).toBeDefined()
+      // A change event schedules a debounced reload (5 s window); the file is
+      // already gone, so a manual reload resolves the fallback and prunes the
+      // workspace watcher while its timer is still pending.
+      rmSync(join(cwd, '.dsh', 'rules.yaml'))
+      workspaceWatcher?.emit('change', join(cwd, '.dsh', 'rules.yaml'))
+      expect(runtime.pendingReloadCount()).toBe(1)
+      await harness.ctx.commands.execute(harness.agent, '/rules reload', new AbortController().signal)
+      expect(runtime.pendingReloadCount()).toBe(0)
+      expect(closed.includes(workspaceWatcher as FakeWatcher)).toBe(true)
+      const decision = await dispatchPreExecute(harness.ctx, makeExec({ name: 'bash', arguments: {}, agent: harness.agent }))
+      expect(decision).toEqual({ kind: 'deny', reason: 'fallback rules' })
+    } finally {
+      removeWorkspace(cwd)
+      removeWorkspace(fallbackDir)
     }
   })
 })

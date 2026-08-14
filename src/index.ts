@@ -17,7 +17,7 @@
 import { apply } from './runtime.ts'
 
 export const name = 'permission-rules'
-export const inject = ['commands']
+export const inject = ['commands', 'tools']
 
 export { apply }
 export { PermissionRulesRuntime } from './runtime.ts'

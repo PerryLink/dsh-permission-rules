@@ -1,5 +1,6 @@
 node_modules/
 lib/
+coverage/
 *.tgz
-!vendor/dsh-auto-review-0.1.1.tgz
+!vendor/dsh-auto-review-*.tgz
 .verification/

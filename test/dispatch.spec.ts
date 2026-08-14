@@ -57,6 +57,7 @@ describe('tools/pre-execute dispatch', () => {
         toolName: 'bash',
         callId: 'call-1',
         action: 'deny',
+        outcome: 'deny',
         ruleIndex: 0,
         reason: '禁止 push 到受保护路径',
       })
@@ -84,6 +85,7 @@ describe('tools/pre-execute dispatch', () => {
       expect(decisionEvents(harness.session.events).at(-1)).toMatchObject({
         toolName: 'edit',
         action: 'ask',
+        outcome: 'ask',
         ruleIndex: 1,
       })
     } finally {
@@ -101,7 +103,15 @@ describe('tools/pre-execute dispatch', () => {
         async () => ({ kind: 'deny', reason: 'downstream listener denied' }),
       )
       expect(decision).toEqual({ kind: 'deny', reason: 'downstream listener denied' })
-      expect(decisionEvents(harness.session.events).at(-1)).toMatchObject({ toolName: 'read', action: 'allow', ruleIndex: 2 })
+      // The audit names BOTH the rule action (allow) and the final outcome
+      // (deny, decided by the downstream listener) — the log never claims a
+      // call was allowed when a later listener denied it.
+      expect(decisionEvents(harness.session.events).at(-1)).toMatchObject({
+        toolName: 'read',
+        action: 'allow',
+        outcome: 'deny',
+        ruleIndex: 2,
+      })
     } finally {
       removeWorkspace(cwd)
     }
@@ -123,7 +133,7 @@ describe('tools/pre-execute dispatch', () => {
       expect(decision).toEqual({ kind: 'allow' })
       expect(downstreamCalled).toBe(true)
       const audit = decisionEvents(harness.session.events).at(-1)
-      expect(audit).toMatchObject({ toolName: 'glob', action: 'passthrough' })
+      expect(audit).toMatchObject({ toolName: 'glob', action: 'passthrough', outcome: 'allow' })
       expect(audit).not.toHaveProperty('ruleIndex')
       expect(audit).not.toHaveProperty('reason')
     } finally {
@@ -143,6 +153,7 @@ describe('tools/pre-execute dispatch', () => {
       expect(decisionEvents(harness.session.events).at(-1)).toMatchObject({
         toolName: 'bash',
         action: 'passthrough',
+        outcome: 'allow',
         source: '',
       })
     } finally {
@@ -193,6 +204,25 @@ describe('tools/pre-execute dispatch', () => {
       const call = append.mock.calls.find(([type]) => type === 'permissionRules/decision')
       expect(call).toBeDefined()
       expect(call?.[2]).toEqual({ ignorable: true })
+    } finally {
+      removeWorkspace(cwd)
+    }
+  })
+
+  it('audit: hits skips passthrough audit events but keeps hit events', async () => {
+    const cwd = workspaceWithRules()
+    const harness = await mountHarness({ audit: 'hits' }, { cwd })
+    try {
+      await dispatchPreExecute(
+        harness.ctx,
+        makeExec({ name: 'glob', arguments: { pattern: '*' }, agent: harness.agent }),
+      )
+      expect(decisionEvents(harness.session.events)).toHaveLength(0)
+      await dispatchPreExecute(
+        harness.ctx,
+        makeExec({ name: 'bash', arguments: { command: 'git push origin main', cwd: 'src/secrets/app' }, agent: harness.agent }),
+      )
+      expect(decisionEvents(harness.session.events).at(-1)).toMatchObject({ action: 'deny', outcome: 'deny' })
     } finally {
       removeWorkspace(cwd)
     }
