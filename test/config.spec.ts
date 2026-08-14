@@ -76,8 +76,12 @@ describe('resolveConfig', () => {
   })
 
   it('fails loud on searchUp combined with an absolute rulesFile', () => {
-    expect(() => resolveConfig({ searchUp: true, rulesFile: 'C:\\global\\rules.yaml' })).toThrow(/searchUp cannot be combined with an absolute rulesFile/)
-    expect(() => resolveConfig({ searchUp: true, rulesFile: '/etc/rules.yaml' })).toThrow(/searchUp/)
+    // POSIX absolute paths are absolute on every platform.
+    expect(() => resolveConfig({ searchUp: true, rulesFile: '/etc/rules.yaml' })).toThrow(/searchUp cannot be combined with an absolute rulesFile/)
+  })
+
+  it.skipIf(process.platform !== 'win32')('rejects a Windows drive path on Windows hosts', () => {
+    expect(() => resolveConfig({ searchUp: true, rulesFile: 'C:\\global\\rules.yaml' })).toThrow(/searchUp/)
   })
 
   it('fails loud on negative stability windows', () => {
