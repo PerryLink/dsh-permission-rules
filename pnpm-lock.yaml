@@ -11,9 +11,6 @@ importers:
       chokidar:
         specifier: ^5.0.0
         version: 5.0.0
-      redos-detector:
-        specifier: ^6.1.4
-        version: 6.1.4
       tsdown:
         specifier: ^0.22.14
         version: 0.22.14(typescript@5.9.3)
@@ -61,8 +58,8 @@ importers:
         specifier: ^3.2.0
         version: 3.2.0(vitest@3.2.7(@types/node@22.20.1)(yaml@2.9.0))
       dsh-auto-review:
-        specifier: file:vendor/dsh-auto-review-0.1.2.tgz
-        version: file:vendor/dsh-auto-review-0.1.2.tgz(1b8bf2e714c17a867356a4cef509c351)
+        specifier: file:vendor/dsh-auto-review-0.2.0.tgz
+        version: file:vendor/dsh-auto-review-0.2.0.tgz(1b8bf2e714c17a867356a4cef509c351)
       eslint:
         specifier: ^10.8.1
         version: 10.8.1
@@ -1115,9 +1112,9 @@ packages:
   defu@6.1.7:
     resolution: {integrity: sha512-7z22QmUWiQ/2d0KkdYmANbRUVABpZ9SNYyH5vx6PZ+nE5bcC0l7uFvEfHlyld/HcGBFTL536ClDt3DEcSlEJAQ==}
 
-  dsh-auto-review@file:vendor/dsh-auto-review-0.1.2.tgz:
-    resolution: {integrity: sha512-UzRzr115robE2etTBveGtlFaS02HL8Di5PenPZlI1Z4+G9/FeK5kF4hxC2fFoHydyNufFxl8I7Nv0QWeiPun8w==, tarball: file:vendor/dsh-auto-review-0.1.2.tgz}
-    version: 0.1.2
+  dsh-auto-review@file:vendor/dsh-auto-review-0.2.0.tgz:
+    resolution: {integrity: sha512-OCHifdedQIgR/sAqtuEVkwbz9kGsgnHkKbmFVidJUjZxHV+C872eiN/JumkJXiAkKRA5NXNr/VUIn73YCHZ+aw==, tarball: file:vendor/dsh-auto-review-0.2.0.tgz}
+    version: 0.2.0
     engines: {node: ^22.19.0 || >=24.0.0}
     peerDependencies:
       '@deepseek-ai/cordis': ^4.0.1
@@ -1340,11 +1337,6 @@ packages:
   js-tokens@9.0.1:
     resolution: {integrity: sha512-mxa9E9ITFOt0ban3j6L5MpjwegGz6lBQmM1IJkWeBZGcMxto50+eWdjC/52xDbS2vy0k7vIMK0Fe2wfL9OQSpQ==}
 
-  jsesc@3.1.0:
-    resolution: {integrity: sha512-/sM3dO2FOzXjKQhJuo0Q173wf2KOo8t4I8vHy6lF9poUp7bKT0/NHE8fPX23PwfhnykfqnC2xRxOnVw5XuGIaA==}
-    engines: {node: '>=6'}
-    hasBin: true
-
   json-buffer@3.0.1:
     resolution: {integrity: sha512-4bV5BfR2mqfQTJm+V5tPPdf+ZpuhiIvTuAB5g8kcrXOZpTT/QwwVRWBywX1ozr6lEuPdbHxwaJlm9G6mI2sfSQ==}
 
@@ -1467,15 +1459,6 @@ packages:
   readdirp@5.1.1:
     resolution: {integrity: sha512-Kko+Y5XQ6fM+Ce3dq3m9YGxnacYZYl9cA1wZjaF3Vbry2L3i1qVg8+CAgNPsXRArPMUMCaOR7oa9Nqntc43JKA==}
     engines: {node: '>= 20.19.0'}
-
-  redos-detector@6.1.4:
-    resolution: {integrity: sha512-lPlka1rEH6kK42gtgokvvxMmpAvyc28DcRjQbGxeP5RJsJWgAduBOdGedVCDPdSyCr4ay/JDxq3nGYsJZyt8tA==}
-    engines: {node: '>=16.0.0'}
-    hasBin: true
-
-  regjsparser@0.13.0:
-    resolution: {integrity: sha512-NZQZdC5wOE/H3UT28fVGL+ikOZcEzfMGk/c3iN9UGxzWHMa1op7274oyiUVrAG4B2EuFhus8SvkaYnhvW92p9Q==}
-    hasBin: true
 
   resolve-pkg-maps@1.0.0:
     resolution: {integrity: sha512-seS2Tj26TBVOC2NIc2rOe2y2ZO7efxITtLZcGSOnHHNOQ7CkiUBfw0Iw2ck6xkIhPwLhKNLS8BO+hEpngQlqzw==}
@@ -2551,7 +2534,7 @@ snapshots:
 
   defu@6.1.7: {}
 
-  dsh-auto-review@file:vendor/dsh-auto-review-0.1.2.tgz(1b8bf2e714c17a867356a4cef509c351):
+  dsh-auto-review@file:vendor/dsh-auto-review-0.2.0.tgz(1b8bf2e714c17a867356a4cef509c351):
     dependencies:
       '@deepseek-ai/cordis': 4.0.1
       '@deepseek-ai/dsh-agent': 0.1.0-rc.6(b0514d7a320728b6d8f5a31eb3960e10)
@@ -2801,8 +2784,6 @@ snapshots:
 
   js-tokens@9.0.1: {}
 
-  jsesc@3.1.0: {}
-
   json-buffer@3.0.1: {}
 
   json-schema-traverse@0.4.1: {}
@@ -2907,14 +2888,6 @@ snapshots:
   quansync@1.0.0: {}
 
   readdirp@5.1.1: {}
-
-  redos-detector@6.1.4:
-    dependencies:
-      regjsparser: 0.13.0
-
-  regjsparser@0.13.0:
-    dependencies:
-      jsesc: 3.1.0
 
   resolve-pkg-maps@1.0.0: {}
 
