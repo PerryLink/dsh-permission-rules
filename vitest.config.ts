@@ -6,5 +6,16 @@ export default defineConfig({
     environment: 'node',
     pool: 'forks',
     testTimeout: 20_000,
+    coverage: {
+      provider: 'v8',
+      include: ['src/**/*.ts'],
+      exclude: ['src/index.ts'],
+      thresholds: {
+        statements: 90,
+        branches: 80,
+        functions: 90,
+        lines: 90,
+      },
+    },
   },
 })

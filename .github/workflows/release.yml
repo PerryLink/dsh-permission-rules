@@ -1,0 +1,39 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.7.0
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify the changelog names this version
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          grep -q "## v${VERSION}" CHANGELOG.md || { echo "CHANGELOG.md has no '## v${VERSION}' section"; exit 1; }
+
+      - name: Build and pack
+        run: pnpm run pack:check
+
+      - name: Publish the release artifact
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dsh-permission-rules-*.tgz
