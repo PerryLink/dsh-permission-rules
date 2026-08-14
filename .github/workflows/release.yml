@@ -33,6 +33,14 @@ jobs:
       - name: Build and pack
         run: pnpm run pack:check
 
+      - name: Publish to npm
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        if: ${{ env.NPM_TOKEN != '' }}
+        run: |
+          echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
+          npm publish
+
       - name: Publish the release artifact
         uses: softprops/action-gh-release@v2
         with:

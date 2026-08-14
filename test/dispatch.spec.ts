@@ -9,8 +9,9 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { CallId } from '@deepseek-ai/dsh-llm'
+import { SessionId } from '@deepseek-ai/dsh-session'
 import type { PreToolDecision } from '@deepseek-ai/dsh-tools'
-import { dispatchPreExecute, makeExec, mountHarness, removeWorkspace, tempWorkspace } from './harness.ts'
+import { dispatchPreExecute, makeAgent, makeExec, mountHarness, removeWorkspace, tempWorkspace } from './harness.ts'
 
 const RULES = `
 rules:
@@ -223,6 +224,139 @@ describe('tools/pre-execute dispatch', () => {
         makeExec({ name: 'bash', arguments: { command: 'git push origin main', cwd: 'src/secrets/app' }, agent: harness.agent }),
       )
       expect(decisionEvents(harness.session.events).at(-1)).toMatchObject({ action: 'deny', outcome: 'deny' })
+    } finally {
+      removeWorkspace(cwd)
+    }
+  })
+
+  it('records the workspace cwd on every audit event', async () => {
+    const cwd = workspaceWithRules()
+    const harness = await mountHarness({}, { cwd })
+    try {
+      await dispatchPreExecute(
+        harness.ctx,
+        makeExec({ name: 'bash', arguments: { command: 'git push origin main', cwd: 'src/secrets/app' }, agent: harness.agent }),
+      )
+      expect(decisionEvents(harness.session.events).at(-1)?.cwd).toBe(cwd)
+    } finally {
+      removeWorkspace(cwd)
+    }
+  })
+})
+
+describe('tools/pre-execute — dry-run mode (enforce: false)', () => {
+  it('a deny hit delegates via next() and audits the would-be decision with dryRun', async () => {
+    const cwd = workspaceWithRules()
+    const harness = await mountHarness({ enforce: false }, { cwd })
+    try {
+      let downstreamCalled = false
+      const decision = await dispatchPreExecute(
+        harness.ctx,
+        makeExec({ name: 'bash', arguments: { command: 'git push origin main', cwd: 'src/secrets/app' }, agent: harness.agent }),
+        async () => {
+          downstreamCalled = true
+          return { kind: 'allow' }
+        },
+      )
+      // Dry-run never short-circuits: the downstream decision wins.
+      expect(decision).toEqual({ kind: 'allow' })
+      expect(downstreamCalled).toBe(true)
+      expect(decisionEvents(harness.session.events).at(-1)).toMatchObject({
+        toolName: 'bash',
+        action: 'deny',
+        outcome: 'allow',
+        ruleIndex: 0,
+        dryRun: true,
+      })
+    } finally {
+      removeWorkspace(cwd)
+    }
+  })
+
+  it('a dry-run ask hit records the would-be ask and the real downstream outcome', async () => {
+    const cwd = workspaceWithRules()
+    const harness = await mountHarness({ enforce: false }, { cwd })
+    try {
+      const decision = await dispatchPreExecute(
+        harness.ctx,
+        makeExec({ name: 'edit', arguments: { path: 'src/a.ts' }, agent: harness.agent }),
+        async () => ({ kind: 'deny', reason: 'later listener refused' }),
+      )
+      expect(decision).toEqual({ kind: 'deny', reason: 'later listener refused' })
+      expect(decisionEvents(harness.session.events).at(-1)).toMatchObject({
+        toolName: 'edit',
+        action: 'ask',
+        outcome: 'deny',
+        ruleIndex: 1,
+        dryRun: true,
+      })
+    } finally {
+      removeWorkspace(cwd)
+    }
+  })
+
+  it('allow hits and passthroughs carry no dryRun marker', async () => {
+    const cwd = workspaceWithRules()
+    const harness = await mountHarness({ enforce: false }, { cwd })
+    try {
+      await dispatchPreExecute(
+        harness.ctx,
+        makeExec({ name: 'read', arguments: { path: 'README.md' }, agent: harness.agent }),
+      )
+      await dispatchPreExecute(
+        harness.ctx,
+        makeExec({ name: 'glob', arguments: { pattern: '*' }, agent: harness.agent }),
+      )
+      const events = decisionEvents(harness.session.events)
+      expect(events.at(-2)).toMatchObject({ action: 'allow', outcome: 'allow' })
+      expect(events.at(-2)).not.toHaveProperty('dryRun')
+      expect(events.at(-1)).toMatchObject({ action: 'passthrough' })
+      expect(events.at(-1)).not.toHaveProperty('dryRun')
+    } finally {
+      removeWorkspace(cwd)
+    }
+  })
+})
+
+describe('tools/pre-execute — agents dimension', () => {
+  const AGENT_RULES = `
+rules:
+  - match: { tools: [bash], agents: [subagent, "preset:code*"] }
+    action: deny
+    reason: "子代理不得运行 shell"
+  - match: { tools: [write], agents: [main] }
+    action: ask
+    reason: "主代理写文件需要确认"
+`
+
+  it('selects rules by the caller session identity (main vs subagent vs preset)', async () => {
+    const cwd = tempWorkspace()
+    const harness = await mountHarness({}, { cwd })
+    try {
+      mkdirSync(join(cwd, '.dsh'), { recursive: true })
+      writeFileSync(join(cwd, '.dsh', 'rules.yaml'), AGENT_RULES, 'utf8')
+      // The harness agent is a top-level session: the main-scoped rule asks.
+      const mainDecision = await dispatchPreExecute(
+        harness.ctx,
+        makeExec({ name: 'write', arguments: { path: 'a.txt' }, agent: harness.agent }),
+      )
+      expect(mainDecision).toEqual({ kind: 'ask', reason: '主代理写文件需要确认' })
+      // A subagent child session is denied the shell outright.
+      const child = harness.ctx.sessions.create(SessionId('sub-child'), { meta: { cwd, origin: 'subagent' } })
+      const childAgent = makeAgent(child)
+      const subDecision = await dispatchPreExecute(
+        harness.ctx,
+        makeExec({ name: 'bash', arguments: { command: 'ls' }, agent: childAgent }),
+      )
+      expect(subDecision).toEqual({ kind: 'deny', reason: '子代理不得运行 shell' })
+      // A preset-composed top-level session also matches the subagent rule.
+      const preset = harness.ctx.sessions.create(SessionId('preset-child'), { meta: { cwd, agentPreset: 'coder' } })
+      const presetAgent = makeAgent(preset)
+      const presetDecision = await dispatchPreExecute(
+        harness.ctx,
+        makeExec({ name: 'bash', arguments: { command: 'ls' }, agent: presetAgent }),
+      )
+      expect(presetDecision).toEqual({ kind: 'deny', reason: '子代理不得运行 shell' })
     } finally {
       removeWorkspace(cwd)
     }

@@ -68,6 +68,14 @@ export interface RuleMatchDoc {
   paths: string[]
   /** Argument keys that must be ABSENT; every listed key must be missing. */
   absent: string[]
+  /**
+   * Agent-identity selectors (globs against the calling agent's session
+   * header: `main`, `subagent`, and `preset:<name>` candidates); ANY
+   * selector matching ANY candidate satisfies the dimension. Empty matches
+   * every agent. Unknown agent identity never matches, so agent-scoped
+   * rules fail closed.
+   */
+  agents: string[]
   /** Environment/platform conditions; every listed env key must be present and match. */
   when: WhenDoc
 }
@@ -92,6 +100,8 @@ export interface CompiledRule {
   readonly description?: string
   readonly tags: readonly string[]
   readonly tools: readonly RegExp[]
+  /** Agent-selector globs; empty = every agent. */
+  readonly agents: readonly RegExp[]
   /** Param key → positive/negative pattern lists. */
   readonly params: ReadonlyMap<string, { positive: readonly RegExp[]; negative: readonly RegExp[] }>
   readonly paths: readonly RegExp[]
@@ -137,6 +147,12 @@ export interface MatchContext {
   readonly platform?: string
   /** Environment table; defaults to `process.env` when omitted. */
   readonly env?: Readonly<Record<string, string | undefined>>
+  /**
+   * Agent-identity candidate strings the `agents` dimension matches
+   * against (`main`, `subagent`, `preset:<name>`); omitted (or empty)
+   * means the identity is unknown and agent-scoped rules never match.
+   */
+  readonly agents?: readonly string[]
 }
 
 /**
@@ -207,6 +223,7 @@ export function compileRulesChain(entries: readonly RulesChainEntry[], options: 
 /** Compile one parsed rule into its hot-path form. */
 function compileRule(entry: RuleDocEntry, index: number, sourceIndex: number, options: CompileOptions): CompiledRule {
   const tools = entry.match.tools.map(pattern => compileToolPattern(pattern, options.maxGlobStars))
+  const agents = entry.match.agents.map(pattern => compileToolPattern(pattern, options.maxGlobStars))
   const params = new Map<string, { positive: readonly RegExp[]; negative: readonly RegExp[] }>()
   for (const [key, patterns] of Object.entries(entry.match.params)) {
     params.set(key, compileParamPatterns(key, patterns, options))
@@ -225,6 +242,7 @@ function compileRule(entry: RuleDocEntry, index: number, sourceIndex: number, op
     ...(entry.description !== undefined ? { description: entry.description } : {}),
     tags: entry.tags,
     tools,
+    agents,
     params,
     paths,
     absent: entry.match.absent,
@@ -263,6 +281,7 @@ export function matchRules(
   for (const rule of ruleset.rules) {
     if (!rule.enabled) continue
     if (!matchTools(rule, toolName)) continue
+    if (!matchAgents(rule, context)) continue
     if (!matchWhen(rule, context)) continue
     if (rule.params.size > 0 && (argRecord === undefined || !matchParams(rule, argRecord))) continue
     if (rule.absent.length > 0 && !matchAbsent(rule, argRecord)) continue
@@ -296,7 +315,7 @@ export function findUnreachableRules(ruleset: CompiledRuleset): number[] {
 
 /** Whether every match dimension of one rule is empty. */
 function isCatchAll(rule: CompiledRule): boolean {
-  return rule.tools.length === 0 && rule.params.size === 0 && rule.paths.length === 0 && rule.absent.length === 0 && rule.when === undefined
+  return rule.tools.length === 0 && rule.agents.length === 0 && rule.params.size === 0 && rule.paths.length === 0 && rule.absent.length === 0 && rule.when === undefined
 }
 
 /**
@@ -310,6 +329,7 @@ function isCatchAll(rule: CompiledRule): boolean {
 export function describeRule(rule: CompiledRule, tokens: DescribeTokens): string {
   const parts: string[] = []
   if (rule.source.match.tools.length > 0) parts.push(`${tokens.tools}:${rule.source.match.tools.join(',')}`)
+  if (rule.source.match.agents.length > 0) parts.push(`${tokens.agents}:${rule.source.match.agents.join(',')}`)
   const params = Object.entries(rule.source.match.params)
     .map(([key, patterns]) => `${key}=${patterns.join('|')}`)
     .join(' ')
@@ -332,6 +352,7 @@ export function describeRule(rule: CompiledRule, tokens: DescribeTokens): string
 export interface DescribeTokens {
   readonly allTools: string
   readonly tools: string
+  readonly agents: string
   readonly params: string
   readonly paths: string
   readonly absent: string
@@ -350,6 +371,19 @@ function truncate(text: string, limit: number): string {
 function matchTools(rule: CompiledRule, toolName: string): boolean {
   if (rule.tools.length === 0) return true
   return rule.tools.some(regex => regex.test(toolName))
+}
+
+/**
+ * Whether a rule's agents dimension selects the caller. Any selector glob
+ * matching any identity candidate satisfies the dimension; unknown
+ * identity (no agent or no candidates) fails the dimension, so an
+ * agent-scoped rule can never fire where the caller cannot be identified.
+ */
+function matchAgents(rule: CompiledRule, context: MatchContext): boolean {
+  if (rule.agents.length === 0) return true
+  const candidates = context.agents
+  if (candidates === undefined || candidates.length === 0) return false
+  return rule.agents.some(regex => candidates.some(candidate => regex.test(candidate)))
 }
 
 /** Whether a rule's params dimension holds: EVERY key present and matching. */
@@ -474,14 +508,15 @@ function parseRuleEntry(raw: unknown, index: number): RuleDocEntry {
 
 /** Validate the `match` block of one rule. */
 function parseMatch(raw: unknown, at: string): RuleMatchDoc {
-  if (raw === undefined) return { tools: [], params: {}, paths: [], absent: [], when: { env: {}, platform: [] } }
+  if (raw === undefined) return { tools: [], agents: [], params: {}, paths: [], absent: [], when: { env: {}, platform: [] } }
   const record = asRecord(raw, `${at}.match`)
-  const unknownFields = Object.keys(record).filter(key => key !== 'tools' && key !== 'params' && key !== 'paths' && key !== 'absent' && key !== 'when')
+  const unknownFields = Object.keys(record).filter(key => key !== 'tools' && key !== 'agents' && key !== 'params' && key !== 'paths' && key !== 'absent' && key !== 'when')
   if (unknownFields.length > 0) {
-    throw new RuleError(`${at}.match: unknown field${unknownFields.length > 1 ? 's' : ''} ${unknownFields.map(k => JSON.stringify(k)).join(', ')} (allowed: tools, params, paths, absent, when)`)
+    throw new RuleError(`${at}.match: unknown field${unknownFields.length > 1 ? 's' : ''} ${unknownFields.map(k => JSON.stringify(k)).join(', ')} (allowed: tools, agents, params, paths, absent, when)`)
   }
   return {
     tools: parseStringList(record['tools'], `${at}.match.tools`),
+    agents: parseStringList(record['agents'], `${at}.match.agents`),
     params: parseParams(record['params'], `${at}.match.params`),
     paths: parseStringList(record['paths'], `${at}.match.paths`),
     absent: parseStringList(record['absent'], `${at}.match.absent`),
@@ -671,7 +706,10 @@ function relFromRoot(root: string, path: string, rest: string, rootRest: string,
   const restLower = caseInsensitive ? rest.toLowerCase() : rest
   const rootRestLower = caseInsensitive ? rootRest.toLowerCase() : rootRest
   if (rootRestLower.length === 0) return rest.slice(1)
-  if (path.toLowerCase() === root.toLowerCase()) return ''
+  // A candidate equal to the root itself — modulo case only when the
+  // comparison is case-insensitive — is the workspace root, not a relative
+  // path inside it, and is dropped explicitly.
+  if (path === root || (caseInsensitive && path.toLowerCase() === root.toLowerCase())) return ''
   return restLower.startsWith(`${rootRestLower}/`) ? rest.slice(rootRest.length + 1) : ''
 }
 

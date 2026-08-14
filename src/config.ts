@@ -57,6 +57,13 @@ export interface Config {
   searchUp?: boolean
   /** Hard cap on unbounded `*`/`**` quantifiers per glob pattern (backtracking-degree bound). */
   maxGlobStars?: number
+  /**
+   * Whether decisions are enforced: `false` puts the plugin in dry-run
+   * mode — deny/ask hits are audit-logged with a `dryRun` marker and every
+   * call is delegated via `next()` untouched. Useful for evaluating a new
+   * policy in production before enforcing it.
+   */
+  enforce?: boolean
 }
 
 /** Config after {@link resolveConfig}: every optional field has its explicit default. */
@@ -74,6 +81,7 @@ export interface ResolvedConfig {
   readonly audit: AuditGranularity
   readonly searchUp: boolean
   readonly maxGlobStars: number
+  readonly enforce: boolean
 }
 
 /** Schemastery schema: the loader validates and fills defaults before `apply`. */
@@ -91,13 +99,16 @@ export const Config: z<Config> = z.object({
   audit: z.union(['all', 'hits'] as const).default('all'),
   searchUp: z.boolean().default(false),
   maxGlobStars: z.number().default(2),
+  enforce: z.boolean().default(true),
 })
 
 /**
  * Validate raw values and fill explicit defaults. A `maxRules`,
  * `maxCachedWorkspaces`, or `maxGlobStars` that is not a positive safe
- * integer, a non-positive stability window, or `searchUp` combined with an
- * absolute `rulesFile` throws here — misconfiguration fails loud at mount.
+ * integer, a non-positive stability window, `searchUp` combined with an
+ * absolute `rulesFile`, a value outside a closed enum, or a non-boolean
+ * flag throws here — misconfiguration fails loud at mount even when the
+ * plugin is mounted without the Schemastery loader.
  * @param config - raw (possibly partial) plugin config.
  * @returns the fully resolved config.
  */
@@ -123,6 +134,14 @@ export function resolveConfig(config: Config = {}): ResolvedConfig {
   if (!Number.isSafeInteger(maxGlobStars) || maxGlobStars <= 0) {
     throw new TypeError(`maxGlobStars must be a positive safe integer, got ${String(config.maxGlobStars)}`)
   }
+  assertEnum('badFilePolicy', config.badFilePolicy ?? 'fail', ['fail', 'ignore-with-warning'])
+  assertEnum('patternMode', config.patternMode ?? 'glob', ['glob', 'regex'])
+  assertEnum('language', config.language ?? 'en', ['en', 'zh', 'es', 'pt', 'hi'])
+  assertEnum('audit', config.audit ?? 'all', ['all', 'hits'])
+  assertBoolean('watch', config.watch ?? true)
+  assertBoolean('searchUp', searchUp)
+  assertBoolean('caseInsensitivePaths', config.caseInsensitivePaths ?? process.platform === 'win32')
+  assertBoolean('enforce', config.enforce ?? true)
   return {
     rulesFile,
     fallbackPath: config.fallbackPath,
@@ -137,5 +156,20 @@ export function resolveConfig(config: Config = {}): ResolvedConfig {
     audit: config.audit ?? 'all',
     searchUp,
     maxGlobStars,
+    enforce: config.enforce ?? true,
+  }
+}
+
+/** Throw unless `key` is one of `allowed` (TypeScript's closed enums are not runtime checks). */
+function assertEnum<T extends string>(key: string, value: string, allowed: readonly T[]): asserts value is T {
+  if (!allowed.includes(value as T)) {
+    throw new TypeError(`${key} must be one of ${allowed.map(item => JSON.stringify(item)).join(' | ')}, got ${JSON.stringify(value)}`)
+  }
+}
+
+/** Throw unless `key` is a boolean (plain-JS mounts bypass the Schemastery coercion). */
+function assertBoolean(key: string, value: boolean): void {
+  if (typeof value !== 'boolean') {
+    throw new TypeError(`${key} must be a boolean, got ${typeof value}`)
   }
 }

@@ -1,6 +1,6 @@
 {
   "name": "dsh-permission-rules",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Declarative Claude Code-style permission rules for DeepSeek Harness: ordered allow/deny/ask rules with tool-name, argument (glob/regex), and workspace-path matching on the tools/pre-execute waterfall, full session-log audit, and HMR rule reload.",
   "private": false,
   "type": "module",

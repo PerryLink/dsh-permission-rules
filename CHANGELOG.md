@@ -2,6 +2,27 @@
 
 All notable changes to dsh-permission-rules are recorded here, newest first.
 
+## v0.3.0 — 2026-08-14
+
+### Rules vocabulary
+
+- New `match.agents` dimension: selector globs (`main`, `subagent`, `preset:<name>`) matched against the caller's session-header identity, ANDed with the other dimensions; unknown identity never matches (fail closed), so agent-scoped rules cannot leak onto unidentified callers.
+- Path normalization: a candidate equal to the workspace root itself is dropped explicitly, and the root comparison only ignores case when `caseInsensitivePaths` is on.
+
+### Dry-run rollout and audit fidelity
+
+- `enforce: false` dry-run mode: deny/ask hits are audit-logged with a `dryRun` marker — the record keeps the would-be action AND the real downstream outcome — while every call is delegated via `next()`. `/rules` prints a dry-run notice while the mode is active and `/rules decisions` renders `(dry-run → <outcome>)` on such rows. Trial a new policy in production before enforcing it.
+- `permissionRules/decision` events now carry `cwd`, the workspace the rule chain was resolved for.
+
+### Commands and observability
+
+- `/rules test` accepts leading flags: `--cwd <dir>` (evaluate against another workspace's rules), `--env KEY=VALUE` (repeatable; overrides host env for `when.env`), and `--agent <selector>` (repeatable; supplies identity candidates for the `agents` dimension). Quoted JSON argument tails are preserved verbatim.
+- `resolveConfig` validates the closed enums (`badFilePolicy`, `patternMode`, `language`, `audit`) and boolean flags loudly, so plain-JS mounts without the Schemastery loader also fail on bad values instead of crashing later.
+
+### Engineering
+
+- 125 tests across 8 suites; coverage gate held. Five-language READMEs, both rules-format references, the JSON Schema, and the `/rules` command hint updated for `agents` and `enforce`.
+
 ## v0.2.0 — 2026-08-14
 
 ### Rules vocabulary

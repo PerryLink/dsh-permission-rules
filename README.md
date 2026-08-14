@@ -48,13 +48,14 @@ A second model answers *"is THIS call okay?"* with judgment, but costs a round-t
 ## Features
 
 - ✅ **Three-state semantics** — `allow`, `deny`, `ask`, evaluated in file order, first match wins
-- ✅ **Rich matching** — tool-name globs (including `mcp__*`), argument key/value globs **or** regexes (with `!pattern` negation and an `absent` key dimension), workspace-relative path globs extracted from documented argument keys at **any nesting depth**, and `when` host conditions (env vars, platform)
+- ✅ **Rich matching** — tool-name globs (including `mcp__*`), agent-identity selectors (`main` / `subagent` / `preset:*`), argument key/value globs **or** regexes (with `!pattern` negation and an `absent` key dimension), workspace-relative path globs extracted from documented argument keys at **any nesting depth**, and `when` host conditions (env vars, platform)
 - ✅ **Hierarchical rule files** — optional `searchUp` merges every `.dsh/rules.yaml` from the session cwd to the filesystem root, nearest first, so a child project can override parent rules
 - ✅ **Rule metadata** — `enabled: false`, `description`, `tags`; `/rules` warns about rules shadowed by an earlier catch-all
 - ✅ **Waterfall-safe** — `allow`/passthrough always call `next()`; only `deny`/`ask` short-circuit
 - ✅ **Official approval seam** — `ask` flows through `ctx.approval`; never re-implemented, never bypassed
-- ✅ **Full audit** — `permissionRules/decision` events carry the rule action AND the final outcome for every call; `/rules decisions` replays the trail in-session
-- ✅ **Dry-run testing** — `/rules test <tool> <json-args>` evaluates the active rules without executing anything
+- ✅ **Full audit** — `permissionRules/decision` events carry the rule action, the workspace cwd, AND the final outcome for every call; `/rules decisions` replays the trail in-session
+- ✅ **Dry-run rollout** — `enforce: false` audits what the policy *would* do (would-be action + real downstream outcome, `dryRun`-marked) while passing every call through; safe policy trialing in production
+- ✅ **Dry-run testing** — `/rules test <tool> <json-args>` evaluates the active rules without executing anything, with `--cwd`, `--env`, and `--agent` overrides for every match dimension
 - ✅ **Hot reload** — Chokidar watch with debounce; a broken edit keeps the previous rules, never crashes
 - ✅ **Fail loud** — invalid YAML, unknown actions/fields, bad globs/regexes, backtracking-prone patterns, or > `maxRules` fail the load
 - ✅ **Bounded hot path** — precompiled matchers, O(rules × patterns), capped by `maxRules`; glob backtracking degree capped by `maxGlobStars`
@@ -67,7 +68,7 @@ dsh plugin --profile web add "github:PerryLink/dsh-permission-rules#main"
 
 # or from a packed tarball (built artifacts, no build permission needed)
 pnpm pack
-dsh plugin --profile web add ./dsh-permission-rules-0.1.1.tgz
+dsh plugin --profile web add ./dsh-permission-rules-0.3.0.tgz
 
 # 2. restart
 dsh --profile web
@@ -112,6 +113,7 @@ All tunables are Schemastery `Config` fields (changeable from cordis.yml). An id
 | `audit` | `all` | Audit granularity: `all` logs every hit AND passthrough; `hits` skips passthrough events |
 | `searchUp` | `false` | Walk parent directories from the session cwd and merge every found rule file, nearest first |
 | `maxGlobStars` | `2` | Hard cap on unbounded `*`/`**` quantifiers per glob pattern (backtracking-degree bound) |
+| `enforce` | `true` | `false` = dry-run mode: deny/ask hits are audit-logged with a `dryRun` marker (would-be action + real downstream outcome) and every call passes through — trial a policy before enforcing it |
 
 ### Session commands
 
@@ -121,6 +123,8 @@ All tunables are Schemastery `Config` fields (changeable from cordis.yml). An id
 /rules decisions [n]          show the last n permission decisions of this session (default 10)
 /rules test <tool> <json>     dry-evaluate the rules against a hypothetical call, e.g. /rules test bash {"command":"git push origin main"}
 ```
+
+`/rules test` also accepts leading flags: `--cwd <dir>` evaluates against another workspace, `--env KEY=VALUE` (repeatable) overrides host env for `when.env`, and `--agent <selector>` (repeatable) supplies identity candidates for the `agents` dimension.
 
 Command output is UI-only — the model learns the rules only through the tool results they produce. `language` picks the output language. A JSON Schema for the rule file ships at [docs/rules-format.schema.json](docs/rules-format.schema.json) (wire it up with `# yaml-language-server: $schema=...` for editor completion).
 

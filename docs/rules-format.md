@@ -17,13 +17,14 @@ rules:        # 规则列表，按书写顺序求值；可以省略或为空
     reason: ...
 ```
 
-顶层只允许 `rules` 一个键；每条规则只允许 `match`、`action`、`reason`、`enabled`、`description`、`tags` 六个键；`match` 只允许 `tools`、`params`、`paths`、`absent`、`when` 五个键。出现任何未知键都在加载期报错（响亮失败），绝不静默忽略。
+顶层只允许 `rules` 一个键；每条规则只允许 `match`、`action`、`reason`、`enabled`、`description`、`tags` 六个键；`match` 只允许 `tools`、`agents`、`params`、`paths`、`absent`、`when` 六个键。出现任何未知键都在加载期报错（响亮失败），绝不静默忽略。
 
 ## match 维度（全部 AND）
 
 | 维度 | 类型 | 语义 |
 |---|---|---|
 | `tools` | `string[]` | 工具名 glob（始终 glob 解释，与 `patternMode` 无关）。空/缺省 = 不限制。支持 `mcp__*` 等前缀匹配。 |
+| `agents` | `string[]` | 调用方代理身份选择器 glob，匹配会话头推导出的候选：`main`（顶层会话）、`subagent`（子代理会话）、`preset:<name>`（由预设组合的代理）。**任一选择器命中任一候选**即满足该维度；空/缺省 = 不限制。身份未知（无候选）永不命中——面向代理的规则按失败关闭（fail closed）处理。 |
 | `params` | `Record<string, string \| number \| boolean \| (…)[]>` | 参数键 → 模式（或模式列表）。**列出的每个键都必须存在且命中**（AND）；缺省 = 不限制。标量值按字符串匹配（数字/布尔字符串化）；数组任一元素命中即可；嵌套对象贡献其标量叶子（深度上限 8）。`!` 前缀为否定：值必须**不**命中该模式；只含否定的键在键存在且全部否定未命中时命中（YAML 里请给 `!` 模式加引号：`"!git*"`）。params 模式中 `/` 是普通字符，`*` 可跨 `/`。 |
 | `paths` | `string[]` | 工作区相对路径模式，任一候选命中任一模式即可。候选来自参数中下列键的值（**任意嵌套深度**、深度上限）：`path` `paths` `file` `files` `file_path` `dir` `directory` `directories` `cwd` `workspace` `root` `target` `targets` `output`。工作区外的绝对候选被丢弃；相对 `../` 形式保留，可显式匹配工作区外。路径模式中 `*` 不跨 `/`，`**` 跨任意深度（含零层）。`caseInsensitivePaths` 开启时（Windows 默认）根比较与模式匹配忽略 ASCII 大小写。 |
 | `absent` | `string[]` | 必须**缺席**的参数键；**每个列出的键都必须缺失**（非对象参数天然满足）。 |
@@ -101,3 +102,5 @@ rules:
 - 非法 YAML / 未知字段或 action / 坏 glob 与正则 / 易回溯灾难的模式 / 超 `maxRules` 都是加载期错误：`badFilePolicy: fail`（默认）时首个使用该工作区的工具调用响亮失败；`ignore-with-warning` 时告警并降级为空规则集。
 - 绝对 `rulesFile` 或配置的 `fallbackPath` 在插件挂载时即校验，缺失/非法直接挂载失败。
 - 文件变更后经 Chokidar 去抖重读（`watch`、`watchStabilityThresholdMs`）；重读失败保留旧规则、只告警，绝不崩溃。`/rules reload` 手动触发同样路径；`/rules decisions` 回放审计轨迹，`/rules test` 对假设调用干跑规则。
+- `/rules test` 支持前置标志：`--cwd <目录>` 换一个工作区求值（规则发现与路径归一化都切换）；`--env 键=值`（可重复）覆盖宿主环境变量以测试 `when.env`；`--agent <选择器>`（可重复）为 `agents` 维度提供身份候选。
+- `enforce: false` 让插件进入干跑模式：deny/ask 命中只写审计（带 `dryRun` 标记，记录「本会做什么」与下游真实结果），所有调用照常透传——用于在生产环境先试跑新策略再强制执行。激活期间 `/rules` 会打印干跑提示。

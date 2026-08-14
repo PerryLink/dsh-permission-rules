@@ -337,6 +337,55 @@ rules:
   })
 })
 
+describe('matchRules — agents dimension', () => {
+  it('matches any selector against any candidate and never matches unknown identity', () => {
+    const set = rules(`
+rules:
+  - match: { tools: [bash], agents: [subagent, "preset:code*"] }
+    action: deny
+    reason: subagents never run shells
+  - match: { tools: [write], agents: [main] }
+    action: ask
+    reason: main-agent writes need confirmation
+`)
+    // Subagent candidate hits the first rule.
+    expect(matchRules(set, 'bash', {}, CWD, { agents: ['subagent', 'preset:coder'] })?.rule.action).toBe('deny')
+    // Preset candidate hits the first rule too.
+    expect(matchRules(set, 'bash', {}, CWD, { agents: ['main', 'preset:coder'] })?.rule.action).toBe('deny')
+    // A main-only caller does not match the subagent rule; the second rule asks.
+    expect(matchRules(set, 'write', {}, CWD, { agents: ['main'] })?.rule.action).toBe('ask')
+    expect(matchRules(set, 'write', {}, CWD, { agents: ['subagent'] })).toBeUndefined()
+    // Unknown identity fails closed on agent-scoped rules (no candidates).
+    expect(matchRules(set, 'bash', {}, CWD, { agents: [] })).toBeUndefined()
+    expect(matchRules(set, 'bash', {}, CWD, {})).toBeUndefined()
+    expect(matchRules(set, 'bash', {}, CWD)).toBeUndefined()
+  })
+
+  it('parses the agents vocabulary and rejects bad shapes', () => {
+    const doc = parseRulesDocument('rules:\n  - match: { agents: [main, "preset:*"] }\n    action: allow\n    reason: x')
+    expect(doc.rules[0]?.match.agents).toEqual(['main', 'preset:*'])
+    expect(() => parseRulesDocument('rules:\n  - match: { agents: [""] }\n    action: allow\n    reason: x')).toThrow(/non-empty string/)
+    expect(() => rules('rules:\n  - match: { agents: "a[bc" }\n    action: allow\n    reason: x')).toThrowError(GlobError)
+  })
+
+  it('agents dimension participates in AND and catch-all shadowing', () => {
+    const set = rules(`
+rules:
+  - match: {}
+    action: allow
+    reason: catch-all
+  - match: { agents: [subagent] }
+    action: deny
+    reason: unreachable
+`)
+    expect(findUnreachableRules(set)).toEqual([1])
+    // An agent-scoped rule only restricts when its dimension holds.
+    const gated = rules('rules:\n  - match: { agents: [main], paths: ["**/secrets/**"] }\n    action: deny\n    reason: x')
+    expect(matchRules(gated, 'read', { path: 'secrets/a' }, CWD, { agents: ['main'] })?.rule.action).toBe('deny')
+    expect(matchRules(gated, 'read', { path: 'secrets/a' }, CWD, { agents: ['subagent'] })).toBeUndefined()
+  })
+})
+
 describe('matchRules — paths dimension', () => {
   it('matches workspace-relative candidates with segment globs', () => {
     const set = rules('rules:\n  - match: { paths: ["**/secrets/**"] }\n    action: deny\n    reason: protected')
@@ -398,6 +447,13 @@ describe('normalizeWorkspacePath', () => {
     expect(normalizeWorkspacePath('D:\\ws\\project', 'D:\\WS\\PROJECT\\secrets\\key.pem', true)).toBe('secrets/key.pem')
     expect(normalizeWorkspacePath('D:\\ws\\project', 'D:\\WS\\PROJECT\\secrets\\key.pem', false)).toBe('')
     expect(normalizeWorkspacePath('/ws/project', '/WS/PROJECT/secrets/key.pem', false)).toBe('')
+  })
+
+  it('drops candidates that equal the workspace root itself', () => {
+    expect(normalizeWorkspacePath('/ws/project', '/ws/project')).toBe('')
+    expect(normalizeWorkspacePath('D:\\ws\\project', 'D:/ws/project')).toBe('')
+    expect(normalizeWorkspacePath('D:\\ws\\project', 'd:/WS/PROJECT', true)).toBe('')
+    expect(normalizeWorkspacePath('D:\\ws\\project', 'd:/WS/PROJECT', false)).toBe('')
   })
 })
 
@@ -496,6 +552,11 @@ rules:
     tags: [shell]
 `)
     expect(describeRule(set.rules[0]!, EN)).toBe('1. ask (disabled) [tools:bash absent:command when:CI=1 platform:linux]: gated (hold shell in CI) [tags:shell]')
+  })
+
+  it('renders the agents dimension with its own token', () => {
+    const set = rules('rules:\n  - match: { agents: [subagent, "preset:*"] }\n    action: deny\n    reason: no shells')
+    expect(describeRule(set.rules[0]!, EN)).toBe('1. deny [agents:subagent,preset:*]: no shells')
   })
 
   it('truncates very long reasons at 120 characters', () => {

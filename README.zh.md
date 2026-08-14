@@ -48,13 +48,14 @@ tools/pre-execute waterfall                     approval/request waterfall（ans
 ## 特性
 
 - ✅ **三态语义** — `allow`、`deny`、`ask`，按文件顺序求值，首条命中生效
-- ✅ **丰富匹配** — 工具名 glob（含 `mcp__*`）、参数键值 glob **或** 正则（支持 `!pattern` 否定与 `absent` 键维度）、工作区相对路径 glob（从文档化参数键在**任意嵌套深度**提取候选），以及 `when` 宿主条件（环境变量、平台）
+- ✅ **丰富匹配** — 工具名 glob（含 `mcp__*`）、代理身份选择器（`main` / `subagent` / `preset:*`）、参数键值 glob **或** 正则（支持 `!pattern` 否定与 `absent` 键维度）、工作区相对路径 glob（从文档化参数键在**任意嵌套深度**提取候选），以及 `when` 宿主条件（环境变量、平台）
 - ✅ **分层规则文件** — 可选 `searchUp` 从会话 cwd 向上逐级合并每份 `.dsh/rules.yaml`（最近的优先），子项目可覆盖父级规则
 - ✅ **规则元数据** — `enabled: false`、`description`、`tags`；`/rules` 会告警被前面通配规则遮蔽的规则
 - ✅ **waterfall 安全** — `allow`/透传一律 `next()`；只有 `deny`/`ask` 短路
 - ✅ **官方审批 seam** — `ask` 走 `ctx.approval`；不重复实现、绝不绕过
-- ✅ **完整审计** — `permissionRules/decision` 事件同时记录规则动作与最终裁决；`/rules decisions` 可在会话内回放审计轨迹
-- ✅ **干跑测试** — `/rules test <工具> <json-参数>` 不执行任何东西地评估规则命中
+- ✅ **完整审计** — `permissionRules/decision` 事件记录规则动作、工作区 cwd 与最终裁决；`/rules decisions` 可在会话内回放审计轨迹
+- ✅ **干跑上线** — `enforce: false` 只审计策略「本会做什么」（记录本会动作 + 下游真实结果，带 `dryRun` 标记），所有调用照常透传；可在生产环境安全试跑新策略
+- ✅ **干跑测试** — `/rules test <工具> <json-参数>` 不执行任何东西地评估规则命中，支持 `--cwd`、`--env`、`--agent` 覆盖每个匹配维度
 - ✅ **热更新** — Chokidar 监视 + 去抖；改坏了保留旧规则，绝不崩溃
 - ✅ **响亮失败** — 非法 YAML、未知字段/action、坏 glob/正则、易回溯灾难的模式、超过 `maxRules` 都使加载失败
 - ✅ **热路径有界** — 预编译匹配器，O(规则数 × 模式数)，`maxRules` 封顶；glob 回溯度由 `maxGlobStars` 封顶
@@ -67,7 +68,7 @@ dsh plugin --profile web add "github:PerryLink/dsh-permission-rules#main"
 
 # 或从打包好的 tarball 安装（预构建产物，无需构建许可）
 pnpm pack
-dsh plugin --profile web add ./dsh-permission-rules-0.1.1.tgz
+dsh plugin --profile web add ./dsh-permission-rules-0.3.0.tgz
 
 # 2. 重启
 dsh --profile web
@@ -112,6 +113,7 @@ dsh --profile web --dump-config | grep -A4 'id: permission-rules'   # 验证挂�
 | `audit` | `all` | 审计粒度：`all` 记录每次命中与透传；`hits` 跳过透传事件 |
 | `searchUp` | `false` | 从会话 cwd 向上逐级查找并合并规则文件，最近的优先 |
 | `maxGlobStars` | `2` | 每个 glob 模式的无界 `*`/`**` 量词数硬上界（回溯度封顶） |
+| `enforce` | `true` | `false` = 干跑模式：deny/ask 命中只写审计（带 `dryRun` 标记，记录本会动作与下游真实结果），所有调用照常透传——先试跑策略再强制执行 |
 
 ### 会话命令
 
@@ -121,6 +123,8 @@ dsh --profile web --dump-config | grep -A4 'id: permission-rules'   # 验证挂�
 /rules decisions [n]          显示本会话最近 n 条权限裁决（默认 10）
 /rules test <工具> <json>     对假设调用干跑评估，如 /rules test bash {"command":"git push origin main"}
 ```
+
+`/rules test` 还支持前置标志：`--cwd <目录>` 换一个工作区评估，`--env 键=值`（可重复）覆盖宿主环境变量以测试 `when.env`，`--agent <选择器>`（可重复）为 `agents` 维度提供身份候选。
 
 命令输出只进 UI——模型只通过规则产生的工具结果感知规则。`language` 选择输出语言。规则文件的 JSON Schema 随包发布在 [docs/rules-format.schema.json](docs/rules-format.schema.json)（用 `# yaml-language-server: $schema=...` 启用编辑器补全）。
 

@@ -48,13 +48,14 @@ Un segundo modelo responde *"¿es segura ESTA llamada?"* con criterio, pero cues
 ## Características
 
 - ✅ **Semántica de tres estados** — `allow`, `deny`, `ask`, evaluadas en orden de archivo; gana la primera coincidencia
-- ✅ **Coincidencia rica** — globs de nombre de herramienta (incluido `mcp__*`), globs **o** regex de clave/valor de argumentos (con negación `!pattern` y la dimensión de clave `absent`), globs de rutas relativas al workspace extraídos de claves de argumentos documentadas a **cualquier profundidad de anidamiento**, y condiciones de host `when` (variables de entorno, plataforma)
+- ✅ **Coincidencia rica** — globs de nombre de herramienta (incluido `mcp__*`), selectores de identidad de agente (`main` / `subagent` / `preset:*`), globs **o** regex de clave/valor de argumentos (con negación `!pattern` y la dimensión de clave `absent`), globs de rutas relativas al workspace extraídos de claves de argumentos documentadas a **cualquier profundidad de anidamiento**, y condiciones de host `when` (variables de entorno, plataforma)
 - ✅ **Archivos de reglas jerárquicos** — `searchUp` opcional combina cada `.dsh/rules.yaml` desde el cwd de la sesión hasta la raíz del sistema de archivos, el más cercano primero, para que un proyecto hijo pueda sobrescribir las reglas del padre
 - ✅ **Metadatos de reglas** — `enabled: false`, `description`, `tags`; `/rules` advierte sobre reglas eclipsadas por un catch-all anterior
 - ✅ **Seguro para el waterfall** — `allow`/paso siempre llaman a `next()`; solo `deny`/`ask` cortocircuitan
 - ✅ **Seam de aprobación oficial** — `ask` fluye por `ctx.approval`; nunca reimplementado, nunca eludido
-- ✅ **Auditoría completa** — los eventos `permissionRules/decision` llevan la acción de la regla Y el resultado final de cada llamada; `/rules decisions` reproduce el rastro en la sesión
-- ✅ **Prueba en seco** — `/rules test <tool> <json-args>` evalúa las reglas activas sin ejecutar nada
+- ✅ **Auditoría completa** — los eventos `permissionRules/decision` llevan la acción de la regla, el cwd del workspace Y el resultado final de cada llamada; `/rules decisions` reproduce el rastro en la sesión
+- ✅ **Despliegue en simulación** — `enforce: false` audita lo que la política *haría* (acción hipotética + resultado real posterior, marcado `dryRun`) mientras deja pasar todas las llamadas; prueba segura de políticas en producción
+- ✅ **Prueba en seco** — `/rules test <tool> <json-args>` evalúa las reglas activas sin ejecutar nada, con sobrescrituras `--cwd`, `--env` y `--agent` para cada dimensión
 - ✅ **Recarga en caliente** — vigilancia Chokidar con debounce; una edición rota conserva las reglas previas, nunca falla
 - ✅ **Fallo ruidoso** — YAML inválido, acciones/campos desconocidos, globs/regex incorrectos, patrones propensos a backtracking o > `maxRules` hacen fallar la carga
 - ✅ **Ruta caliente acotada** — matchers precompilados, O(reglas × patrones), limitado por `maxRules`; el grado de backtracking de glob limitado por `maxGlobStars`
@@ -67,7 +68,7 @@ dsh plugin --profile web add "github:PerryLink/dsh-permission-rules#main"
 
 # o desde un tarball empaquetado (artefactos compilados, sin permiso de build)
 pnpm pack
-dsh plugin --profile web add ./dsh-permission-rules-0.1.1.tgz
+dsh plugin --profile web add ./dsh-permission-rules-0.3.0.tgz
 
 # 2. reinicia
 dsh --profile web
@@ -112,6 +113,7 @@ Todos los ajustes son campos `Config` de Schemastery (modificables desde cordis.
 | `audit` | `all` | Granularidad de auditoría: `all` registra cada acierto Y cada paso; `hits` omite los eventos de paso |
 | `searchUp` | `false` | Recorre los directorios padre desde el cwd de la sesión y combina cada archivo de reglas encontrado, el más cercano primero |
 | `maxGlobStars` | `2` | Límite duro de cuantificadores `*`/`**` sin límite por patrón glob (cota del grado de backtracking) |
+| `enforce` | `true` | `false` = modo simulación: los aciertos deny/ask solo se registran en auditoría con un marcador `dryRun` (acción hipotética + resultado real posterior) y todas las llamadas pasan — prueba una política antes de aplicarla |
 
 ### Comandos de sesión
 
@@ -121,6 +123,8 @@ Todos los ajustes son campos `Config` de Schemastery (modificables desde cordis.
 /rules decisions [n]          muestra las últimas n decisiones de permisos de esta sesión (por defecto 10)
 /rules test <tool> <json>     evalúa en seco las reglas contra una llamada hipotética, p. ej. /rules test bash {"command":"git push origin main"}
 ```
+
+`/rules test` también acepta banderas iniciales: `--cwd <dir>` evalúa contra otro workspace, `--env CLAVE=VALOR` (repetible) sobrescribe el entorno para `when.env`, y `--agent <selector>` (repetible) suministra candidatos de identidad para la dimensión `agents`.
 
 La salida de los comandos es solo UI: el modelo aprende las reglas únicamente a través de los resultados de herramienta que producen. `language` elige el idioma de salida. Un JSON Schema del archivo de reglas se distribuye en [docs/rules-format.schema.json](docs/rules-format.schema.json) (conéctalo con `# yaml-language-server: $schema=...` para autocompletado en el editor).
 

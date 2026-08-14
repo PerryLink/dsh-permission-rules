@@ -54,6 +54,11 @@
           "type": "array",
           "items": { "type": "string", "minLength": 1 }
         },
+        "agents": {
+          "description": "Agent-identity selector globs (main, subagent, preset:<name>); any selector matching any candidate satisfies the dimension. Unknown identity never matches.",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
         "params": {
           "description": "Param key to pattern(s). EVERY key must be present and match; a !-prefixed pattern negates. Scalars are stringified; arrays and nested objects contribute their scalar leaves.",
           "type": "object",

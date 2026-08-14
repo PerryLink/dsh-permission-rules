@@ -23,6 +23,7 @@ describe('resolveConfig', () => {
       audit: 'all',
       searchUp: false,
       maxGlobStars: 2,
+      enforce: true,
     })
     expect(resolved.caseInsensitivePaths).toBe(process.platform === 'win32')
   })
@@ -42,6 +43,7 @@ describe('resolveConfig', () => {
       audit: 'hits',
       searchUp: true,
       maxGlobStars: 1,
+      enforce: false,
     })
     expect(resolved.rulesFile).toBe('.rules.yml')
     expect(resolved.fallbackPath).toBe('/etc/rules.yaml')
@@ -56,6 +58,7 @@ describe('resolveConfig', () => {
     expect(resolved.audit).toBe('hits')
     expect(resolved.searchUp).toBe(true)
     expect(resolved.maxGlobStars).toBe(1)
+    expect(resolved.enforce).toBe(false)
   })
 
   it('fails loud on non-positive or non-integer maxRules', () => {
@@ -86,5 +89,19 @@ describe('resolveConfig', () => {
 
   it('fails loud on negative stability windows', () => {
     expect(() => resolveConfig({ watchStabilityThresholdMs: -1 })).toThrow(/watchStabilityThresholdMs/)
+  })
+
+  it('fails loud on values outside the closed enums (plain-JS mounts)', () => {
+    expect(() => resolveConfig({ badFilePolicy: 'warn' as never })).toThrow(/badFilePolicy/)
+    expect(() => resolveConfig({ patternMode: 're' as never })).toThrow(/patternMode/)
+    expect(() => resolveConfig({ language: 'fr' as never })).toThrow(/language/)
+    expect(() => resolveConfig({ audit: 'none' as never })).toThrow(/audit/)
+  })
+
+  it('fails loud on non-boolean flags (plain-JS mounts)', () => {
+    expect(() => resolveConfig({ watch: 'yes' as never })).toThrow(/watch/)
+    expect(() => resolveConfig({ searchUp: 1 as never })).toThrow(/searchUp/)
+    expect(() => resolveConfig({ enforce: 'no' as never })).toThrow(/enforce/)
+    expect(() => resolveConfig({ caseInsensitivePaths: 0 as never })).toThrow(/caseInsensitivePaths/)
   })
 })

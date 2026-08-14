@@ -11,6 +11,11 @@
  * passthrough it carries the downstream listeners' decision, so the audit
  * never claims a call was allowed when a later listener denied it.
  *
+ * Under `enforce: false` (dry-run mode) the plugin matches but NEVER
+ * short-circuits: the record keeps the WOULD-BE `action` and marks
+ * `dryRun: true`, while `outcome` carries what actually happened
+ * downstream — an auditable "what would the policy have done" trail.
+ *
  * The event is appended with the envelope's `ignorable: true` marker (see
  * {@link AuditAppend}), so a harness build whose generated event vocabulary
  * does not include this out-of-repo type still loads the log — it skips the
@@ -30,7 +35,9 @@ declare module '@deepseek-ai/dsh-session/types' {
      * `reason` appear only on hits. `source` is the absolute rule file of
      * the matched rule, or the nearest effective file on a passthrough, or
      * `''` when no rule file was active. `outcome` is the final pre-execute
-     * decision the waterfall settled on.
+     * decision the waterfall settled on. `cwd` names the workspace the
+     * rules were resolved for. `dryRun` marks audit-only dry-run records
+     * (`enforce: false`): the plugin matched but did not enforce.
      */
     'permissionRules/decision': {
       toolName: string
@@ -40,6 +47,8 @@ declare module '@deepseek-ai/dsh-session/types' {
       outcome?: 'allow' | 'deny' | 'ask'
       ruleIndex?: number
       reason?: string
+      cwd: string
+      dryRun?: true
     }
   }
 }
@@ -59,6 +68,10 @@ export interface AuditDecision {
   outcome?: DecisionOutcome
   ruleIndex?: number
   reason?: string
+  /** The workspace cwd the rule chain was resolved for. */
+  cwd: string
+  /** `true` on dry-run records (`enforce: false`) — matched but never enforced. */
+  dryRun?: true
 }
 
 /**

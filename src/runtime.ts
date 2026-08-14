@@ -4,7 +4,7 @@
  * `tools/pre-execute` listener that turns a first-match hit into a
  * deny/ask decision (and NEVER short-circuits on allow or passthrough),
  * the `permissionRules/decision` audit event, the `/rules` session command
- * (`list | reload | decisions [n] | test <tool> <json>`), and
+ * (`list | reload | decisions [n] | test [flags] <tool> <json>`), and
  * Chokidar-driven reloads. Every registration is an effect.
  * @module dsh-permission-rules/runtime
  */
@@ -189,17 +189,26 @@ export class PermissionRulesRuntime {
     }
   }
 
-  /** The match context `when` conditions evaluate against. */
-  private matchContext(): MatchContext {
-    return { platform: process.platform, env: process.env }
+  /**
+   * The match context `when`/`agents` conditions evaluate against: host
+   * facts plus the caller's agent-identity candidates derived from the
+   * session header (`main` for top-level sessions, `subagent` for
+   * subagent children, `preset:<name>` when a preset composed the agent).
+   * @param exec - the pending call whose caller supplies the identity.
+   */
+  private matchContext(exec?: ToolExecution): MatchContext {
+    return { platform: process.platform, env: process.env, agents: agentCandidates(exec?.agent) }
   }
 
   /**
    * The `tools/pre-execute` listener. A deny/ask hit returns the decision
    * (first match wins, short-circuiting downstream listeners); an allow hit
    * and a passthrough MUST delegate via `next()` so later listeners keep
-   * their say. Audit is appended once the final outcome is known, so the
-   * recorded `outcome` matches what the waterfall settled on.
+   * their say. Under `enforce: false` (dry-run) a deny/ask hit also
+   * delegates — the record keeps the would-be action with `dryRun: true`
+   * and the actual downstream outcome. Audit is appended once the final
+   * outcome is known, so the recorded `outcome` matches what the waterfall
+   * settled on.
    * @param exec - the pending call (name, parsed arguments, caller agent).
    * @param next - the downstream chain.
    * @returns the pre-execute decision.
@@ -207,10 +216,16 @@ export class PermissionRulesRuntime {
   async preExecute(exec: ToolExecution, next: () => Promise<PreToolDecision>): Promise<PreToolDecision> {
     const cwd = exec.agent?.session.header.cwd ?? process.cwd()
     const loaded = this.rulesFor(cwd)
-    const hit = matchRules(loaded.compiled, exec.name, exec.arguments, cwd, this.matchContext())
+    const hit = matchRules(loaded.compiled, exec.name, exec.arguments, cwd, this.matchContext(exec))
     if (hit === undefined || hit.rule.action === 'allow') {
       const decision = await next()
       this.audit(exec, loaded, hit, decision.kind)
+      return decision
+    }
+    if (!this.config.enforce) {
+      // Dry-run: match the rule, log what it WOULD do, and delegate.
+      const decision = await next()
+      this.audit(exec, loaded, hit, decision.kind, true)
       return decision
     }
     const outcome: DecisionOutcome = hit.rule.action
@@ -225,15 +240,18 @@ export class PermissionRulesRuntime {
    * envelope's `ignorable: true` marker so any harness build can load the
    * log (readers that do not know the type skip the audit record instead of
    * refusing the session). `source` names the matched rule's file, or the
-   * nearest effective file on a passthrough. Agentless calls have no
-   * session to audit; append failures are contained so an audit hiccup can
-   * never change a permission decision.
+   * nearest effective file on a passthrough; `cwd` names the workspace the
+   * rules were resolved for; `dryRun` marks would-be deny/ask hits under
+   * `enforce: false`. Agentless calls have no session to audit; append
+   * failures are contained so an audit hiccup can never change a
+   * permission decision.
    * @param exec - the pending call.
    * @param loaded - the rules in effect.
    * @param hit - the first matching rule, or undefined for passthrough.
    * @param outcome - the final pre-execute decision.
+   * @param dryRun - mark the record as a would-be decision (dry-run mode).
    */
-  audit(exec: ToolExecution, loaded: LoadedRules, hit: RuleHit | undefined, outcome: DecisionOutcome): void {
+  audit(exec: ToolExecution, loaded: LoadedRules, hit: RuleHit | undefined, outcome: DecisionOutcome, dryRun = false): void {
     if (this.config.audit === 'hits' && hit === undefined) return
     const agent = exec.agent
     if (agent === undefined) return
@@ -244,7 +262,9 @@ export class PermissionRulesRuntime {
         source: hit === undefined ? (loaded.sources[0] ?? '') : (loaded.sources[hit.rule.sourceIndex] ?? ''),
         action: hit === undefined ? 'passthrough' : hit.rule.action,
         outcome,
+        cwd: loaded.cwd,
         ...hit !== undefined ? { ruleIndex: hit.ruleIndex, reason: hit.rule.reason } : {},
+        ...dryRun ? { dryRun: true as const } : {},
       }, { ignorable: true })
     } catch (error: unknown) {
       this.ctx.logger.warn(`permission-rules: audit append failed: ${String(error)}`)
@@ -254,8 +274,9 @@ export class PermissionRulesRuntime {
   /**
    * Execute the `/rules` command: bare `/rules` lists the active rules and
    * their sources; `/rules reload` re-reads the chain; `/rules decisions
-   * [n]` shows the session's audit trail; `/rules test <tool> <json>`
-   * dry-evaluates the rules against a hypothetical call. Command output
+   * [n]` shows the session's audit trail; `/rules test [flags] <tool>
+   * <json>` dry-evaluates the rules against a hypothetical call (flags
+   * override the workspace, host env, and agent identity). Command output
    * stays in the UI — nothing here is injected into the model context.
    * @param invocation - the received command invocation.
    * @returns the command result shown to the user.
@@ -286,29 +307,7 @@ export class PermissionRulesRuntime {
       return this.decisionsCommand(invocation, count, prose)
     }
     if (verb === 'test') {
-      const verbText = verbRaw ?? ''
-      const restLine = raw.length > verbText.length ? raw.slice(verbText.length).trim() : ''
-      const match = /^(\S+)\s*(.*)$/s.exec(restLine)
-      const tool = match?.[1]
-      const jsonText = match?.[2] ?? ''
-      if (tool === undefined || tool.length === 0) return { kind: 'error', text: prose.testUsage }
-      let args: unknown
-      try {
-        args = jsonText.length > 0 ? JSON.parse(jsonText) : {}
-      } catch {
-        return { kind: 'error', text: prose.testBadJson(jsonText) }
-      }
-      let loaded: LoadedRules
-      try {
-        loaded = this.rulesFor(cwd)
-      } catch (error: unknown) {
-        return { kind: 'error', text: error instanceof Error ? error.message : String(error) }
-      }
-      const hit = matchRules(loaded.compiled, tool, args, cwd, this.matchContext())
-      return {
-        kind: 'success',
-        text: hit === undefined ? prose.testNoMatch(tool) : prose.testHit(tool, hit.ruleIndex, hit.rule.action, hit.rule.reason),
-      }
+      return this.testCommand(raw, verbRaw ?? '', invocation, cwd, prose)
     }
     if (verb !== '') return { kind: 'error', text: prose.unknownArg(invocation.rawInput.trim()) }
     let loaded: LoadedRules
@@ -329,8 +328,79 @@ export class PermissionRulesRuntime {
     if (loaded.lastError !== undefined) {
       lines.push(prose.lastReloadWarning(loaded.lastError))
     }
+    if (!this.config.enforce) {
+      lines.push(prose.dryRunNotice)
+    }
     lines.push(prose.usage)
     return { kind: 'success', text: lines.join('\n') }
+  }
+
+  /**
+   * Execute `/rules test` with optional leading flags: `--cwd <dir>`
+   * evaluates against that workspace (rule discovery AND path
+   * normalization), `--env KEY=VALUE` (repeatable) overrides host env for
+   * `when.env` matching, and `--agent <selector>` (repeatable) supplies
+   * agent-identity candidates for the `agents` dimension. The JSON
+   * argument tail is kept verbatim, so quoted JSON survives unchanged.
+   * @param raw - the full raw command input.
+   * @param verbRaw - the verb as typed.
+   * @param invocation - the received command invocation (session agent).
+   * @param sessionCwd - the session's workspace root.
+   * @param prose - localized output vocabulary.
+   * @returns the dry-evaluation result.
+   */
+  private testCommand(raw: string, verbRaw: string, invocation: CommandInvocation, sessionCwd: string, prose: UiProse): CommandResult {
+    let rest = raw.length > verbRaw.length ? raw.slice(verbRaw.length).trim() : ''
+    const envOverrides: Record<string, string> = {}
+    const agentSelectors: string[] = []
+    let testCwd: string | undefined
+    let parsed = nextToken(rest)
+    while (parsed !== undefined && parsed.token.startsWith('--')) {
+      const flag = parsed.token
+      const value = nextToken(parsed.rest)
+      if (value === undefined || value.token.startsWith('--')) {
+        return { kind: 'error', text: prose.testBadFlag(flag) }
+      }
+      if (flag === '--cwd') {
+        testCwd = isAbsolute(value.token) ? value.token : resolve(sessionCwd, value.token)
+      } else if (flag === '--env') {
+        const equals = value.token.indexOf('=')
+        if (equals <= 0) return { kind: 'error', text: prose.testBadFlag(`${flag} ${value.token}`) }
+        envOverrides[value.token.slice(0, equals)] = value.token.slice(equals + 1)
+      } else if (flag === '--agent') {
+        agentSelectors.push(value.token)
+      } else {
+        return { kind: 'error', text: prose.testUnknownFlag(flag) }
+      }
+      rest = value.rest
+      parsed = nextToken(rest)
+    }
+    const tool = parsed?.token
+    const jsonText = parsed === undefined ? '' : parsed.rest.trim()
+    if (tool === undefined || tool.length === 0) return { kind: 'error', text: prose.testUsage }
+    let args: unknown
+    try {
+      args = jsonText.length > 0 ? JSON.parse(jsonText) : {}
+    } catch {
+      return { kind: 'error', text: prose.testBadJson(jsonText) }
+    }
+    const evalCwd = testCwd ?? sessionCwd
+    let loaded: LoadedRules
+    try {
+      loaded = this.rulesFor(evalCwd)
+    } catch (error: unknown) {
+      return { kind: 'error', text: error instanceof Error ? error.message : String(error) }
+    }
+    const context: MatchContext = {
+      platform: process.platform,
+      env: Object.keys(envOverrides).length === 0 ? process.env : { ...process.env, ...envOverrides },
+      agents: agentSelectors.length > 0 ? agentSelectors : agentCandidates(invocation.agent),
+    }
+    const hit = matchRules(loaded.compiled, tool, args, evalCwd, context)
+    return {
+      kind: 'success',
+      text: hit === undefined ? prose.testNoMatch(tool) : prose.testHit(tool, hit.ruleIndex, hit.rule.action, hit.rule.reason),
+    }
   }
 
   /** Render the session's `permissionRules/decision` audit trail, newest last. */
@@ -341,7 +411,7 @@ export class PermissionRulesRuntime {
     const lines = [prose.decisionsHeader(shown.length, decisions.length)]
     for (const event of shown) {
       const data = event.data as AuditDecision
-      lines.push(prose.decisionLine(event.seq, data.action, data.toolName, data.ruleIndex, data.reason))
+      lines.push(prose.decisionLine(event.seq, data.action, data.toolName, data.ruleIndex, data.reason, data.dryRun === true, data.outcome))
     }
     return { kind: 'success', text: lines.join('\n') }
   }
@@ -498,7 +568,53 @@ export function apply(ctx: Context, config: Config): void {
   ctx.commands.register({
     name: 'rules',
     description: 'list, reload, audit, or dry-test the active permission rules for this workspace',
-    input: { hint: '[reload | decisions [n] | test <tool> <json-args>]' },
+    input: { hint: '[reload | decisions [n] | test [--cwd <dir>] [--env K=V] [--agent <sel>] <tool> <json-args>]' },
     handler: invocation => runtime.command(invocation),
   })
+}
+
+/**
+ * Identity candidates for the `agents` match dimension, derived from the
+ * caller agent's session header: `main` for top-level sessions, `subagent`
+ * for subagent children (`header.origin === 'subagent'`), and
+ * `preset:<name>` when a preset composed the agent. No agent (or an
+ * unidentifiable one) yields no candidates, so agent-scoped rules fail
+ * closed instead of matching an unknown caller.
+ * @param agent - the calling agent, when the call has one.
+ * @returns the candidate strings, in a stable order.
+ */
+function agentCandidates(agent: ToolExecution['agent']): string[] {
+  if (agent === undefined) return []
+  const header = agent.session.header
+  const candidates = [header.origin === 'subagent' ? 'subagent' : 'main']
+  if (typeof header.agentPreset === 'string' && header.agentPreset.length > 0) candidates.push(`preset:${header.agentPreset}`)
+  return candidates
+}
+
+/**
+ * Pull the next whitespace-delimited argument from a command tail,
+ * honoring single/double quotes (with backslash escapes) so JSON blobs and
+ * paths with spaces survive. The remainder is returned verbatim — the JSON
+ * argument tail of `/rules test` is never re-tokenized.
+ * @param text - the remaining command tail.
+ * @returns the token plus the untouched remainder, or undefined when only
+ *   whitespace remains.
+ */
+function nextToken(text: string): { token: string; rest: string } | undefined {
+  let i = 0
+  while (i < text.length && /\s/.test(text[i] as string)) i += 1
+  if (i >= text.length) return undefined
+  const quote = text[i] as string
+  if (quote === '"' || quote === "'") {
+    let end = i + 1
+    while (end < text.length && text[end] !== quote) {
+      if (text[end] === '\\') end += 1
+      end += 1
+    }
+    if (end >= text.length) return { token: text.slice(i + 1), rest: '' }
+    return { token: text.slice(i + 1, end), rest: text.slice(end + 1) }
+  }
+  let end = i
+  while (end < text.length && !/\s/.test(text[end] as string)) end += 1
+  return { token: text.slice(i, end), rest: text.slice(end) }
 }

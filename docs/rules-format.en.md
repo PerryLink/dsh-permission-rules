@@ -17,13 +17,14 @@ rules:        # rule list, evaluated in written order; may be omitted or empty
     reason: ...
 ```
 
-Only `rules` is allowed at the top level; each rule allows only `match`, `action`, `reason`, `enabled`, `description`, `tags`; each `match` allows only `tools`, `params`, `paths`, `absent`, `when`. Any unknown field fails the load loudly — never silently ignored.
+Only `rules` is allowed at the top level; each rule allows only `match`, `action`, `reason`, `enabled`, `description`, `tags`; each `match` allows only `tools`, `agents`, `params`, `paths`, `absent`, `when`. Any unknown field fails the load loudly — never silently ignored.
 
 ## match dimensions (AND)
 
 | Dimension | Type | Semantics |
 |---|---|---|
 | `tools` | `string[]` | Tool-name globs (always globs, regardless of `patternMode`). Empty/absent = unrestricted. Supports prefixes like `mcp__*`. |
+| `agents` | `string[]` | Agent-identity selector globs against the caller's session header candidates: `main` (top-level sessions), `subagent` (subagent children), and `preset:<name>` (when a preset composed the agent). **Any selector matching any candidate** satisfies the dimension; empty/absent = unrestricted. Unknown identity (no candidates) never matches, so agent-scoped rules fail closed. |
 | `params` | `Record<string, string \| number \| boolean \| (…)[]>` | Argument key → pattern (or pattern list). **Every listed key must be present AND match** (AND); absent = unrestricted. Scalars match as strings (numbers/booleans stringified); array elements match any-of; nested objects contribute their scalar leaves (depth-capped at 8). A `!`-prefixed pattern negates: the value must NOT match it; a key with only negations matches when the key is present and no negation hits (quote `!` patterns in YAML: `"!git*"`). `/` is an ordinary character in params patterns — `*` crosses it. |
 | `paths` | `string[]` | Workspace-relative path patterns; any candidate matching any pattern satisfies the dimension. Candidates come from argument values under these keys at ANY nesting depth (depth-capped): `path` `paths` `file` `files` `file_path` `dir` `directory` `directories` `cwd` `workspace` `root` `target` `targets` `output`. Absolute candidates outside the workspace are dropped; relative `../` forms are kept so explicit out-of-root globs still work. In path patterns `*` does not cross `/`; `**` crosses any depth (including zero). With `caseInsensitivePaths` on (Windows default) the root comparison and the patterns ignore ASCII case. |
 | `absent` | `string[]` | Argument keys that must be ABSENT; **every listed key must be missing** (non-object arguments satisfy this trivially). |
@@ -103,3 +104,5 @@ This plugin only produces `ask` decisions; the `ask` goes to the official `ctx.a
 - Invalid YAML, unknown fields/actions, bad globs/regexes, backtracking-prone patterns, and counts over `maxRules` are load-time errors: `badFilePolicy: fail` (default) makes the first tool call in that workspace fail loudly; `ignore-with-warning` warns and degrades to an empty rule set.
 - An absolute `rulesFile` or a configured `fallbackPath` is validated at plugin mount — missing or invalid fails the mount.
 - File changes reload through Chokidar with a debounce (`watch`, `watchStabilityThresholdMs`); a failed reload keeps the previous rules and only warns — never crashes. `/rules reload` triggers the same path manually; `/rules decisions` and `/rules test` inspect the trail and dry-run the rules.
+- `/rules test` accepts leading flags: `--cwd <dir>` evaluates against another workspace (rule discovery AND path normalization), `--env KEY=VALUE` (repeatable) overrides host env for `when.env`, and `--agent <selector>` (repeatable) supplies identity candidates for the `agents` dimension.
+- `enforce: false` puts the plugin in dry-run mode: deny/ask hits are audit-logged with a `dryRun` marker (keeping the would-be action and the real downstream outcome) and every call passes through — use it to trial a new policy in production before enforcing it. `/rules` prints a dry-run notice while the mode is active.
