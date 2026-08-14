@@ -58,8 +58,8 @@ importers:
         specifier: ^3.2.0
         version: 3.2.0(vitest@3.2.7(@types/node@22.20.1)(yaml@2.9.0))
       dsh-auto-review:
-        specifier: file:vendor/dsh-auto-review-0.2.0.tgz
-        version: file:vendor/dsh-auto-review-0.2.0.tgz(1b8bf2e714c17a867356a4cef509c351)
+        specifier: file:vendor/dsh-auto-review-0.3.0.tgz
+        version: file:vendor/dsh-auto-review-0.3.0.tgz(1b8bf2e714c17a867356a4cef509c351)
       eslint:
         specifier: ^10.8.1
         version: 10.8.1
@@ -1112,9 +1112,9 @@ packages:
   defu@6.1.7:
     resolution: {integrity: sha512-7z22QmUWiQ/2d0KkdYmANbRUVABpZ9SNYyH5vx6PZ+nE5bcC0l7uFvEfHlyld/HcGBFTL536ClDt3DEcSlEJAQ==}
 
-  dsh-auto-review@file:vendor/dsh-auto-review-0.2.0.tgz:
-    resolution: {integrity: sha512-OCHifdedQIgR/sAqtuEVkwbz9kGsgnHkKbmFVidJUjZxHV+C872eiN/JumkJXiAkKRA5NXNr/VUIn73YCHZ+aw==, tarball: file:vendor/dsh-auto-review-0.2.0.tgz}
-    version: 0.2.0
+  dsh-auto-review@file:vendor/dsh-auto-review-0.3.0.tgz:
+    resolution: {integrity: sha512-5R7DVQkXTnAkXhoMFBFVe7/ciafU+5KFWIkvRvhLJIlPq7cNtHX0stDiarEow5aIsL8b2uzfyKkAvaeWiSgkzA==, tarball: file:vendor/dsh-auto-review-0.3.0.tgz}
+    version: 0.3.0
     engines: {node: ^22.19.0 || >=24.0.0}
     peerDependencies:
       '@deepseek-ai/cordis': ^4.0.1
@@ -1124,6 +1124,7 @@ packages:
       '@deepseek-ai/dsh-invariants': 0.1.0-rc.6
       '@deepseek-ai/dsh-llm': 0.1.0-rc.6
       '@deepseek-ai/dsh-session': 0.1.0-rc.6
+      '@deepseek-ai/dsh-session-projection': 0.1.0-rc.6
       '@deepseek-ai/dsh-subagent': 0.1.0-rc.6
       '@deepseek-ai/dsh-tools': 0.1.0-rc.6
       '@deepseek-ai/dsh-user-approval': 0.1.0-rc.6
@@ -2534,7 +2535,7 @@ snapshots:
 
   defu@6.1.7: {}
 
-  dsh-auto-review@file:vendor/dsh-auto-review-0.2.0.tgz(1b8bf2e714c17a867356a4cef509c351):
+  dsh-auto-review@file:vendor/dsh-auto-review-0.3.0.tgz(1b8bf2e714c17a867356a4cef509c351):
     dependencies:
       '@deepseek-ai/cordis': 4.0.1
       '@deepseek-ai/dsh-agent': 0.1.0-rc.6(b0514d7a320728b6d8f5a31eb3960e10)
@@ -2549,6 +2550,7 @@ snapshots:
       '@deepseek-ai/schemastery': 3.18.1
       tsdown: 0.22.14(typescript@5.9.3)
       typescript: 5.9.3
+      zod: 4.4.3
     transitivePeerDependencies:
       - '@arethetypeswrong/core'
       - '@tsdown/css'
