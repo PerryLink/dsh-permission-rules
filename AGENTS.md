@@ -4,28 +4,32 @@ Standalone DeepSeek Harness plugin repository (`dsh-permission-rules`). Developm
 
 ## Layout
 
-- `src/index.ts` — function-plugin contract (`name`/`inject`/`Config`/`apply`; NO default export — the Loader unwraps `exports.default ?? exports`).
+- `src/index.ts` — function-plugin contract (`name`/`inject`/`Config`/`apply`; NO default export — the Loader unwraps `exports.default ?? exports`). Injects `commands` + `tools`.
 - `src/config.ts` — Schemastery schema + explicit `resolveConfig` (no hidden `?? default` in `run()` paths).
-- `src/glob.ts` — strict glob→RegExp compiler; bad globs throw at compile time (load), never silently match nothing.
-- `src/rules.ts` — the pure core: YAML document validation, pattern compilation, first-match evaluation, path-candidate extraction/normalization. No fs/clock/process state.
-- `src/events.ts` — `permissionRules/decision` SessionEventMap member (declaration merging) + `AuditAppend`, the append surface that requests the envelope's `ignorable: true` marker.
-- `src/runtime.ts` — `tools/pre-execute` listener, per-cwd rule loading (project file → fallback → empty), `permissionRules/decision` audit, `/rules` command, Chokidar watch.
+- `src/glob.ts` — strict glob→RegExp compiler + the backtracking guards: `maxGlobStars` caps unbounded star expansions, and regex-mode patterns reject nested unbounded quantifiers and quantified overlapping literal alternations. Bad patterns throw at compile time (load), never silently match nothing.
+- `src/rules.ts` — the pure core: YAML document validation, pattern compilation (incl. `!pattern` negation), first-match evaluation, nested path-candidate extraction, `when`/`absent` dimensions, chain merging (`compileRulesChain`), shadow detection (`findUnreachableRules`). No fs/clock/process state.
+- `src/prose.ts` — `/rules` output vocabulary in five languages (`en`/`zh` reference, `es`/`pt`/`hi` community) + `describeRule` dimension tokens. Rule `reason`s are never translated.
+- `src/events.ts` — `permissionRules/decision` SessionEventMap member (declaration merging, incl. the `outcome` field) + `AuditAppend`, the append surface that requests the envelope's `ignorable: true` marker.
+- `src/runtime.ts` — `tools/pre-execute` listener, per-cwd rule-chain loading (project chain by cwd / `searchUp` walk → fallback → empty), `permissionRules/decision` audit, `/rules` command (`list | reload | decisions [n] | test`), Chokidar watch (LRU cache, watcher reconciliation, timer cleanup). Registers itself as `ctx.permissionRulesRuntime`.
 - `test/` — vitest; real `Context` + real `Session`/`Commands`/`ApprovalService` from the `0.1.0-rc.6` peers; chokidar mocked with a fake EventEmitter; the dsh-auto-review integration uses its tarball with a scripted reviewer mock.
-- `docs/rules-format.md` — the rule file schema and the 5-rule security baseline.
+- `docs/rules-format.md` (+ `.en.md`) — the rule file schema and the 5-rule security baseline; `docs/rules-format.schema.json` is the machine-readable schema for editor completion.
 - `scripts/repair-session-logs.mjs` — one-off repair for session logs written before the marker: rewrites targeted audit rows to carry `ignorable: true` (frame-preserving zstd rewrite, backups, `scan`/`repair`/`--dry-run` modes).
+- `scripts/check-readme-sync.mjs` — five-language README sync gate (section structure, config-table keys, `/rules` command docs); wired into CI.
 
 ## Hard rules applied here
 
 - Waterfall listener (`tools/pre-execute`) always calls `next()` unless it claims the call with `deny`/`ask`. An `allow` hit is NEVER short-circuited.
-- Model-visible ⟺ logged: the only model-visible plugin content is the deny/ask reason materialized by the tools registry into the tool result; the `permissionRules/decision` audit event carries the same `callId` and reason for reconstruction.
+- Model-visible ⟺ logged: the only model-visible plugin content is the deny/ask reason materialized by the tools registry into the tool result; the `permissionRules/decision` audit event carries the same `callId` and reason for reconstruction, and its `outcome` records the FINAL pre-execute decision (an allow hit followed by a downstream deny is logged as denied).
 - Log-only audit: `permissionRules/decision` is never injected into the model context, and is appended with `{ ignorable: true }` via the `AuditAppend` surface (rc.6 hosts ignore the options bag — same event, no marker; post-rc.6 hosts stamp the marker so any build loads the log).
-- Loud misconfiguration: invalid YAML, unknown fields, unknown actions, bad globs/regexes, and rule counts over `maxRules` fail the load (`badFilePolicy` chooses fail vs ignore-with-warning). Deployment-level files (absolute `rulesFile`, `fallbackPath`) fail the mount.
+- Loud misconfiguration: invalid YAML, unknown fields/actions, bad globs/regexes, backtracking-prone patterns, and rule counts over `maxRules` fail the load (`badFilePolicy` chooses fail vs ignore-with-warning). Deployment-level files (absolute `rulesFile`, `fallbackPath`) fail the mount. `searchUp` + absolute `rulesFile` fails `resolveConfig`.
+- Backtracking bounds: a compiled glob's degree equals its star count — `maxGlobStars` (default 2) caps it exactly; regex mode rejects nested unbounded quantifiers and quantified overlapping literal alternations, while independent quantifier chains stay allowed (documented escape hatch).
 - Watch failures warn only: a bad HMR reload keeps the previous rules and never crashes the process.
 - No reviewer subagents, no model calls, no OS-sandbox changes — `ask` ends at the official approval seam; the answerer role belongs to `dsh-auto-review`.
 
 ## Docs
 
-- Five-language READMEs (`README.md`, `README.zh.md`, `README.es.md`, `README.pt.md`, `README.hi.md`) — keep all five in sync; the English file is the source of truth. GitHub-style front matter (badges, TOC, architecture diagram, quick start).
+- Five-language READMEs (`README.md`, `README.zh.md`, `README.es.md`, `README.pt.md`, `README.hi.md`) — keep all five in sync; the English file is the source of truth. `scripts/check-readme-sync.mjs` (CI) enforces section structure, config-table keys, and `/rules` command docs.
+- `docs/rules-format.md` is the Chinese reference for the rule vocabulary; `docs/rules-format.en.md` is its English twin — update both together, plus `docs/rules-format.schema.json` whenever the vocabulary changes.
 - When the repo is published on GitHub, set topics `dsh`, `dsh-plugin`, `deepseek-harness`, `deepseek`, `cordis`, `permission`, `approval`, `ai-safety` (the ecosystem's visibility channel is the `dsh-plugin` topic; see dsh-plugin-guide §9).
 - License is Apache-2.0 (`LICENSE` + the package.json `license` field).
 
@@ -37,8 +41,8 @@ The repo's `pnpm-workspace.yaml` declares `allowBuilds: { esbuild: true }`: pnpm
 
 ## Checks
 
-`pnpm run typecheck && pnpm test && pnpm run build && pnpm pack`.
+`pnpm run typecheck && pnpm run lint && pnpm test && pnpm run test:coverage && pnpm run build && pnpm pack && node scripts/check-readme-sync.mjs`.
 
 ## Integration dependency
 
-`test/integration.spec.ts` imports `dsh-auto-review` from `vendor/dsh-auto-review-0.1.0.tgz` — a COMMITTED build artifact of the sibling repo (regenerate with `pnpm --dir ../dsh-auto-review pack --pack-destination <this repo>/vendor`). It must stay in the tree because the git install channel's isolated `prepare` installs devDependencies and would fail on a missing `file:` target. The shipped tarball carries runtime JS without `.d.ts`, so `tsconfig.test.json` maps the package name onto `test/auto-review.d.ts` for types while runtime resolution loads the real bundle.
+`test/integration.spec.ts` imports `dsh-auto-review` from `vendor/dsh-auto-review-0.1.2.tgz` — a COMMITTED build artifact of the sibling repo (regenerate with `pnpm --dir ../dsh-auto-review pack --pack-destination <this repo>/vendor`). It must stay in the tree because the git install channel's isolated `prepare` installs devDependencies and would fail on a missing `file:` target. The shipped tarball carries runtime JS without `.d.ts`, so `tsconfig.test.json` maps the package name onto `test/auto-review.d.ts` for types while runtime resolution loads the real bundle.
