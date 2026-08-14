@@ -2,6 +2,43 @@
 
 日期：2026-08-14 · 运行时：dsh `0.1.0-rc.6`（全局安装，`dsh` on PATH）· 平台：Windows（工具面为 `pwsh`）
 
+## 0. 2026-08-14 加固轮次（Unreleased）验证记录
+
+在上一轮验证基础上实施完善方案（P0-P3），全部通过仓库本地门禁：
+
+```sh
+pnpm run typecheck     # tsc src + tests，通过
+pnpm run lint          # eslint src/test/scripts，通过
+pnpm test              # vitest：106 tests / 8 套件，全部通过
+pnpm run test:coverage # 覆盖率门禁 90/80/90/90：语句 95.13% / 分支 89.43% / 函数 99.27% / 行 95.13%，通过
+pnpm run build         # lib/types (tsc 声明) + lib/index.js (tsdown)
+pnpm run pack:check    # 构建 + pack 产物
+node scripts/check-readme-sync.mjs   # 五语 README 同步门禁，通过
+```
+
+本轮关键行为均有单元/集成测试锁定（真实 rc.6 `Context`/`Session`/`Commands`/`ApprovalService`）：
+
+- **安全修复**：Windows 大小写路径绕过（`caseInsensitivePaths`，win32 默认开，回归用例 `rules.spec.ts`）；嵌套参数候选提取（MCP 形态，深度上限 8）；回溯守卫（glob 星号数上限 `maxGlobStars`=2 + regex 嵌套无界量词/重叠交替拒绝，`compilePatternRegex` 用例组）；审计 `outcome` 补记（下游 deny 不被误记 allow，`dispatch.spec.ts`）。
+- **新能力**：`/rules decisions [n]`、`/rules test <tool> <json>`、`language` 五语（en/zh/es/pt/hi，`prose.spec.ts` 全语言冒烟）、`searchUp` 分层合并（子覆盖父 + 审计归属具体文件，`file-load.spec.ts`）、规则元数据 `enabled/description/tags`、参数否定 `!pattern`、`absent` 维度、`when` 条件（env/platform）、`audit: 'hits'` 粒度、遮蔽告警、LRU 逐出与 watcher 定时器清理（`watch.spec.ts`）。
+- **工程**：CI 增加 lint/覆盖率/五语 README 同步门禁；release workflow（tag 触发 pack + 校验 CHANGELOG + 发布 tarball）；`inject` 补齐 `tools`；`package.json` 发布 hygiene。
+
+### 真实回放实测（新构建，rc.6 宿主）
+
+demo profile（`permission-rules-demo`）重装本地 `dsh-permission-rules-0.1.1.tgz` 后，用 `.verification` 的 llm-replay fixture 在 `.verification/workspace` 重跑两条链路（`dsh --profile permission-rules-demo`，keyless）：
+
+- **deny**（fixture-deny）：会话日志 seq 21 `permissionRules/decision {action:"deny", outcome:"deny", ruleIndex:0}` → seq 22 `tool/result` "Error: 禁止 push 到受保护路径"（模型可见 = reason；pwsh 未执行）。新 `outcome` 字段在真实宿主上落盘 ✅
+- **ask**（fixture-ask）：seq 21 `permissionRules/decision {action:"ask", outcome:"ask", ruleIndex:1}` → seq 22 `approval/asked`（reason 原样进入官方审批 seam）→ seq 23 `approval/decided {outcome:"rejected"}`（headless `never` 策略 fail-closed）✅
+
+解码用 `.verification/dump-session.mjs`（独立 zstd 帧扫描，不依赖 harness 源码；原 `dump-session.ts` 依赖 harness 源文件路径映射，保留作参考）。
+
+### 待办：rc.7 上线复核
+
+`AuditAppend` 假定 post-rc.6 宿主会在信封上真正落下 `ignorable: true`。rc.7 发布后一周内，用 `.verification` 流程实测一次：
+
+1. 用 rc.7 的 `dsh` 重放 `fixture-deny.session.jsonl`，确认 deny 拦截与 `permissionRules/decision` 审计行（带 `ignorable` 标记）不变；
+2. 用不含本插件的 rc.7 构建加载一段由 rc.6 宿主写入的会话日志，确认 `repair-session-logs.mjs repair` 后的日志可被加载；
+3. CI 增加对 `next` tag 宿主的冒烟矩阵（peer 临时覆盖 + `--dump-config` + headless deny 回放）。
+
 ## 1. 静态检查与单元测试
 
 ```sh

@@ -9,8 +9,8 @@
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![DSH plugin](https://img.shields.io/badge/dsh-plugin-✅-green)](https://github.com/topics/dsh-plugin)
 [![Node](https://img.shields.io/badge/node-%5E22.19%20%7C%7C%20%3E%3D24-brightgreen.svg)](#)
-[![Tests](https://img.shields.io/badge/tests-58%20passed-success.svg)](#development)
-[![Version](https://img.shields.io/badge/version-0.1.0-informational.svg)](package.json)
+[![CI](https://img.shields.io/github/actions/workflow/status/PerryLink/dsh-permission-rules/ci.yml?branch=main&label=CI)](https://github.com/PerryLink/dsh-permission-rules/actions)
+[![Version](https://img.shields.io/github/v/tag/PerryLink/dsh-permission-rules?label=version)](https://github.com/PerryLink/dsh-permission-rules/releases)
 
 [English](README.md) · [简体中文](README.zh.md) · [Español](README.es.md) · [Português](README.pt.md) · [हिन्दी](README.hi.md)
 
@@ -48,13 +48,16 @@ A second model answers *"is THIS call okay?"* with judgment, but costs a round-t
 ## Features
 
 - ✅ **Three-state semantics** — `allow`, `deny`, `ask`, evaluated in file order, first match wins
-- ✅ **Rich matching** — tool-name globs (including `mcp__*`), argument key/value globs **or** regexes, workspace-relative path globs
+- ✅ **Rich matching** — tool-name globs (including `mcp__*`), argument key/value globs **or** regexes (with `!pattern` negation and an `absent` key dimension), workspace-relative path globs extracted from documented argument keys at **any nesting depth**, and `when` host conditions (env vars, platform)
+- ✅ **Hierarchical rule files** — optional `searchUp` merges every `.dsh/rules.yaml` from the session cwd to the filesystem root, nearest first, so a child project can override parent rules
+- ✅ **Rule metadata** — `enabled: false`, `description`, `tags`; `/rules` warns about rules shadowed by an earlier catch-all
 - ✅ **Waterfall-safe** — `allow`/passthrough always call `next()`; only `deny`/`ask` short-circuit
 - ✅ **Official approval seam** — `ask` flows through `ctx.approval`; never re-implemented, never bypassed
-- ✅ **Full audit** — `permissionRules/decision` events for every hit and passthrough
+- ✅ **Full audit** — `permissionRules/decision` events carry the rule action AND the final outcome for every call; `/rules decisions` replays the trail in-session
+- ✅ **Dry-run testing** — `/rules test <tool> <json-args>` evaluates the active rules without executing anything
 - ✅ **Hot reload** — Chokidar watch with debounce; a broken edit keeps the previous rules, never crashes
-- ✅ **Fail loud** — invalid YAML, unknown actions, bad globs/regexes, or > `maxRules` fail the load
-- ✅ **Bounded hot path** — precompiled matchers, O(rules × patterns), capped by `maxRules`
+- ✅ **Fail loud** — invalid YAML, unknown actions/fields, bad globs/regexes, backtracking-prone patterns, or > `maxRules` fail the load
+- ✅ **Bounded hot path** — precompiled matchers, O(rules × patterns), capped by `maxRules`; glob backtracking degree capped by `maxGlobStars`
 
 ## Quick start
 
@@ -64,7 +67,7 @@ dsh plugin --profile web add "github:PerryLink/dsh-permission-rules#main"
 
 # or from a packed tarball (built artifacts, no build permission needed)
 pnpm pack
-dsh plugin --profile web add ./dsh-permission-rules-0.1.0.tgz
+dsh plugin --profile web add ./dsh-permission-rules-0.1.1.tgz
 
 # 2. restart
 dsh --profile web
@@ -99,19 +102,27 @@ All tunables are Schemastery `Config` fields (changeable from cordis.yml). An id
 | `rulesFile` | `.dsh/rules.yaml` | Rule file location; relative = resolved against the calling session's cwd, absolute = global and validated at mount |
 | `fallbackPath` | *(none)* | Rule file used when per-cwd discovery finds nothing; validated at mount |
 | `badFilePolicy` | `fail` | Bad rule file: `fail` errors the pending tool call loudly (reloads keep the previous rules); `ignore-with-warning` warns and continues empty |
-| `maxRules` | `256` | Hard cap on rule count; larger files fail the load |
-| `patternMode` | `glob` | `params`/`paths` pattern flavor: `glob` or `regex` (tool names are always globs) |
+| `maxRules` | `256` | Hard cap on rule count across the effective source chain; larger files fail the load |
+| `maxCachedWorkspaces` | `512` | Hard cap on cached per-workspace rule loads; the least-recently-used workspace (and its watcher) is evicted beyond it |
+| `patternMode` | `glob` | `params`/`paths`/`when.env` pattern flavor: `glob` or `regex` (tool names are always globs) |
 | `watch` | `true` | Chokidar watch + reload on change |
 | `watchStabilityThresholdMs` | `200` | Reload debounce window (ms) |
+| `language` | `en` | `/rules` output language: `en`, `zh`, `es`, `pt`, `hi` (`en`/`zh` are the reference translations) |
+| `caseInsensitivePaths` | *(win32)* | `paths` patterns and workspace-root comparison ignore ASCII case; defaults to `true` on Windows, `false` elsewhere |
+| `audit` | `all` | Audit granularity: `all` logs every hit AND passthrough; `hits` skips passthrough events |
+| `searchUp` | `false` | Walk parent directories from the session cwd and merge every found rule file, nearest first |
+| `maxGlobStars` | `2` | Hard cap on unbounded `*`/`**` quantifiers per glob pattern (backtracking-degree bound) |
 
 ### Session commands
 
 ```
-/rules           list the active rules, their source file, and any last-reload error
-/rules reload    re-read the rule file for this workspace
+/rules                        list the active rules, their source files, and any last-reload error
+/rules reload                 re-read the rule-file chain for this workspace
+/rules decisions [n]          show the last n permission decisions of this session (default 10)
+/rules test <tool> <json>     dry-evaluate the rules against a hypothetical call, e.g. /rules test bash {"command":"git push origin main"}
 ```
 
-Command output is UI-only — the model learns the rules only through the tool results they produce.
+Command output is UI-only — the model learns the rules only through the tool results they produce. `language` picks the output language. A JSON Schema for the rule file ships at [docs/rules-format.schema.json](docs/rules-format.schema.json) (wire it up with `# yaml-language-server: $schema=...` for editor completion).
 
 ## Collaborating with dsh-auto-review
 
@@ -121,10 +132,11 @@ Command output is UI-only — the model learns the rules only through the tool r
 
 ## Security boundaries
 
-- **Policy, not a kernel.** `paths` candidates come only from a documented set of argument keys, and only workspace-relative paths match.
+- **Policy, not a kernel.** `paths` candidates come only from a documented set of argument keys (at any nesting depth, depth-capped), and only workspace-relative paths match.
 - **No reviewer here.** The plugin never spawns subagents or calls models — producing an `ask` decision is the end of its work.
 - **No sandbox changes.** OS-level sandbox policy belongs to the sandbox seam, not this plugin.
 - **Loud misconfiguration.** Unknown YAML fields, unknown actions, and bad patterns are rejected at load, never silently ignored.
+- **Backtracking bounds.** Glob patterns are capped at `maxGlobStars` unbounded star expansions; regex-mode patterns reject nested unbounded quantifiers and quantified overlapping literal alternations. (Regex chains like `\d+\.\d+\.\d+` stay allowed — regex mode is the escape hatch, glob mode is the guarded default.)
 
 ## Related work
 
@@ -134,18 +146,33 @@ Command output is UI-only — the model learns the rules only through the tool r
 
 ## Known limitations
 
-- `permissionRules/decision` is appended with the envelope's `ignorable: true` marker, so any harness build loads the log — readers that do not know the out-of-repo type simply skip the audit record instead of refusing the session. (rc.6 hosts accept and ignore the marker, keeping the exact pre-marker behavior.)
-- `paths` candidates are heuristic: only documented argument keys feed path matching.
+- `permissionRules/decision` is appended with the envelope's `ignorable: true` marker, so any harness build loads the log — readers that do not know the out-of-repo type simply skip the audit record instead of refusing the session. (rc.6 hosts accept and ignore the marker, keeping the exact pre-marker behavior; sessions written on rc.6 hosts lack the marker and may need `scripts/repair-session-logs.mjs` before loading on hosts with required-on-read semantics.)
+- `paths` candidates are heuristic: only the documented argument keys feed path matching, and workspace-relative matching is ASCII-case-insensitive only when `caseInsensitivePaths` is on.
 - Globs are a conservative subset (no brace expansion) — write two patterns, or use regex mode.
+- The regex backtracking guard is structural, not exhaustive: alternation-ambiguity cases without literal prefixes (e.g. crafted lookarounds) are the author's responsibility; prefer glob mode for untrusted files.
+
+## Session log repair
+
+Session logs written before the `ignorable` marker existed can be refused by newer harness builds (`SessionFormatUnsupportedError`). The shipped `scripts/repair-session-logs.mjs` rewrites only the targeted audit rows to carry `ignorable: true`, frame-preserving, with backups:
+
+```sh
+node scripts/repair-session-logs.mjs scan [--home DIR]      # report foreign rows, change nothing
+node scripts/repair-session-logs.mjs repair [--home DIR] [--dry-run]
+```
+
+`--home` defaults to `$DSH_HOME/sessions` (or `~/.dsh/sessions`). See the script header for the full contract.
 
 ## Development
 
 ```sh
 pnpm install        # node ^22.19 || >=24
 pnpm run typecheck  # tsc, src + tests
-pnpm test           # vitest: 58 tests, 7 suites
+pnpm run lint       # eslint, src + tests + scripts
+pnpm test           # vitest: 106 tests, 8 suites
+pnpm run test:coverage  # coverage gate (90/80/90/90)
 pnpm run build      # tsc declarations + tsdown bundles (lib/)
-pnpm pack           # publish artifact
+pnpm run pack:check # build + pack (the published artifact)
+node scripts/check-readme-sync.mjs  # five-language README sync gate (also in CI)
 ```
 
 See [VERIFICATION.md](VERIFICATION.md) for the headless end-to-end verification record (deny blocking a shell tool, ask routing through the approval seam, `--dump-config`).

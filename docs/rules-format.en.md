@@ -1,6 +1,12 @@
 # dsh-permission-rules rule file format
 
-The rule file is a YAML document, discovered per session working directory: `<cwd>/.dsh/rules.yaml` by default. The `rulesFile` config can rename it or pin an absolute path; when discovery finds nothing, `fallbackPath` is used; with neither, an empty rule set applies (everything passes through).
+The rule file is a YAML document, discovered per session working directory: `<cwd>/.dsh/rules.yaml` by default. The `rulesFile` config can rename it or pin an absolute path; `searchUp: true` additionally merges every matching file from the session cwd up to the filesystem root (nearest first, so a child can override a parent); when discovery finds nothing, `fallbackPath` is used; with neither, an empty rule set applies (everything passes through).
+
+A JSON Schema for this format ships at `rules-format.schema.json`; wire it into editors with the first line:
+
+```yaml
+# yaml-language-server: $schema=https://raw.githubusercontent.com/PerryLink/dsh-permission-rules/main/docs/rules-format.schema.json
+```
 
 ## Top-level structure
 
@@ -11,33 +17,36 @@ rules:        # rule list, evaluated in written order; may be omitted or empty
     reason: ...
 ```
 
-Only `rules` is allowed at the top level; each rule allows only `match`, `action`, `reason`; each `match` allows only `tools`, `params`, `paths`. Any unknown field fails the load loudly — never silently ignored.
+Only `rules` is allowed at the top level; each rule allows only `match`, `action`, `reason`, `enabled`, `description`, `tags`; each `match` allows only `tools`, `params`, `paths`, `absent`, `when`. Any unknown field fails the load loudly — never silently ignored.
 
 ## match dimensions (AND)
 
 | Dimension | Type | Semantics |
 |---|---|---|
 | `tools` | `string[]` | Tool-name globs (always globs, regardless of `patternMode`). Empty/absent = unrestricted. Supports prefixes like `mcp__*`. |
-| `params` | `Record<string, string \| number \| boolean \| (…)[]>` | Argument key → pattern (or pattern list, any-of). **Every listed key must be present AND match** (AND); absent = unrestricted. Scalar values match as strings (numbers/booleans stringified); array values match if any element matches; object values never match. `/` is an ordinary character in params patterns — `*` crosses it. |
-| `paths` | `string[]` | Workspace-relative path patterns; any candidate matching any pattern satisfies the dimension. Candidates come from top-level argument values under these keys (strings, or string elements of arrays): `path` `paths` `file` `files` `file_path` `dir` `directory` `directories` `cwd` `workspace` `root` `target` `targets` `output`. Absolute candidates outside the workspace are dropped; relative `../` forms are kept so explicit out-of-root globs still work. In path patterns `*` does not cross `/`; `**` crosses any depth (including zero). |
+| `params` | `Record<string, string \| number \| boolean \| (…)[]>` | Argument key → pattern (or pattern list). **Every listed key must be present AND match** (AND); absent = unrestricted. Scalars match as strings (numbers/booleans stringified); array elements match any-of; nested objects contribute their scalar leaves (depth-capped at 8). A `!`-prefixed pattern negates: the value must NOT match it; a key with only negations matches when the key is present and no negation hits (quote `!` patterns in YAML: `"!git*"`). `/` is an ordinary character in params patterns — `*` crosses it. |
+| `paths` | `string[]` | Workspace-relative path patterns; any candidate matching any pattern satisfies the dimension. Candidates come from argument values under these keys at ANY nesting depth (depth-capped): `path` `paths` `file` `files` `file_path` `dir` `directory` `directories` `cwd` `workspace` `root` `target` `targets` `output`. Absolute candidates outside the workspace are dropped; relative `../` forms are kept so explicit out-of-root globs still work. In path patterns `*` does not cross `/`; `**` crosses any depth (including zero). With `caseInsensitivePaths` on (Windows default) the root comparison and the patterns ignore ASCII case. |
+| `absent` | `string[]` | Argument keys that must be ABSENT; **every listed key must be missing** (non-object arguments satisfy this trivially). |
+| `when` | `{ env, platform }` | Host conditions: `env` is env-var name → pattern(s), **every listed var must be present AND match**; `platform` is any-of a closed list (`aix` `android` `darwin` `freebsd` `linux` `openbsd` `sunos` `win32`). |
 
-The three dimensions are ANDed: a rule matches only when **every non-empty dimension matches**. Rules evaluate in order — **the first match wins**; no match = passthrough.
+All dimensions are ANDed: a rule matches only when **every non-empty dimension matches**. Rules evaluate in order — **the first match wins**; no match = passthrough.
 
-## action and reason
+## action, reason, and metadata
 
 - `action: allow | deny | ask` (required).
 - `reason: string` (required, non-empty). A `deny` reason becomes the model-visible error in the denied tool result; an `ask` reason becomes the approval reason on the official approval seam.
+- `enabled: false` keeps the rule visible but inert (displayed as disabled); `description` and `tags` are free-form annotations shown by `/rules`.
 
 ## Pattern interpretation (patternMode)
 
-`params` and `paths` patterns follow the plugin config `patternMode` (default `glob`):
+`params`, `paths`, and `when.env` patterns follow the plugin config `patternMode` (default `glob`):
 
-- `glob`: `*`, `**`, `?`, `[abc]`/`[!abc]` character classes, `\x` escapes. In params, `*` crosses `/`; in paths, `*` stays in one segment and `**` crosses segments. Invalid globs (unclosed `[`, empty class, dangling escape) fail the load.
-- `regex`: unanchored JavaScript regex (`RegExp.test` semantics); invalid regexes fail the load. In YAML double-quoted strings, `\` needs escaping — single quotes are recommended.
+- `glob`: `*`, `**`, `?`, `[abc]`/`[!abc]` character classes, `\x` escapes. In params, `*` crosses `/`; in paths, `*` stays in one segment and `**` crosses segments. Invalid globs (unclosed `[`, empty class, dangling escape) fail the load, and a pattern expanding to more than `maxGlobStars` (default 2) unbounded star quantifiers is rejected — the backtracking degree of a compiled glob equals its star count. Split wider patterns into several.
+- `regex`: unanchored JavaScript regex (`RegExp.test` semantics); invalid regexes fail the load. Nested unbounded quantifiers (`(a+)+`, `(ab*)+`) and quantified groups with overlapping literal alternation branches (`(a|aa)+`) are rejected as catastrophic-backtracking risks; chains of independent quantifiers (`\d+\.\d+\.\d+`) stay allowed. In YAML double-quoted strings, `\` needs escaping — single quotes are recommended.
 
 ## Rule count cap
 
-A rule count above `maxRules` (default 256) fails the load. This is the simple bound for the `tools/pre-execute` hot path: tool-name globs, param keys, and path candidates are all precompiled regexes; matching is O(rules × patterns per dimension).
+A total rule count above `maxRules` (default 256) fails the load — across the whole merged chain under `searchUp`. This is the simple bound for the `tools/pre-execute` hot path: tool-name globs, param keys, and path candidates are all precompiled regexes; matching is O(rules × patterns per dimension).
 
 ## Security baseline example (5 rules)
 
@@ -68,10 +77,11 @@ rules:
     reason: "Publishing needs confirmation"
 
   # 4. Remote side effects: pushing to main/master needs confirmation
+  #    (two-star globs — maxGlobStars caps unbounded star expansions at 2)
   - match:
       tools: [bash, pwsh]
       params:
-        command: ["git push*origin*main*", "git push*origin*master*"]
+        command: ["git push*origin main*", "git push*origin master*"]
     action: ask
     reason: "Pushing to the main branch needs confirmation"
 
@@ -89,7 +99,7 @@ This plugin only produces `ask` decisions; the `ask` goes to the official `ctx.a
 
 ## Loading and hot reload
 
-- Lazily discovered per session cwd and cached on the first `tools/pre-execute`.
-- Invalid YAML, unknown actions, bad globs, and counts over `maxRules` are load-time errors: `badFilePolicy: fail` (default) makes the first tool call in that workspace fail loudly; `ignore-with-warning` warns and degrades to an empty rule set.
+- Lazily discovered per session cwd and cached on the first `tools/pre-execute` (least-recently-used eviction beyond `maxCachedWorkspaces`).
+- Invalid YAML, unknown fields/actions, bad globs/regexes, backtracking-prone patterns, and counts over `maxRules` are load-time errors: `badFilePolicy: fail` (default) makes the first tool call in that workspace fail loudly; `ignore-with-warning` warns and degrades to an empty rule set.
 - An absolute `rulesFile` or a configured `fallbackPath` is validated at plugin mount — missing or invalid fails the mount.
-- File changes reload through Chokidar with a debounce (`watch`, `watchStabilityThresholdMs`); a failed reload keeps the previous rules and only warns — never crashes. `/rules reload` triggers the same path manually.
+- File changes reload through Chokidar with a debounce (`watch`, `watchStabilityThresholdMs`); a failed reload keeps the previous rules and only warns — never crashes. `/rules reload` triggers the same path manually; `/rules decisions` and `/rules test` inspect the trail and dry-run the rules.

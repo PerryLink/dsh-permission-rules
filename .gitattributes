@@ -1,0 +1,9 @@
+# Normalize text line endings to LF in the working tree and repository.
+* text=auto eol=lf
+
+# Binary assets stay byte-identical.
+*.tgz binary
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary

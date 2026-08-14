@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/PerryLink/dsh-permission-rules/main/docs/rules-format.schema.json",
+  "title": "dsh-permission-rules rule file",
+  "description": "Declarative allow/deny/ask permission rules for DeepSeek Harness, evaluated in file order with first-match-wins semantics.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "rules": {
+      "description": "The ordered rule list; omitted or empty means an empty rule set (everything passes through).",
+      "type": "array",
+      "items": { "$ref": "#/$defs/rule" }
+    }
+  },
+  "$defs": {
+    "rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["action", "reason"],
+      "properties": {
+        "match": { "$ref": "#/$defs/match" },
+        "action": {
+          "description": "What the rule does to a matching tool call.",
+          "enum": ["allow", "deny", "ask"]
+        },
+        "reason": {
+          "description": "Non-empty explanation; deny/ask reasons become model-visible tool results or approval reasons.",
+          "type": "string",
+          "minLength": 1
+        },
+        "enabled": {
+          "description": "false keeps the rule visible but inert (displayed as disabled).",
+          "type": "boolean"
+        },
+        "description": {
+          "description": "Optional one-line explanation shown by /rules.",
+          "type": "string",
+          "minLength": 1
+        },
+        "tags": {
+          "description": "Free-form labels shown by /rules.",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "match": {
+      "description": "Match dimensions combined with AND; absent dimensions impose no restriction.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "tools": {
+          "description": "Tool-name globs (always glob semantics, regardless of patternMode).",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "params": {
+          "description": "Param key to pattern(s). EVERY key must be present and match; a !-prefixed pattern negates. Scalars are stringified; arrays and nested objects contribute their scalar leaves.",
+          "type": "object",
+          "additionalProperties": {
+            "oneOf": [
+              { "$ref": "#/$defs/pattern" },
+              {
+                "type": "array",
+                "items": { "$ref": "#/$defs/pattern" },
+                "minItems": 1
+              }
+            ]
+          }
+        },
+        "paths": {
+          "description": "Workspace-relative path patterns; ANY candidate path matching ANY pattern satisfies the dimension. Candidates come from documented argument keys at any nesting depth.",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "absent": {
+          "description": "Argument keys that must be ABSENT; every listed key must be missing.",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "when": {
+          "description": "Host conditions: every listed env var must be present and match; any listed platform matches.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "env": {
+              "type": "object",
+              "additionalProperties": {
+                "oneOf": [
+                  { "$ref": "#/$defs/pattern" },
+                  {
+                    "type": "array",
+                    "items": { "$ref": "#/$defs/pattern" },
+                    "minItems": 1
+                  }
+                ]
+              }
+            },
+            "platform": {
+              "type": "array",
+              "items": {
+                "enum": ["aix", "android", "darwin", "freebsd", "linux", "openbsd", "sunos", "win32"]
+              }
+            }
+          }
+        }
+      }
+    },
+    "pattern": {
+      "oneOf": [
+        { "type": "string", "minLength": 1 },
+        { "type": "number" },
+        { "type": "boolean" }
+      ]
+    }
+  }
+}
