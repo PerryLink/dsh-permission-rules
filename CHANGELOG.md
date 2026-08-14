@@ -2,7 +2,7 @@
 
 All notable changes to dsh-permission-rules are recorded here, newest first.
 
-## Unreleased
+## v0.2.0 — 2026-08-14
 
 ### Rules vocabulary
 
