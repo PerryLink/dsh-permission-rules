@@ -130,3 +130,73 @@ describe('rule-file loading', () => {
     }
   })
 })
+
+describe('searchUp hierarchical discovery', () => {
+  // A dedicated file name keeps the walk from colliding with real `.dsh`
+  // trees in the ancestors of the machine's temp directory.
+  const FILE = '.dsh/rules-searchup-test.yaml'
+  const PARENT_RULES = 'rules:\n  - match: { tools: [bash] }\n    action: deny\n    reason: parent denies bash\n  - match: { tools: [read] }\n    action: allow\n    reason: parent allows read\n'
+  const CHILD_RULES = 'rules:\n  - match: { tools: [bash] }\n    action: ask\n    reason: child asks bash\n'
+
+  it('merges parent files beneath child files so the nearer rule wins', async () => {
+    const parent = tempWorkspace()
+    const child = join(parent, 'nested', 'project')
+    mkdirSync(join(parent, '.dsh'), { recursive: true })
+    mkdirSync(join(child, '.dsh'), { recursive: true })
+    writeFileSync(join(parent, FILE), PARENT_RULES, 'utf8')
+    writeFileSync(join(child, FILE), CHILD_RULES, 'utf8')
+    const harness = await mountHarness({ searchUp: true, rulesFile: FILE }, { cwd: child })
+    try {
+      const bashDecision = await dispatchPreExecute(
+        harness.ctx,
+        makeExec({ name: 'bash', arguments: {}, agent: harness.agent }),
+      )
+      expect(bashDecision).toEqual({ kind: 'ask', reason: 'child asks bash' })
+      const readDecision = await dispatchPreExecute(
+        harness.ctx,
+        makeExec({ name: 'read', arguments: {}, agent: harness.agent }),
+      )
+      expect(readDecision).toEqual({ kind: 'allow' })
+      // The audit names the matched rule's own file.
+      const bashAudit = harness.session.events.findLast(event => event.type === 'permissionRules/decision' && (event.data as { toolName: string }).toolName === 'bash')
+      expect((bashAudit?.data as { source: string }).source).toBe(join(child, FILE))
+    } finally {
+      removeWorkspace(parent)
+    }
+  })
+
+  it('uses the fallback only when no file exists anywhere up the tree', async () => {
+    const fallbackDir = tempWorkspace()
+    const parent = tempWorkspace()
+    const child = join(parent, 'nested')
+    mkdirSync(join(child, '.dsh'), { recursive: true })
+    const fallback = join(fallbackDir, 'rules.yaml')
+    writeFileSync(fallback, 'rules:\n  - match: { tools: [bash] }\n    action: deny\n    reason: fallback denies\n', 'utf8')
+    mkdirSync(join(parent, '.dsh'), { recursive: true })
+    writeFileSync(join(parent, FILE), PARENT_RULES, 'utf8')
+    // A parent file exists: the fallback is NOT part of the chain.
+    const harness = await mountHarness({ searchUp: true, rulesFile: FILE, fallbackPath: fallback }, { cwd: child })
+    try {
+      const decision = await dispatchPreExecute(
+        harness.ctx,
+        makeExec({ name: 'bash', arguments: {}, agent: harness.agent }),
+      )
+      expect(decision).toEqual({ kind: 'deny', reason: 'parent denies bash' })
+    } finally {
+      removeWorkspace(parent)
+    }
+    // No file anywhere: the fallback serves alone.
+    const bare = tempWorkspace()
+    const harness2 = await mountHarness({ searchUp: true, rulesFile: FILE, fallbackPath: fallback }, { cwd: bare })
+    try {
+      const decision = await dispatchPreExecute(
+        harness2.ctx,
+        makeExec({ name: 'bash', arguments: {}, agent: harness2.agent }),
+      )
+      expect(decision).toEqual({ kind: 'deny', reason: 'fallback denies' })
+    } finally {
+      removeWorkspace(bare)
+      removeWorkspace(fallbackDir)
+    }
+  })
+})

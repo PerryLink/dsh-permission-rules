@@ -1,30 +1,36 @@
 /**
  * Pure parser/matcher tests: YAML validation (fail-loud vocabulary), glob
- * and regex compilation, param/path dimension semantics, first-match
- * ordering, passthrough, and the `maxRules` cap.
+ * and regex compilation (including the catastrophic-backtracking guards),
+ * param/path/absent/when dimension semantics, rule metadata, first-match
+ * ordering, chain merging, shadow detection, passthrough, and the caps.
  * @module dsh-permission-rules/test/rules.spec
  */
 
 import { describe, expect, it } from 'vitest'
 import {
   compileRules,
+  compileRulesChain,
   describeRule,
   extractPathCandidates,
+  findUnreachableRules,
   matchRules,
   normalizeWorkspacePath,
   parseRulesDocument,
   RuleError,
 } from '../src/rules.ts'
-import { compileGlob, GlobError } from '../src/glob.ts'
+import { DESCRIBE_TOKENS } from '../src/prose.ts'
+import { compileGlob, compilePatternRegex, GlobError } from '../src/glob.ts'
 
-const GLOB = { patternMode: 'glob', maxRules: 256 } as const
-const REGEX = { patternMode: 'regex', maxRules: 256 } as const
+const GLOB = { patternMode: 'glob', maxRules: 256, maxGlobStars: 2, caseInsensitivePaths: false } as const
+const REGEX = { patternMode: 'regex', maxRules: 256, maxGlobStars: 2, caseInsensitivePaths: false } as const
+const CI = { patternMode: 'glob', maxRules: 256, maxGlobStars: 2, caseInsensitivePaths: true } as const
 
-function rules(yaml: string, options: { patternMode: 'glob' | 'regex'; maxRules: number } = GLOB) {
+function rules(yaml: string, options: { patternMode: 'glob' | 'regex'; maxRules: number; maxGlobStars: number; caseInsensitivePaths: boolean } = GLOB) {
   return compileRules(parseRulesDocument(yaml), options)
 }
 
 const CWD = '/ws/project'
+const EN = DESCRIBE_TOKENS.en
 
 describe('parseRulesDocument', () => {
   it('parses the shipped example shape (tools + params + paths, and a tools-only rule)', () => {
@@ -41,6 +47,10 @@ rules:
     expect(doc.rules[0]?.match.tools).toEqual(['bash', 'pwsh'])
     expect(doc.rules[0]?.match.params).toEqual({ command: ['git push*'] })
     expect(doc.rules[0]?.match.paths).toEqual(['**/secrets/**'])
+    expect(doc.rules[0]?.match.absent).toEqual([])
+    expect(doc.rules[0]?.match.when).toEqual({ env: {}, platform: [] })
+    expect(doc.rules[0]?.enabled).toBe(true)
+    expect(doc.rules[0]?.tags).toEqual([])
     expect(doc.rules[0]?.action).toBe('deny')
     expect(doc.rules[1]?.match.params).toEqual({})
     expect(doc.rules[1]?.action).toBe('ask')
@@ -57,10 +67,37 @@ rules:
     expect(parseRulesDocument('rules: []').rules).toEqual([])
   })
 
+  it('parses rule metadata (enabled/description/tags) and new match dimensions (absent/when)', () => {
+    const doc = parseRulesDocument(`
+rules:
+  - match: { tools: [bash], absent: [command], when: { env: { CI: "1" }, platform: [linux, win32] } }
+    action: ask
+    reason: gated
+    enabled: false
+    description: "hold shell until CI"
+    tags: [shell, safety]
+`)
+    const rule = doc.rules[0]!
+    expect(rule.enabled).toBe(false)
+    expect(rule.description).toBe('hold shell until CI')
+    expect(rule.tags).toEqual(['shell', 'safety'])
+    expect(rule.match.absent).toEqual(['command'])
+    expect(rule.match.when).toEqual({ env: { CI: ['1'] }, platform: ['linux', 'win32'] })
+  })
+
   it('fails loud on unknown top-level, rule, and match fields', () => {
     expect(() => parseRulesDocument('rules: []\nextra: 1')).toThrowError(RuleError)
     expect(() => parseRulesDocument('rules:\n  - action: deny\n    reason: x\n    extra: 1')).toThrow(/rule 1: unknown field/)
     expect(() => parseRulesDocument('rules:\n  - match: { tools: [bash], extra: 1 }\n    action: deny\n    reason: x')).toThrow(/rule 1\.match: unknown field/)
+    expect(() => parseRulesDocument('rules:\n  - match: { when: { extra: 1 } }\n    action: deny\n    reason: x')).toThrow(/rule 1\.match\.when: unknown field/)
+  })
+
+  it('fails loud on invalid metadata and when vocabulary', () => {
+    expect(() => parseRulesDocument('rules:\n  - match: {}\n    action: deny\n    reason: x\n    enabled: nope')).toThrow(/enabled must be a boolean/)
+    expect(() => parseRulesDocument('rules:\n  - match: {}\n    action: deny\n    reason: x\n    description: ""')).toThrow(/description must be a non-empty string/)
+    expect(() => parseRulesDocument('rules:\n  - match: { when: { platform: [beos] } }\n    action: deny\n    reason: x')).toThrow(/unknown platform "beos"/)
+    expect(() => parseRulesDocument('rules:\n  - match: { when: { env: { CI: [] } } }\n    action: deny\n    reason: x')).toThrow(/env patterns must be non-empty/)
+    expect(() => parseRulesDocument('rules:\n  - match: { when: { env: 5 } }\n    action: deny\n    reason: x')).toThrow(/must be a mapping/)
   })
 
   it('fails loud on invalid actions, missing reasons, and wrong shapes', () => {
@@ -94,10 +131,51 @@ describe('compileGlob', () => {
     expect(compileGlob('git push*', { segments: true }).test('git push origin https://host/x')).toBe(false)
   })
 
+  it('compiles with the i flag when caseInsensitive is set', () => {
+    expect(compileGlob('**/secrets/**', { segments: true, caseInsensitive: true }).test('SRC/SECRETS/KEY.PEM')).toBe(true)
+    expect(compileGlob('**/secrets/**', { segments: true }).test('SRC/SECRETS/KEY.PEM')).toBe(false)
+  })
+
+  it('caps unbounded star expansions (backtracking-degree bound)', () => {
+    expect(() => compileGlob('*a*b*c*', { segments: false, maxStars: 2 })).toThrowError(GlobError)
+    expect(compileGlob('git push*--force*', { segments: false, maxStars: 2 }).test('git push --force origin main')).toBe(true)
+    expect(compileGlob('**/secrets/**', { segments: true, maxStars: 2 }).test('src/secrets/key.pem')).toBe(true)
+    expect(() => compileGlob('**/**/**', { segments: true, maxStars: 2 })).toThrowError(GlobError)
+  })
+
   it('fails loud on bad globs', () => {
     expect(() => compileGlob('a[bc', { segments: true })).toThrowError(GlobError)
     expect(() => compileGlob('a[]', { segments: true })).toThrowError(GlobError)
     expect(() => compileGlob('a\\', { segments: true })).toThrowError(GlobError)
+  })
+})
+
+describe('compilePatternRegex — catastrophic-backtracking guards', () => {
+  it('rejects nested unbounded quantifiers', () => {
+    expect(() => compilePatternRegex('(a+)+')).toThrow(/unbounded quantifier/)
+    expect(() => compilePatternRegex('(ab*)+')).toThrow(/unbounded quantifier/)
+    expect(() => compilePatternRegex('((a|b)+)*')).toThrow(/unbounded quantifier/)
+    expect(() => compilePatternRegex('(a{2,})+')).toThrow(/unbounded quantifier/)
+    expect(() => compilePatternRegex('(\\w+\\s?)+')).toThrow(/unbounded quantifier/)
+  })
+
+  it('rejects quantified groups with overlapping literal alternation branches', () => {
+    expect(() => compilePatternRegex('(a|aa)+')).toThrow(/overlapping alternation/)
+    expect(() => compilePatternRegex('(foo|foobar)*$')).toThrow(/overlapping alternation/)
+  })
+
+  it('keeps everyday patterns (independent top-level quantifiers, bounded groups)', () => {
+    expect(compilePatternRegex('rm\\s+-[a-z]+\\s+/').test('rm -rf /')).toBe(true)
+    expect(compilePatternRegex('\\d+\\.\\d+\\.\\d+').test('1.2.3')).toBe(true)
+    expect(compilePatternRegex('[a-z]+\\.[a-z]+').test('file.ts')).toBe(true)
+    expect(compilePatternRegex('(a|b)+').test('abab')).toBe(true)
+    expect(compilePatternRegex('(read|write)+').test('readwrite')).toBe(true)
+    expect(compilePatternRegex('\\S+@\\S+').test('a@b')).toBe(true)
+    expect(compilePatternRegex('(a+)?b*').test('aaabbb')).toBe(true)
+  })
+
+  it('fails loud on invalid regexes', () => {
+    expect(() => compilePatternRegex('a[bc')).toThrow(/not a valid regular expression/)
   })
 })
 
@@ -136,6 +214,21 @@ rules:
     expect(hit?.rule.action).toBe('allow')
   })
 
+  it('skips disabled rules entirely (matching, indexing, and shadowing)', () => {
+    const set = rules(`
+rules:
+  - match: { tools: [bash] }
+    action: deny
+    reason: off for now
+    enabled: false
+  - match: { tools: [bash] }
+    action: ask
+    reason: confirm bash
+`)
+    expect(matchRules(set, 'bash', {}, CWD)?.rule.action).toBe('ask')
+    expect(matchRules(set, 'bash', {}, CWD)?.ruleIndex).toBe(1)
+  })
+
   it('reports the 0-based rule index', () => {
     const set = rules('rules:\n  - match: { tools: [bash] }\n    action: deny\n    reason: x')
     expect(matchRules(set, 'bash', {}, CWD)?.ruleIndex).toBe(0)
@@ -169,15 +262,78 @@ rules:
     expect(matchRules(setArray, 'read', { files: ['a.ts'] }, CWD)).toBeUndefined()
   })
 
-  it('treats object-valued params as non-matching', () => {
+  it('collects scalar leaves from nested objects and arrays (depth-capped)', () => {
     const set = rules('rules:\n  - match: { params: { command: "*" } }\n    action: deny\n    reason: x')
-    expect(matchRules(set, 'bash', { command: { nested: true } }, CWD)).toBeUndefined()
+    expect(matchRules(set, 'bash', { command: { nested: true } }, CWD)?.rule.action).toBe('deny')
+    expect(matchRules(set, 'bash', { command: { cmd: 'git push', args: ['-f'] } }, CWD)?.rule.action).toBe('deny')
+    // An object with no scalar leaves yields no candidates.
+    expect(matchRules(set, 'bash', { command: {} }, CWD)).toBeUndefined()
+  })
+
+  it('supports negated patterns: value must not match any `!pattern`', () => {
+    const set = rules(`
+rules:
+  - match: { params: { command: ["*", "!git*", "!npm*"] } }
+    action: ask
+    reason: anything but git/npm
+`)
+    expect(matchRules(set, 'bash', { command: 'ls -la' }, CWD)?.rule.action).toBe('ask')
+    expect(matchRules(set, 'bash', { command: 'git status' }, CWD)).toBeUndefined()
+    expect(matchRules(set, 'bash', { command: 'npm publish' }, CWD)).toBeUndefined()
+    // The key must still be present.
+    expect(matchRules(set, 'bash', {}, CWD)).toBeUndefined()
+  })
+
+  it('fails loud on a bare `!` negated pattern', () => {
+    expect(() => rules('rules:\n  - match: { params: { command: "!" } }\n    action: deny\n    reason: x')).toThrow(/empty negated pattern/)
   })
 
   it('supports regex mode (unanchored)', () => {
     const set = rules('rules:\n  - match: { params: { command: \'rm\\s+-[a-z]+\\s+/\' } }\n    action: deny\n    reason: x', REGEX)
     expect(matchRules(set, 'bash', { command: 'sudo rm -rf /etc' }, CWD)?.rule.action).toBe('deny')
     expect(matchRules(set, 'bash', { command: 'ls /etc' }, CWD)).toBeUndefined()
+  })
+})
+
+describe('matchRules — absent dimension', () => {
+  it('matches only when every listed key is missing', () => {
+    const set = rules(`
+rules:
+  - match: { tools: [bash], absent: [command] }
+    action: ask
+    reason: arg-less shell calls are suspicious
+`)
+    expect(matchRules(set, 'bash', {}, CWD)?.rule.action).toBe('ask')
+    expect(matchRules(set, 'bash', { other: 1 }, CWD)?.rule.action).toBe('ask')
+    expect(matchRules(set, 'bash', { command: 'ls' }, CWD)).toBeUndefined()
+    // Non-object arguments satisfy absent (all keys missing).
+    expect(matchRules(set, 'bash', 'not-an-object', CWD)?.rule.action).toBe('ask')
+  })
+})
+
+describe('matchRules — when dimension', () => {
+  it('matches only on the listed platform', () => {
+    const set = rules(`
+rules:
+  - match: { tools: [bash], when: { platform: [win32] } }
+    action: ask
+    reason: windows shell gate
+`)
+    expect(matchRules(set, 'bash', {}, CWD, { platform: 'win32', env: {} })?.rule.action).toBe('ask')
+    expect(matchRules(set, 'bash', {}, CWD, { platform: 'linux', env: {} })).toBeUndefined()
+  })
+
+  it('matches only when every listed env var is present and matches', () => {
+    const set = rules(`
+rules:
+  - match: { tools: [bash], when: { env: { CI: "1" } } }
+    action: deny
+    reason: no shell in CI
+`)
+    const env = { CI: '1', HOME: '/root' } as const
+    expect(matchRules(set, 'bash', {}, CWD, { platform: 'linux', env })?.rule.action).toBe('deny')
+    expect(matchRules(set, 'bash', {}, CWD, { platform: 'linux', env: { CI: '0' } })).toBeUndefined()
+    expect(matchRules(set, 'bash', {}, CWD, { platform: 'linux', env: {} })).toBeUndefined()
   })
 })
 
@@ -202,15 +358,31 @@ describe('matchRules — paths dimension', () => {
     expect(matchRules(set, 'read', { path: 'C:\\elsewhere\\secrets\\key.pem' }, winCwd)).toBeUndefined()
   })
 
+  it('ignores ASCII case on Windows-style roots when caseInsensitivePaths is set', () => {
+    const winCwd = 'D:\\ws\\project'
+    const set = rules('rules:\n  - match: { paths: ["**/secrets/**"] }\n    action: deny\n    reason: x', CI)
+    // Case-differing root AND segment must both resolve (previously a rule bypass).
+    expect(matchRules(set, 'read', { path: 'D:\\WS\\PROJECT\\SECRETS\\key.pem' }, winCwd)?.rule.action).toBe('deny')
+    expect(matchRules(set, 'read', { path: 'd:\\ws\\project\\Secrets\\key.pem' }, winCwd)?.rule.action).toBe('deny')
+    // Case sensitivity still applies to the workspace-relative part without the flag.
+    const strict = rules('rules:\n  - match: { paths: ["**/secrets/**"] }\n    action: deny\n    reason: x')
+    expect(matchRules(strict, 'read', { path: 'D:\\WS\\PROJECT\\secrets\\key.pem' }, winCwd)).toBeUndefined()
+  })
+
   it('requires at least one candidate; a rule with paths never matches arg-less tools', () => {
     const set = rules('rules:\n  - match: { paths: ["**/*.md"] }\n    action: deny\n    reason: x')
     expect(matchRules(set, 'bash', { command: 'ls' }, CWD)).toBeUndefined()
     expect(matchRules(set, 'bash', 'not-an-object', CWD)).toBeUndefined()
   })
 
-  it('collects candidates only from the documented path keys', () => {
+  it('collects candidates only from the documented path keys, at any nesting depth', () => {
     expect(extractPathCandidates({ path: 'a', file_path: 'b', files: ['c', 'd'], command: 'x', nested: 'n' }))
       .toEqual(['a', 'b', 'c', 'd'])
+    // MCP-style nesting: candidate keys inside arbitrary objects and arrays.
+    expect(extractPathCandidates({ arguments: { path: 'p' }, config: { dir: 'd' }, files: [{ file_path: 'f' }] }))
+      .toEqual(['p', 'd', 'f'])
+    const set = rules('rules:\n  - match: { paths: ["**/secrets/**"] }\n    action: deny\n    reason: x')
+    expect(matchRules(set, 'mcp__fs__read', { arguments: { path: 'src/secrets/a' } }, CWD)?.rule.action).toBe('deny')
   })
 })
 
@@ -221,18 +393,84 @@ describe('normalizeWorkspacePath', () => {
     expect(normalizeWorkspacePath('/ws/project', './a/b')).toBe('a/b')
     expect(normalizeWorkspacePath('D:\\ws', 'C:\\other\\x')).toBe('')
   })
+
+  it('compares the root prefix case-insensitively when asked', () => {
+    expect(normalizeWorkspacePath('D:\\ws\\project', 'D:\\WS\\PROJECT\\secrets\\key.pem', true)).toBe('secrets/key.pem')
+    expect(normalizeWorkspacePath('D:\\ws\\project', 'D:\\WS\\PROJECT\\secrets\\key.pem', false)).toBe('')
+    expect(normalizeWorkspacePath('/ws/project', '/WS/PROJECT/secrets/key.pem', false)).toBe('')
+  })
 })
 
 describe('compileRules — limits and loud failures', () => {
   it('fails the compile when the rule count exceeds maxRules, accepts the limit', () => {
     const many = `rules:\n${Array.from({ length: 5 }, (_, i) => `  - match: { tools: [t${i}] }\n    action: allow\n    reason: r`).join('\n')}`
-    expect(() => compileRules(parseRulesDocument(many), { patternMode: 'glob', maxRules: 4 })).toThrow(/exceeds maxRules 4/)
-    expect(compileRules(parseRulesDocument(many), { patternMode: 'glob', maxRules: 5 }).rules).toHaveLength(5)
+    expect(() => compileRules(parseRulesDocument(many), { patternMode: 'glob', maxRules: 4, maxGlobStars: 2, caseInsensitivePaths: false })).toThrow(/exceeds maxRules 4/)
+    expect(compileRules(parseRulesDocument(many), { patternMode: 'glob', maxRules: 5, maxGlobStars: 2, caseInsensitivePaths: false }).rules).toHaveLength(5)
   })
 
   it('fails the compile on invalid globs and invalid regexes', () => {
     expect(() => rules('rules:\n  - match: { tools: "a[bc" }\n    action: allow\n    reason: x')).toThrowError(GlobError)
     expect(() => rules('rules:\n  - match: { paths: ["**/secrets/**"] }\n    action: deny\n    reason: x', REGEX)).toThrow(/not a valid regular expression/)
+  })
+})
+
+describe('compileRulesChain — hierarchical merging', () => {
+  it('merges nearest-file rules first and attributes every rule to its source', () => {
+    const { ruleset, sources } = compileRulesChain([
+      { path: '/repo/child/.dsh/rules.yaml', text: 'rules:\n  - match: { tools: [bash] }\n    action: ask\n    reason: child asks\n' },
+      { path: '/repo/.dsh/rules.yaml', text: 'rules:\n  - match: { tools: [bash] }\n    action: deny\n    reason: parent denies\n  - match: { tools: [read] }\n    action: allow\n    reason: parent allows\n' },
+    ], GLOB)
+    expect(sources).toEqual(['/repo/child/.dsh/rules.yaml', '/repo/.dsh/rules.yaml'])
+    expect(ruleset.rules).toHaveLength(3)
+    expect(ruleset.rules[0]?.sourceIndex).toBe(0)
+    expect(ruleset.rules[1]?.sourceIndex).toBe(1)
+    // Child first: the nearer rule wins on first-match.
+    expect(matchRules(ruleset, 'bash', {}, CWD)?.rule.action).toBe('ask')
+    expect(matchRules(ruleset, 'read', {}, CWD)?.rule.action).toBe('allow')
+  })
+
+  it('caps the TOTAL rule count across the chain', () => {
+    const text = 'rules:\n  - match: { tools: [a] }\n    action: allow\n    reason: x\n  - match: { tools: [b] }\n    action: allow\n    reason: x\n'
+    expect(() => compileRulesChain([
+      { path: '/a.yaml', text },
+      { path: '/b.yaml', text },
+    ], { ...GLOB, maxRules: 3 })).toThrow(/exceeds maxRules 3/)
+  })
+})
+
+describe('findUnreachableRules', () => {
+  it('flags every enabled rule after an enabled catch-all, ignoring disabled rules', () => {
+    const set = rules(`
+rules:
+  - match: { tools: [bash] }
+    action: allow
+    reason: baseline
+  - match: {}
+    action: allow
+    reason: catch-all
+  - match: { tools: [read] }
+    action: deny
+    reason: unreachable
+  - match: { tools: [edit] }
+    action: ask
+    reason: unreachable too
+    enabled: false
+`)
+    expect(findUnreachableRules(set)).toEqual([2])
+  })
+
+  it('a disabled catch-all does not shadow, and non-catch-all rules never shadow', () => {
+    const set = rules(`
+rules:
+  - match: {}
+    action: allow
+    reason: disabled catch-all
+    enabled: false
+  - match: { tools: [bash] }
+    action: deny
+    reason: reachable
+`)
+    expect(findUnreachableRules(set)).toEqual([])
   })
 })
 
@@ -244,6 +482,27 @@ rules:
     action: deny
     reason: no push
 `)
-    expect(describeRule(set.rules[0]!)).toBe('1. deny [tools:bash,pwsh params:command=git push*]: no push')
+    expect(describeRule(set.rules[0]!, EN)).toBe('1. deny [tools:bash,pwsh params:command=git push*]: no push')
+  })
+
+  it('renders absent/when dimensions, disabled markers, tags, and descriptions', () => {
+    const set = rules(`
+rules:
+  - match: { tools: [bash], absent: [command], when: { env: { CI: "1" }, platform: [linux] } }
+    action: ask
+    reason: gated
+    enabled: false
+    description: "hold shell in CI"
+    tags: [shell]
+`)
+    expect(describeRule(set.rules[0]!, EN)).toBe('1. ask (disabled) [tools:bash absent:command when:CI=1 platform:linux]: gated (hold shell in CI) [tags:shell]')
+  })
+
+  it('truncates very long reasons at 120 characters', () => {
+    const long = 'x'.repeat(200)
+    const set = rules(`rules:\n  - match: { tools: [bash] }\n    action: deny\n    reason: "${long}"`)
+    const line = describeRule(set.rules[0]!, EN)
+    expect(line.length).toBeLessThan(long.length)
+    expect(line).toContain(`${'x'.repeat(120)}…`)
   })
 })

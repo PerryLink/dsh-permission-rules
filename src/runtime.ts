@@ -1,36 +1,39 @@
 /**
  * Runtime of `dsh-permission-rules`: per-workspace rule loading (project
- * file by session cwd → fallback path → empty set), the `tools/pre-execute`
- * listener that turns a first-match hit into a deny/ask decision (and NEVER
- * short-circuits on allow or passthrough), the `permissionRules/decision`
- * audit event, the `/rules` session command, and Chokidar-driven reloads.
- * Every registration is an effect.
+ * file chain by session cwd → fallback path → empty set), the
+ * `tools/pre-execute` listener that turns a first-match hit into a
+ * deny/ask decision (and NEVER short-circuits on allow or passthrough),
+ * the `permissionRules/decision` audit event, the `/rules` session command
+ * (`list | reload | decisions [n] | test <tool> <json>`), and
+ * Chokidar-driven reloads. Every registration is an effect.
  * @module dsh-permission-rules/runtime
  */
 
 import { existsSync, readFileSync } from 'node:fs'
-import { isAbsolute, join, resolve } from 'node:path'
+import { dirname, isAbsolute, join, resolve } from 'node:path'
 import chokidar from 'chokidar'
 import type { Context } from '@deepseek-ai/cordis'
 import type { CommandInvocation, CommandResult } from '@deepseek-ai/dsh-commands'
 import type { PreToolDecision, ToolExecution } from '@deepseek-ai/dsh-tools'
 import { resolveConfig } from './config.ts'
 import type { Config, ResolvedConfig } from './config.ts'
-import { compileRules, describeRule, matchRules, parseRulesDocument, RuleError } from './rules.ts'
-import type { CompiledRuleset, RuleHit } from './rules.ts'
-import type { AuditAppend } from './events.ts'
+import { compileRules, compileRulesChain, describeRule, findUnreachableRules, matchRules, parseRulesDocument, RuleError } from './rules.ts'
+import type { CompileOptions, CompiledRuleset, MatchContext, RuleHit } from './rules.ts'
+import { DESCRIBE_TOKENS, UI_PROSE } from './prose.ts'
+import type { UiProse } from './prose.ts'
+import type { AuditAppend, AuditDecision, DecisionOutcome } from './events.ts'
 
 export const name = 'permission-rules'
 
 /** Services required before the plugin mounts. */
-export const inject = ['commands']
+export const inject = ['commands', 'tools']
 
 /** The rule state bound to one workspace cwd. */
 interface LoadedRules {
   /** The workspace root these rules were resolved for. */
   readonly cwd: string
-  /** Absolute path of the rule file in effect, or `''` for an empty rule set. */
-  readonly source: string
+  /** Absolute paths of the rule files in effect, nearest first; `[]` = empty rule set. */
+  readonly sources: readonly string[]
   readonly compiled: CompiledRuleset
   /** Last load error, when one is being reported (see {@link PermissionRulesRuntime.rulesFor}). */
   readonly lastError?: string
@@ -43,7 +46,7 @@ interface LoadedRules {
  * the watcher/timer effects registered in {@link apply}.
  */
 export class PermissionRulesRuntime {
-  /** Loaded (or failed) rules per workspace cwd. */
+  /** Loaded (or failed) rules per workspace cwd, least-recently-used first for eviction. */
   private readonly byCwd = new Map<string, LoadedRules>()
 
   /** Live watchers per rule-file path, with the cwds each serves. */
@@ -57,46 +60,75 @@ export class PermissionRulesRuntime {
     readonly config: ResolvedConfig,
   ) {}
 
-  /**
-   * Resolve which file serves a workspace: the project file under the
-   * session cwd (or an absolute `rulesFile`), else the configured fallback,
-   * else `''` (empty rule set).
-   * @param cwd - the session's absolute workspace root.
-   * @returns the absolute rule-file path in effect, or `''`.
-   */
-  resolveSource(cwd: string): string {
-    const projectPath = isAbsolute(this.config.rulesFile) ? this.config.rulesFile : join(cwd, this.config.rulesFile)
-    if (existsSync(projectPath)) return projectPath
-    const fallback = this.config.fallbackPath
-    if (fallback !== undefined) {
-      const fallbackPath = isAbsolute(fallback) ? fallback : resolve(fallback)
-      if (existsSync(fallbackPath)) return fallbackPath
+  /** The shared compile options derived from config. */
+  private compileOptions(): CompileOptions {
+    return {
+      patternMode: this.config.patternMode,
+      maxRules: this.config.maxRules,
+      maxGlobStars: this.config.maxGlobStars,
+      caseInsensitivePaths: this.config.caseInsensitivePaths,
     }
-    return ''
   }
 
   /**
-   * Read, parse, and compile the rule file serving `cwd`. Under
+   * Resolve which files serve a workspace, nearest first: the project file
+   * under the session cwd (or an absolute `rulesFile`), with `searchUp`
+   * also merging every parent directory's file on the way to the root,
+   * else the configured fallback, else `[]` (empty rule set). Nearer files
+   * evaluate first, so a child can override a parent rule.
+   * @param cwd - the session's absolute workspace root.
+   * @returns the absolute rule-file paths in effect, nearest first.
+   */
+  resolveSources(cwd: string): string[] {
+    if (this.config.searchUp) {
+      const sources: string[] = []
+      let dir = cwd
+      for (;;) {
+        const candidate = join(dir, this.config.rulesFile)
+        if (existsSync(candidate)) sources.push(candidate)
+        const parent = dirname(dir)
+        if (parent === dir) break
+        dir = parent
+      }
+      return sources.length === 0 ? this.resolveFallback() : sources
+    }
+    const projectPath = isAbsolute(this.config.rulesFile) ? this.config.rulesFile : join(cwd, this.config.rulesFile)
+    if (existsSync(projectPath)) return [projectPath]
+    return this.resolveFallback()
+  }
+
+  /** The configured fallback file when it exists, else `[]`. */
+  private resolveFallback(): string[] {
+    const fallback = this.config.fallbackPath
+    if (fallback !== undefined) {
+      const fallbackPath = isAbsolute(fallback) ? fallback : resolve(fallback)
+      if (existsSync(fallbackPath)) return [fallbackPath]
+    }
+    return []
+  }
+
+  /**
+   * Read, parse, and compile the rule-file chain serving `cwd`. Under
    * `badFilePolicy: 'ignore-with-warning'` a bad file degrades to an empty
-   * rule set with a warning and keeps its source path (so a later fix is
+   * rule set with a warning and keeps its source paths (so a later fix is
    * watched and adopted); under `'fail'` it throws.
    * @param cwd - the workspace root.
    * @returns the loaded state.
    */
   load(cwd: string): LoadedRules {
-    const source = this.resolveSource(cwd)
-    if (source === '') return { cwd, source: '', compiled: { rules: [] } }
+    const sources = this.resolveSources(cwd)
+    if (sources.length === 0) return { cwd, sources: [], compiled: { rules: [], caseInsensitivePaths: this.config.caseInsensitivePaths } }
     try {
-      const doc = parseRulesDocument(readFileSync(source, 'utf8'))
-      const compiled = compileRules(doc, { patternMode: this.config.patternMode, maxRules: this.config.maxRules })
-      return { cwd, source, compiled }
+      const entries = sources.map(path => ({ path, text: readFileSync(path, 'utf8') }))
+      const { ruleset } = compileRulesChain(entries, this.compileOptions())
+      return { cwd, sources, compiled: ruleset }
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error)
       if (this.config.badFilePolicy === 'ignore-with-warning') {
-        this.ctx.logger.warn(`permission-rules: ignoring ${source}: ${message} (empty rule set)`)
-        return { cwd, source, compiled: { rules: [] }, lastError: message }
+        this.ctx.logger.warn(`permission-rules: ignoring ${sources.join(', ')}: ${message} (empty rule set)`)
+        return { cwd, sources, compiled: { rules: [], caseInsensitivePaths: this.config.caseInsensitivePaths }, lastError: message }
       }
-      throw error instanceof RuleError ? error : new RuleError(`cannot load ${source}: ${message}`)
+      throw error instanceof RuleError ? error : new RuleError(`cannot load ${sources.join(', ')}: ${message}`)
     }
   }
 
@@ -104,7 +136,9 @@ export class PermissionRulesRuntime {
    * The rules in effect for one cwd, loading on first use. Under
    * `badFilePolicy: 'fail'` a bad initial load throws on EVERY use (the
    * pending tool call errors loudly) while the watcher keeps observing the
-   * file so a fix reloads into active rules.
+   * files so a fix reloads into active rules. Cache hits refresh the
+   * least-recently-used position, so eviction drops the workspace that
+   * went longest without a decision.
    * @param cwd - the workspace root.
    * @returns the loaded rules.
    */
@@ -114,26 +148,30 @@ export class PermissionRulesRuntime {
       if (existing.failed === true) {
         throw new RuleError(existing.lastError ?? `rule load failed for ${cwd}`)
       }
+      this.byCwd.delete(cwd)
+      this.byCwd.set(cwd, existing)
       return existing
     }
+    this.evictIfFull(cwd)
     try {
       const loaded = this.load(cwd)
       this.byCwd.set(cwd, loaded)
-      this.attachWatch(cwd, loaded.source)
+      this.reconcileWatch(cwd, loaded.sources)
       return loaded
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error)
-      const source = this.resolveSource(cwd)
-      this.byCwd.set(cwd, { cwd, source, compiled: { rules: [] }, lastError: message, failed: true })
-      this.attachWatch(cwd, source)
+      const sources = this.resolveSources(cwd)
+      this.byCwd.set(cwd, { cwd, sources, compiled: { rules: [], caseInsensitivePaths: this.config.caseInsensitivePaths }, lastError: message, failed: true })
+      this.reconcileWatch(cwd, sources)
       throw error
     }
   }
 
   /**
-   * Re-read the rule file for one cwd (watch-driven or `/rules reload`).
-   * A bad file NEVER crashes the process: the previous rules stay active,
-   * the error is logged and reported on the next `/rules` output.
+   * Re-read the rule-file chain for one cwd (watch-driven or
+   * `/rules reload`). A bad file NEVER crashes the process: the previous
+   * rules stay active, the error is logged and reported on the next
+   * `/rules` output.
    * @param cwd - the workspace root.
    */
   reload(cwd: string): void {
@@ -141,56 +179,71 @@ export class PermissionRulesRuntime {
     try {
       const loaded = this.load(cwd)
       this.byCwd.set(cwd, loaded)
-      this.attachWatch(cwd, loaded.source)
-      this.ctx.logger.info(`permission-rules: reloaded ${loaded.compiled.rules.length} rule(s) from ${loaded.source || '(empty rule set)'} for ${cwd}`)
+      this.reconcileWatch(cwd, loaded.sources)
+      this.ctx.logger.info(`permission-rules: reloaded ${loaded.compiled.rules.length} rule(s) from ${loaded.sources.join(', ') || '(empty rule set)'} for ${cwd}`)
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error)
       this.ctx.logger.warn(`permission-rules: reload failed for ${cwd}: ${message} (keeping previous rules)`)
       if (previous !== undefined) this.byCwd.set(cwd, { ...previous, lastError: message })
-      else this.byCwd.set(cwd, { cwd, source: this.resolveSource(cwd), compiled: { rules: [] }, lastError: message, failed: true })
+      else this.byCwd.set(cwd, { cwd, sources: this.resolveSources(cwd), compiled: { rules: [], caseInsensitivePaths: this.config.caseInsensitivePaths }, lastError: message, failed: true })
     }
+  }
+
+  /** The match context `when` conditions evaluate against. */
+  private matchContext(): MatchContext {
+    return { platform: process.platform, env: process.env }
   }
 
   /**
    * The `tools/pre-execute` listener. A deny/ask hit returns the decision
    * (first match wins, short-circuiting downstream listeners); an allow hit
    * and a passthrough MUST delegate via `next()` so later listeners keep
-   * their say. Audit is appended before the decision is returned.
+   * their say. Audit is appended once the final outcome is known, so the
+   * recorded `outcome` matches what the waterfall settled on.
    * @param exec - the pending call (name, parsed arguments, caller agent).
    * @param next - the downstream chain.
    * @returns the pre-execute decision.
    */
-  preExecute(exec: ToolExecution, next: () => Promise<PreToolDecision>): Promise<PreToolDecision> {
+  async preExecute(exec: ToolExecution, next: () => Promise<PreToolDecision>): Promise<PreToolDecision> {
     const cwd = exec.agent?.session.header.cwd ?? process.cwd()
     const loaded = this.rulesFor(cwd)
-    const hit = matchRules(loaded.compiled, exec.name, exec.arguments, cwd)
-    this.audit(exec, loaded, hit)
-    if (hit === undefined) return next()
-    if (hit.rule.action === 'allow') return next()
-    if (hit.rule.action === 'deny') return Promise.resolve({ kind: 'deny', reason: hit.rule.reason })
-    return Promise.resolve({ kind: 'ask', reason: hit.rule.reason })
+    const hit = matchRules(loaded.compiled, exec.name, exec.arguments, cwd, this.matchContext())
+    if (hit === undefined || hit.rule.action === 'allow') {
+      const decision = await next()
+      this.audit(exec, loaded, hit, decision.kind)
+      return decision
+    }
+    const outcome: DecisionOutcome = hit.rule.action
+    this.audit(exec, loaded, hit, outcome)
+    if (outcome === 'deny') return { kind: 'deny', reason: hit.rule.reason }
+    return { kind: 'ask', reason: hit.rule.reason }
   }
 
   /**
    * Append the log-only `permissionRules/decision` audit event for every
-   * hit AND every passthrough, requesting the envelope's `ignorable: true`
-   * marker so any harness build can load the log (readers that do not know
-   * the type skip the audit record instead of refusing the session).
-   * Agentless calls have no session to audit; append failures are contained
-   * so an audit hiccup can never change a permission decision.
+   * decision (passthrough included unless `audit: 'hits'`), requesting the
+   * envelope's `ignorable: true` marker so any harness build can load the
+   * log (readers that do not know the type skip the audit record instead of
+   * refusing the session). `source` names the matched rule's file, or the
+   * nearest effective file on a passthrough. Agentless calls have no
+   * session to audit; append failures are contained so an audit hiccup can
+   * never change a permission decision.
    * @param exec - the pending call.
    * @param loaded - the rules in effect.
    * @param hit - the first matching rule, or undefined for passthrough.
+   * @param outcome - the final pre-execute decision.
    */
-  audit(exec: ToolExecution, loaded: LoadedRules, hit: RuleHit | undefined): void {
+  audit(exec: ToolExecution, loaded: LoadedRules, hit: RuleHit | undefined, outcome: DecisionOutcome): void {
+    if (this.config.audit === 'hits' && hit === undefined) return
     const agent = exec.agent
     if (agent === undefined) return
     try {
       ;(agent.session.append as unknown as AuditAppend)('permissionRules/decision', {
         toolName: exec.name,
         callId: exec.callId,
-        source: loaded.source,
+        source: hit === undefined ? (loaded.sources[0] ?? '') : (loaded.sources[hit.rule.sourceIndex] ?? ''),
         action: hit === undefined ? 'passthrough' : hit.rule.action,
+        outcome,
         ...hit !== undefined ? { ruleIndex: hit.ruleIndex, reason: hit.rule.reason } : {},
       }, { ignorable: true })
     } catch (error: unknown) {
@@ -199,33 +252,65 @@ export class PermissionRulesRuntime {
   }
 
   /**
-   * Execute the `/rules` command: `/rules` lists the active rules and their
-   * source; `/rules reload` re-reads the file. Command output stays in the
-   * UI — nothing here is injected into the model context.
+   * Execute the `/rules` command: bare `/rules` lists the active rules and
+   * their sources; `/rules reload` re-reads the chain; `/rules decisions
+   * [n]` shows the session's audit trail; `/rules test <tool> <json>`
+   * dry-evaluates the rules against a hypothetical call. Command output
+   * stays in the UI — nothing here is injected into the model context.
    * @param invocation - the received command invocation.
    * @returns the command result shown to the user.
    */
   command(invocation: CommandInvocation): CommandResult {
-    const input = invocation.rawInput.trim().toLowerCase()
+    const prose = UI_PROSE[this.config.language]
+    const raw = invocation.rawInput.trim()
+    const [verbRaw, ...rest] = raw.split(/\s+/)
+    const verb = (verbRaw ?? '').toLowerCase()
     const cwd = invocation.agent.session.header.cwd ?? process.cwd()
-    if (input === 'reload') {
+    if (verb === 'reload') {
+      if (rest.length > 0) return { kind: 'error', text: prose.unknownArg(invocation.rawInput.trim()) }
       this.reload(cwd)
       const reloaded = this.byCwd.get(cwd)
-      if (reloaded?.lastError !== undefined) {
-        return {
-          kind: 'error',
-          text: `Reload failed: ${reloaded.lastError}. The previous rules are still active.`,
-        }
-      }
+      if (reloaded?.lastError !== undefined) return { kind: 'error', text: prose.reloadFailed(reloaded.lastError) }
       const rules = reloaded?.compiled.rules ?? []
+      const source = reloaded === undefined || reloaded.sources.length === 0 ? prose.emptySource : reloaded.sources.join(', ')
+      return { kind: 'success', text: prose.reloaded(rules.length, source) }
+    }
+    if (verb === 'decisions') {
+      if (rest.length > 1) return { kind: 'error', text: prose.unknownArg(invocation.rawInput.trim()) }
+      let count = 10
+      if (rest.length === 1) {
+        const parsed = Number(rest[0])
+        if (!Number.isSafeInteger(parsed) || parsed <= 0) return { kind: 'error', text: prose.invalidDecisionsCount(rest[0] as string) }
+        count = parsed
+      }
+      return this.decisionsCommand(invocation, count, prose)
+    }
+    if (verb === 'test') {
+      const verbText = verbRaw ?? ''
+      const restLine = raw.length > verbText.length ? raw.slice(verbText.length).trim() : ''
+      const match = /^(\S+)\s*(.*)$/s.exec(restLine)
+      const tool = match?.[1]
+      const jsonText = match?.[2] ?? ''
+      if (tool === undefined || tool.length === 0) return { kind: 'error', text: prose.testUsage }
+      let args: unknown
+      try {
+        args = jsonText.length > 0 ? JSON.parse(jsonText) : {}
+      } catch {
+        return { kind: 'error', text: prose.testBadJson(jsonText) }
+      }
+      let loaded: LoadedRules
+      try {
+        loaded = this.rulesFor(cwd)
+      } catch (error: unknown) {
+        return { kind: 'error', text: error instanceof Error ? error.message : String(error) }
+      }
+      const hit = matchRules(loaded.compiled, tool, args, cwd, this.matchContext())
       return {
         kind: 'success',
-        text: `Reloaded ${rules.length} rule(s) from ${reloaded?.source || '(no rule file — empty rule set)'}.`,
+        text: hit === undefined ? prose.testNoMatch(tool) : prose.testHit(tool, hit.ruleIndex, hit.rule.action, hit.rule.reason),
       }
     }
-    if (input !== '') {
-      return { kind: 'error', text: `Unknown /rules argument "${invocation.rawInput.trim()}". Usage: /rules [reload]` }
-    }
+    if (verb !== '') return { kind: 'error', text: prose.unknownArg(invocation.rawInput.trim()) }
     let loaded: LoadedRules
     try {
       loaded = this.rulesFor(cwd)
@@ -233,16 +318,31 @@ export class PermissionRulesRuntime {
       return { kind: 'error', text: error instanceof Error ? error.message : String(error) }
     }
     const lines: string[] = []
-    if (loaded.source === '') {
-      lines.push(`No permission rules active: no rule file found for workspace ${cwd}${this.config.fallbackPath !== undefined ? ' (and the configured fallback path is missing)' : ''}; the empty rule set passes everything through.`)
+    if (loaded.sources.length === 0) {
+      lines.push(prose.noRules(cwd, this.config.fallbackPath !== undefined ? prose.fallbackMissing : ''))
     } else {
-      lines.push(`Permission rules: ${loaded.compiled.rules.length} rule(s) from ${loaded.source} (workspace ${cwd}).`)
-      lines.push(...loaded.compiled.rules.map(rule => describeRule(rule)))
+      lines.push(prose.rulesHeader(loaded.compiled.rules.length, loaded.sources, cwd))
+      lines.push(...loaded.compiled.rules.map(rule => describeRule(rule, DESCRIBE_TOKENS[this.config.language])))
+      const unreachable = findUnreachableRules(loaded.compiled)
+      if (unreachable.length > 0) lines.push(prose.unreachableWarning(unreachable.map(index => index + 1)))
     }
     if (loaded.lastError !== undefined) {
-      lines.push(`Warning: the last reload failed (${loaded.lastError}); the rules listed above are the previous ones.`)
+      lines.push(prose.lastReloadWarning(loaded.lastError))
     }
-    lines.push('Usage: /rules [reload]')
+    lines.push(prose.usage)
+    return { kind: 'success', text: lines.join('\n') }
+  }
+
+  /** Render the session's `permissionRules/decision` audit trail, newest last. */
+  private decisionsCommand(invocation: CommandInvocation, count: number, prose: UiProse): CommandResult {
+    const decisions = invocation.agent.session.events.filter(event => event.type === 'permissionRules/decision')
+    if (decisions.length === 0) return { kind: 'success', text: prose.noDecisions }
+    const shown = decisions.slice(-count)
+    const lines = [prose.decisionsHeader(shown.length, decisions.length)]
+    for (const event of shown) {
+      const data = event.data as AuditDecision
+      lines.push(prose.decisionLine(event.seq, data.action, data.toolName, data.ruleIndex, data.reason))
+    }
     return { kind: 'success', text: lines.join('\n') }
   }
 
@@ -270,7 +370,7 @@ export class PermissionRulesRuntime {
   private loadForValidation(filePath: string): void {
     try {
       const doc = parseRulesDocument(readFileSync(filePath, 'utf8'))
-      compileRules(doc, { patternMode: this.config.patternMode, maxRules: this.config.maxRules })
+      compileRules(doc, this.compileOptions())
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error)
       throw error instanceof RuleError ? error : new RuleError(`permission-rules: cannot load ${filePath}: ${message}`)
@@ -313,6 +413,64 @@ export class PermissionRulesRuntime {
     })
   }
 
+  /**
+   * Rebind `cwd` to its current rule-source chain. When a concrete source
+   * left the chain (deleted file, fallback switch), detach the workspace
+   * from watchers serving other sources and close the ones left empty, so
+   * long-running hosts cannot accumulate stale watchers. An empty chain (no
+   * rule file in effect) keeps the previous watchers alive: they own the
+   * "file recreated → adopted" signal, and the workspace-cache bound keeps
+   * the set of such watchers finite.
+   */
+  private reconcileWatch(cwd: string, sources: readonly string[]): void {
+    if (sources.length === 0) return
+    for (const [watchedSource, entry] of this.watchers) {
+      if (!sources.includes(watchedSource)) entry.cwds.delete(cwd)
+    }
+    this.pruneWatchers()
+    for (const source of sources) this.attachWatch(cwd, source)
+  }
+
+  /** Close and drop watchers whose workspace sets are empty, clearing their debounce timers. */
+  private pruneWatchers(): void {
+    for (const [source, entry] of this.watchers) {
+      if (entry.cwds.size > 0) continue
+      entry.close()
+      this.watchers.delete(source)
+      const timer = this.timers.get(source)
+      if (timer !== undefined) {
+        clearTimeout(timer)
+        this.timers.delete(source)
+      }
+    }
+  }
+
+  /**
+   * Bound the per-workspace cache: when a NEW workspace would exceed
+   * `maxCachedWorkspaces`, evict the least-recently-used entry (the Map
+   * head, refreshed by every {@link rulesFor} hit) and release its watcher
+   * slots. Long-lived hosts that visit many workspaces therefore keep a
+   * bounded memory footprint.
+   */
+  private evictIfFull(cwd: string): void {
+    if (this.byCwd.size < this.config.maxCachedWorkspaces || this.byCwd.has(cwd)) return
+    const oldest = this.byCwd.keys().next().value
+    if (oldest === undefined) return
+    this.byCwd.delete(oldest)
+    for (const entry of this.watchers.values()) entry.cwds.delete(oldest)
+    this.pruneWatchers()
+  }
+
+  /** Number of live watchers, for observability and tests. */
+  activeWatcherCount(): number {
+    return this.watchers.size
+  }
+
+  /** Number of pending debounce timers, for observability and tests. */
+  pendingReloadCount(): number {
+    return this.timers.size
+  }
+
   /** Debounce watch events into one reload per stability window. */
   private scheduleReload(source: string): void {
     const existing = this.timers.get(source)
@@ -335,11 +493,12 @@ export function apply(ctx: Context, config: Config): void {
   const resolved = resolveConfig(config)
   const runtime = new PermissionRulesRuntime(ctx, resolved)
   runtime.validateDeploymentFiles()
+  ctx.provide('permissionRulesRuntime', runtime)
   ctx.on('tools/pre-execute', (exec, next) => runtime.preExecute(exec, next))
   ctx.commands.register({
     name: 'rules',
-    description: 'list or reload the active permission rules for this workspace',
-    input: { hint: '[reload]' },
+    description: 'list, reload, audit, or dry-test the active permission rules for this workspace',
+    input: { hint: '[reload | decisions [n] | test <tool> <json-args>]' },
     handler: invocation => runtime.command(invocation),
   })
 }
