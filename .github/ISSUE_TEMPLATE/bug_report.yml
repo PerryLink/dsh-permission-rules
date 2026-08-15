@@ -1,0 +1,69 @@
+name: Bug report
+description: Report a defect in dsh-permission-rules
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Please fill in every required field; incomplete reports are hard to act on.
+  - type: input
+    id: package-version
+    attributes:
+      label: Package version
+      description: The `dsh-permission-rules` version (e.g. `0.4.2`; `npm ls dsh-permission-rules` shows it).
+      placeholder: "0.4.2"
+    validations:
+      required: true
+  - type: input
+    id: harness-version
+    attributes:
+      label: Harness (runtime) version
+      description: The DeepSeek Harness / dsh version (e.g. `dsh --version`).
+      placeholder: "0.1.0-rc.6"
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: OS and Node version
+      description: Operating system and Node.js version (`node --version`).
+      placeholder: |
+        OS: Windows 11
+        Node: v22.19.0
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Minimal ordered steps that trigger the bug, including the rule file content (rules are not secrets).
+      placeholder: |
+        1. Install version ... via ...
+        2. Create `.dsh/rules.yaml` with ...
+        3. Run a tool call that should match ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should have happened.
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What actually happened (error text, decision taken, command output).
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs (optional)
+      description: Relevant harness or session log excerpts.
+      value: |
+        **⚠️ Redact before pasting: remove all tokens, API keys, secrets, and Authorization/request headers.**
+    validations:
+      required: false
