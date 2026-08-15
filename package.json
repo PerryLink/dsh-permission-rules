@@ -42,7 +42,7 @@
     },
     "install": {
       "mode": "transactional",
-      "adapter": "official-profile",
+      "adapter": "profile-bundle",
       "failurePolicy": "generation-rollback",
       "touchesCurrentBeforeActivation": false
     },
