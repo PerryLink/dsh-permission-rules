@@ -321,12 +321,16 @@ function isCatchAll(rule: CompiledRule): boolean {
 /**
  * One-line human summary of a compiled rule, for `/rules` output. The
  * 1-based number, action, match dimensions, and reason render first; a
- * disabled marker, tags, and a truncated description follow.
+ * disabled marker, tags, and a truncated description follow. When `source`
+ * is provided (multi-file chains), the rule's origin file is attributed on
+ * the line.
  * @param rule - the compiled rule.
  * @param tokens - dimension-prefix vocabulary for the configured language.
+ * @param source - display path of the rule's source file, when the listing
+ *   spans several files.
  * @returns a single display line.
  */
-export function describeRule(rule: CompiledRule, tokens: DescribeTokens): string {
+export function describeRule(rule: CompiledRule, tokens: DescribeTokens, source?: string): string {
   const parts: string[] = []
   if (rule.source.match.tools.length > 0) parts.push(`${tokens.tools}:${rule.source.match.tools.join(',')}`)
   if (rule.source.match.agents.length > 0) parts.push(`${tokens.agents}:${rule.source.match.agents.join(',')}`)
@@ -343,9 +347,10 @@ export function describeRule(rule: CompiledRule, tokens: DescribeTokens): string
   if (whenParts.length > 0 || platformPart.length > 0) parts.push(`${tokens.when}:${whenParts}${whenParts.length > 0 && platformPart.length > 0 ? ' ' : ''}${platformPart}`)
   const match = parts.length > 0 ? `[${parts.join(' ')}]` : `[${tokens.allTools}]`
   const disabled = rule.enabled ? '' : ` (${tokens.disabled})`
+  const sourcePart = source !== undefined && source.length > 0 ? ` [${tokens.src}:${source}]` : ''
   const description = rule.description !== undefined ? ` (${truncate(rule.description, DISPLAY_TRUNCATE)})` : ''
   const tags = rule.tags.length > 0 ? ` [${tokens.tags}:${rule.tags.join(',')}]` : ''
-  return `${rule.index + 1}. ${rule.action}${disabled} ${match}: ${truncate(rule.reason, DISPLAY_TRUNCATE)}${description}${tags}`
+  return `${rule.index + 1}. ${rule.action}${disabled} ${match}${sourcePart}: ${truncate(rule.reason, DISPLAY_TRUNCATE)}${description}${tags}`
 }
 
 /** The localized dimension-prefix vocabulary {@link describeRule} renders. */
@@ -360,6 +365,8 @@ export interface DescribeTokens {
   readonly platform: string
   readonly disabled: string
   readonly tags: string
+  /** Prefix of the per-rule source-file attribution. */
+  readonly src: string
 }
 
 /** Cut a display string at `limit` characters, marking truncation with `…`. */

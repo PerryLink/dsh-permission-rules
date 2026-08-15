@@ -55,8 +55,8 @@ tools/pre-execute waterfall                     approval/request waterfall (answ
 - ✅ **आधिकारिक approval seam** — `ask` `ctx.approval` से होकर जाता है; कभी पुनः-कार्यान्वित नहीं, कभी बायपास नहीं
 - ✅ **पूर्ण ऑडिट** — `permissionRules/decision` इवेंट हर कॉल के लिए नियम क्रिया, workspace cwd और अंतिम परिणाम रखते हैं; `/rules decisions` सत्र में रास्ता फिर चलाता है
 - ✅ **dry-run रोलआउट** — `enforce: false` केवल ऑडिट करता है कि नीति *क्या करती* (काल्पनिक क्रिया + वास्तविक डाउनस्ट्रीम परिणाम, `dryRun` चिह्नित) और हर कॉल को पास करता है; उत्पादन में नई नीति का सुरक्षित परीक्षण
-- ✅ **dry-run परीक्षण** — `/rules test <tool> <json-args>` कुछ भी निष्पादित किए बिना सक्रिय नियमों का मूल्यांकन करता है, हर मिलान आयाम के लिए `--cwd`, `--env`, और `--agent` ओवरराइड के साथ
-- ✅ **हॉट रीलोड** — debounce सहित Chokidar निगरानी; टूटा हुआ संपादन पिछले नियम रखता है, कभी क्रैश नहीं करता
+- ✅ **dry-run परीक्षण** — `/rules test <tool> <json-args>` कुछ भी निष्पादित किए बिना सक्रिय नियमों का मूल्यांकन करता है, हर मिलान आयाम के लिए `--cwd`, `--env`, `--agent` और `--platform` ओवरराइड के साथ
+- ✅ **हॉट रीलोड** — debounce सहित Chokidar निगरानी; टूटा हुआ संपादन पिछले नियम रखता है, कभी क्रैश नहीं करता; सत्र के बीच बनाई गई नियम फ़ाइल (प्रोजेक्ट की या fallback) स्वतः अपनाई जाती है, मैनुअल रीलोड की आवश्यकता नहीं
 - ✅ **ज़ोरदार विफलता** — अमान्य YAML, अज्ञात action/फ़ील्ड, ख़राब globs/regex, बैकट्रैकिंग-प्रवण पैटर्न, या `maxRules` से अधिक → लोड विफल
 - ✅ **सीमित हॉट पथ** — पूर्व-संकलित matchers, O(नियम × पैटर्न), `maxRules` द्वारा सीमित; glob बैकट्रैकिंग डिग्री `maxGlobStars` द्वारा सीमित
 
@@ -68,7 +68,7 @@ dsh plugin --profile web add "github:PerryLink/dsh-permission-rules#main"
 
 # या पैक किए गए tarball से (बिल्ट आर्टिफ़ैक्ट, build अनुमति की ज़रूरत नहीं)
 pnpm pack
-dsh plugin --profile web add ./dsh-permission-rules-0.3.0.tgz
+dsh plugin --profile web add ./dsh-permission-rules-0.4.0.tgz
 
 # 2. पुनः आरंभ करें
 dsh --profile web
@@ -119,12 +119,13 @@ dsh --profile web --dump-config | grep -A4 'id: permission-rules'   # पंक�
 
 ```
 /rules                        सक्रिय नियम, उनकी स्रोत फ़ाइलें और अंतिम रीलोड त्रुटि दिखाता है
+/rules list                   सामान्य सूची का स्पष्ट उपनाम
 /rules reload                 इस workspace की नियम-फ़ाइल शृंखला दोबारा पढ़ता है
 /rules decisions [n]          इस सत्र की अंतिम n अनुमति निर्णय दिखाता है (डिफ़ॉल्ट 10)
 /rules test <tool> <json>     काल्पनिक कॉल के विरुद्ध नियमों का dry-मूल्यांकन, जैसे /rules test bash {"command":"git push origin main"}
 ```
 
-`/rules test` शुरुआती फ़्लैग भी स्वीकार करता है: `--cwd <dir>` दूसरे workspace के विरुद्ध मूल्यांकन करता है, `--env KEY=मान` (दोहराने योग्य) `when.env` के लिए होस्ट env ओवरराइड करता है, और `--agent <चयनकर्ता>` (दोहराने योग्य) `agents` आयाम के लिए पहचान उम्मीदवार देता है।
+`/rules test` शुरुआती फ़्लैग भी स्वीकार करता है: `--cwd <dir>` दूसरे workspace के विरुद्ध मूल्यांकन करता है, `--env KEY=मान` (दोहराने योग्य) `when.env` के लिए होस्ट env ओवरराइड करता है, `--agent <चयनकर्ता>` (दोहराने योग्य) `agents` आयाम के लिए पहचान उम्मीदवार देता है, और `--platform <नाम>` `when.platform` के लिए होस्ट प्लेटफ़ॉर्म ओवरराइड करता है। बहु-फ़ाइल शृंखलाओं (जैसे `searchUp`) में हर नियम पंक्ति अपनी स्रोत फ़ाइल के साथ चिह्नित होती है।
 
 कमांड आउटपुट केवल UI के लिए है — मॉडल नियमों को केवल उनके उत्पन्न टूल परिणामों से ही सीखता है। `language` आउटपुट भाषा चुनता है। नियम फ़ाइल का JSON Schema [docs/rules-format.schema.json](docs/rules-format.schema.json) पर साथ आता है (संपादक पूर्णता के लिए `# yaml-language-server: $schema=...` से जोड़ें)।
 
@@ -172,7 +173,7 @@ node scripts/repair-session-logs.mjs repair [--home DIR] [--dry-run]
 pnpm install        # node ^22.19 || >=24
 pnpm run typecheck  # tsc, src + tests
 pnpm run lint       # eslint, src + tests + scripts
-pnpm test           # vitest: 106 tests, 8 suites
+pnpm test           # vitest: 133 tests, 8 suites
 pnpm run test:coverage  # कवरेज द्वार (90/80/90/90)
 pnpm run build      # tsc डिक्लेरेशन + tsdown bundles (lib/)
 pnpm run pack:check # build + pack (प्रकाशित आर्टिफ़ैक्ट)

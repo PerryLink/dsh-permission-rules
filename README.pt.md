@@ -55,8 +55,8 @@ Um segundo modelo responde *"ESTA chamada é segura?"* com julgamento, mas custa
 - ✅ **Seam de aprovação oficial** — `ask` flui por `ctx.approval`; nunca reimplementado, nunca contornado
 - ✅ **Auditoria completa** — os eventos `permissionRules/decision` carregam a ação da regra, o cwd do workspace E o resultado final de cada chamada; `/rules decisions` reproduz o rastro na sessão
 - ✅ **Implantação em simulação** — `enforce: false` audita o que a política *faria* (ação hipotética + resultado real posterior, marcado com `dryRun`) enquanto deixa todas as chamadas passarem; teste seguro de políticas em produção
-- ✅ **Teste em seco** — `/rules test <tool> <json-args>` avalia as regras ativas sem executar nada, com sobrescritas `--cwd`, `--env` e `--agent` para cada dimensão
-- ✅ **Recarga a quente** — vigilância Chokidar com debounce; uma edição quebrada mantém as regras anteriores, nunca quebra
+- ✅ **Teste em seco** — `/rules test <tool> <json-args>` avalia as regras ativas sem executar nada, com sobrescritas `--cwd`, `--env`, `--agent` e `--platform` para cada dimensão
+- ✅ **Recarga a quente** — vigilância Chokidar com debounce; uma edição quebrada mantém as regras anteriores, nunca quebra; um arquivo de regras criado no meio da sessão (o do projeto ou o fallback) é adotado automaticamente, sem recarga manual
 - ✅ **Falha ruidosa** — YAML inválido, ações/campos desconhecidos, globs/regex ruins, padrões propensos a backtracking ou > `maxRules` fazem a carga falhar
 - ✅ **Caminho quente limitado** — matchers pré-compilados, O(regras × padrões), limitado por `maxRules`; o grau de backtracking de glob limitado por `maxGlobStars`
 
@@ -68,7 +68,7 @@ dsh plugin --profile web add "github:PerryLink/dsh-permission-rules#main"
 
 # ou a partir de um tarball empacotado (artefatos compilados, sem permissão de build)
 pnpm pack
-dsh plugin --profile web add ./dsh-permission-rules-0.3.0.tgz
+dsh plugin --profile web add ./dsh-permission-rules-0.4.0.tgz
 
 # 2. reinicie
 dsh --profile web
@@ -119,12 +119,13 @@ Todos os ajustes são campos `Config` do Schemastery (alteráveis no cordis.yml)
 
 ```
 /rules                        lista as regras ativas, seus arquivos de origem e qualquer erro da última recarga
+/rules list                   alias explícito da listagem simples
 /rules reload                 relê a cadeia de arquivos de regras deste workspace
 /rules decisions [n]          mostra as últimas n decisões de permissão desta sessão (padrão 10)
 /rules test <tool> <json>     avalia em seco as regras contra uma chamada hipotética, ex.: /rules test bash {"command":"git push origin main"}
 ```
 
-`/rules test` também aceita sinalizadores iniciais: `--cwd <dir>` avalia contra outro workspace, `--env CHAVE=VALOR` (repetível) sobrescreve o ambiente para `when.env`, e `--agent <seletor>` (repetível) fornece candidatos de identidade para a dimensão `agents`.
+`/rules test` também aceita sinalizadores iniciais: `--cwd <dir>` avalia contra outro workspace, `--env CHAVE=VALOR` (repetível) sobrescreve o ambiente para `when.env`, `--agent <seletor>` (repetível) fornece candidatos de identidade para a dimensão `agents`, e `--platform <nome>` sobrescreve a plataforma para `when.platform`. Em cadeias de vários arquivos (ex.: `searchUp`), cada linha de regra é atribuída ao seu próprio arquivo de origem.
 
 A saída dos comandos é somente UI — o modelo aprende as regras apenas pelos resultados de ferramenta que elas produzem. `language` escolhe o idioma da saída. Um JSON Schema do arquivo de regras é distribuído em [docs/rules-format.schema.json](docs/rules-format.schema.json) (conecte-o com `# yaml-language-server: $schema=...` para autocompletar no editor).
 
@@ -172,7 +173,7 @@ node scripts/repair-session-logs.mjs repair [--home DIR] [--dry-run]
 pnpm install        # node ^22.19 || >=24
 pnpm run typecheck  # tsc, src + tests
 pnpm run lint       # eslint, src + tests + scripts
-pnpm test           # vitest: 106 tests, 8 suites
+pnpm test           # vitest: 133 tests, 8 suites
 pnpm run test:coverage  # portão de cobertura (90/80/90/90)
 pnpm run build      # declarações tsc + bundles tsdown (lib/)
 pnpm run pack:check # build + pack (o artefato publicado)

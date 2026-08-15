@@ -40,7 +40,7 @@ describe('/rules command', () => {
       expect(text).toContain(join(cwd, '.dsh', 'rules.yaml'))
       expect(text).toContain('1. deny [tools:bash,pwsh params:command=git push* paths:**/secrets/**]: 禁止 push 到受保护路径')
       expect(text).toContain('2. ask [tools:edit,write]: 写文件需要确认')
-      expect(text).toContain('Usage: /rules [reload | decisions [n] | test <tool> <json-args>]')
+      expect(text).toContain('Usage: /rules [list | reload | decisions [n] | test <tool> <json-args>]')
     } finally {
       removeWorkspace(cwd)
     }
@@ -105,6 +105,49 @@ describe('/rules command', () => {
       expect(text).toContain('Unknown /rules argument "nuke"')
     } finally {
       removeWorkspace(cwd)
+    }
+  })
+
+  it('/rules list is an explicit alias for the bare listing', async () => {
+    const cwd = workspaceWithRules()
+    const harness = await mountHarness({}, { cwd })
+    try {
+      const execution = await harness.ctx.commands.execute(harness.agent, '/rules list', new AbortController().signal)
+      expect(execution?.result.kind).toBe('success')
+      const text = execution?.result.kind === 'success' ? execution.result.text ?? '' : ''
+      expect(text).toContain('2 rule(s)')
+      expect(text).toContain('1. deny')
+      // The alias takes no further arguments.
+      const extra = await harness.ctx.commands.execute(harness.agent, '/rules list extra', new AbortController().signal)
+      expect(extra?.result.kind).toBe('error')
+      const extraText = extra?.result.kind === 'error' ? extra.result.text : ''
+      expect(extraText).toContain('Unknown /rules argument "list extra"')
+    } finally {
+      removeWorkspace(cwd)
+    }
+  })
+
+  it('attributes every rule line to its source file in multi-file chains', async () => {
+    // The child workspace sits INSIDE the parent workspace, so the
+    // searchUp walk merges both rule files (child nearest-first).
+    const parent = tempWorkspace()
+    const child = join(parent, 'nested', 'child')
+    mkdirSync(join(parent, '.dsh'), { recursive: true })
+    mkdirSync(join(child, '.dsh'), { recursive: true })
+    writeFileSync(join(parent, '.dsh', 'rules.yaml'), 'rules:\n  - match: { tools: [read] }\n    action: ask\n    reason: parent gates reads\n', 'utf8')
+    writeFileSync(join(child, '.dsh', 'rules.yaml'), 'rules:\n  - match: { tools: [bash] }\n    action: deny\n    reason: child denies bash\n', 'utf8')
+    const harness = await mountHarness({ watch: false, searchUp: true }, { cwd: child })
+    try {
+      const execution = await harness.ctx.commands.execute(harness.agent, '/rules', new AbortController().signal)
+      expect(execution?.result.kind).toBe('success')
+      const text = execution?.result.kind === 'success' ? execution.result.text ?? '' : ''
+      expect(text).toContain('2 rule(s)')
+      expect(text).toContain('1. deny [tools:bash] [src:.dsh/rules.yaml]')
+      expect(text).toContain('2. ask [tools:read] [src:')
+      // Both rules are attributed to their own file, not the nearest one.
+      expect(text).not.toContain('2. ask [tools:read] [src:.dsh/rules.yaml]')
+    } finally {
+      removeWorkspace(parent)
     }
   })
 
@@ -228,6 +271,26 @@ describe('/rules test', () => {
       expect(plain?.result.kind === 'success' && plain.result.text?.includes('matches no rule')).toBe(true)
       const hit = await harness.ctx.commands.execute(harness.agent, '/rules test --agent subagent bash {}', new AbortController().signal)
       expect(hit?.result.kind === 'success' && hit.result.text?.includes('matches rule 1 (deny)')).toBe(true)
+    } finally {
+      removeWorkspace(cwd)
+    }
+  })
+
+  it('--platform overrides the host platform for when.platform matching', async () => {
+    // Pick a platform that is NOT the host's, so both match and no-match
+    // arms are exercised deterministically on every CI OS.
+    const foreign = process.platform === 'win32' ? 'darwin' : 'win32'
+    const cwd = workspaceWithRules(`rules:\n  - match: { tools: [bash], when: { platform: [${foreign}] } }\n    action: deny\n    reason: ${foreign} shells are gated\n`)
+    const harness = await mountHarness({}, { cwd })
+    try {
+      const plain = await harness.ctx.commands.execute(harness.agent, '/rules test bash {}', new AbortController().signal)
+      expect(plain?.result.kind === 'success' && plain.result.text?.includes('matches no rule')).toBe(true)
+      const hit = await harness.ctx.commands.execute(harness.agent, `/rules test --platform ${foreign} bash {}`, new AbortController().signal)
+      expect(hit?.result.kind === 'success' && hit.result.text?.includes('matches rule 1 (deny)')).toBe(true)
+      const bad = await harness.ctx.commands.execute(harness.agent, '/rules test --platform beos bash {}', new AbortController().signal)
+      expect(bad?.result.kind).toBe('error')
+      const badText = bad?.result.kind === 'error' ? bad.result.text : ''
+      expect(badText).toContain('Unknown platform "beos"')
     } finally {
       removeWorkspace(cwd)
     }

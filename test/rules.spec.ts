@@ -566,4 +566,11 @@ rules:
     expect(line.length).toBeLessThan(long.length)
     expect(line).toContain(`${'x'.repeat(120)}…`)
   })
+
+  it('attributes the source file when one is provided (multi-file chains)', () => {
+    const set = rules('rules:\n  - match: { tools: [bash] }\n    action: deny\n    reason: no bash')
+    expect(describeRule(set.rules[0]!, EN, '.dsh/rules.yaml')).toBe('1. deny [tools:bash] [src:.dsh/rules.yaml]: no bash')
+    expect(describeRule(set.rules[0]!, EN)).toBe('1. deny [tools:bash]: no bash')
+    expect(describeRule(set.rules[0]!, EN, '')).toBe('1. deny [tools:bash]: no bash')
+  })
 })

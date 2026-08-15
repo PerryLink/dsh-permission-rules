@@ -100,9 +100,11 @@ This plugin only produces `ask` decisions; the `ask` goes to the official `ctx.a
 
 ## Loading and hot reload
 
-- Lazily discovered per session cwd and cached on the first `tools/pre-execute` (least-recently-used eviction beyond `maxCachedWorkspaces`).
+- Lazily discovered per session cwd and cached on the first `tools/pre-execute` (least-recently-used eviction beyond `maxCachedWorkspaces`); the cache key is the resolved cwd (case-folded on Windows), so differently-spelled paths share one entry.
 - Invalid YAML, unknown fields/actions, bad globs/regexes, backtracking-prone patterns, and counts over `maxRules` are load-time errors: `badFilePolicy: fail` (default) makes the first tool call in that workspace fail loudly; `ignore-with-warning` warns and degrades to an empty rule set.
 - An absolute `rulesFile` or a configured `fallbackPath` is validated at plugin mount — missing or invalid fails the mount.
 - File changes reload through Chokidar with a debounce (`watch`, `watchStabilityThresholdMs`); a failed reload keeps the previous rules and only warns — never crashes. `/rules reload` triggers the same path manually; `/rules decisions` and `/rules test` inspect the trail and dry-run the rules.
-- `/rules test` accepts leading flags: `--cwd <dir>` evaluates against another workspace (rule discovery AND path normalization), `--env KEY=VALUE` (repeatable) overrides host env for `when.env`, and `--agent <selector>` (repeatable) supplies identity candidates for the `agents` dimension.
+- Expected-but-absent rule files (the project file when it is not in effect, a fallback after it was deleted) are watched through their deepest existing ancestor directory: creating one mid-session is adopted automatically without a manual reload. Under `searchUp` only the immediate cwd-level candidate is watched — creating a rule file in a deeper ancestor still needs `/rules reload`.
+- `/rules` lists the active rules (with `list` as an explicit alias); in multi-file chains every rule line is attributed to its own source file.
+- `/rules test` accepts leading flags: `--cwd <dir>` evaluates against another workspace (rule discovery AND path normalization), `--env KEY=VALUE` (repeatable) overrides host env for `when.env`, `--agent <selector>` (repeatable) supplies identity candidates for the `agents` dimension, and `--platform <name>` overrides the host platform for `when.platform`.
 - `enforce: false` puts the plugin in dry-run mode: deny/ask hits are audit-logged with a `dryRun` marker (keeping the would-be action and the real downstream outcome) and every call passes through — use it to trial a new policy in production before enforcing it. `/rules` prints a dry-run notice while the mode is active.

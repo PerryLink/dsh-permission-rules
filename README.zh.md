@@ -55,8 +55,8 @@ tools/pre-execute waterfall                     approval/request waterfall（ans
 - ✅ **官方审批 seam** — `ask` 走 `ctx.approval`；不重复实现、绝不绕过
 - ✅ **完整审计** — `permissionRules/decision` 事件记录规则动作、工作区 cwd 与最终裁决；`/rules decisions` 可在会话内回放审计轨迹
 - ✅ **干跑上线** — `enforce: false` 只审计策略「本会做什么」（记录本会动作 + 下游真实结果，带 `dryRun` 标记），所有调用照常透传；可在生产环境安全试跑新策略
-- ✅ **干跑测试** — `/rules test <工具> <json-参数>` 不执行任何东西地评估规则命中，支持 `--cwd`、`--env`、`--agent` 覆盖每个匹配维度
-- ✅ **热更新** — Chokidar 监视 + 去抖；改坏了保留旧规则，绝不崩溃
+- ✅ **干跑测试** — `/rules test <工具> <json-参数>` 不执行任何东西地评估规则命中，支持 `--cwd`、`--env`、`--agent`、`--platform` 覆盖每个匹配维度
+- ✅ **热更新** — Chokidar 监视 + 去抖；改坏了保留旧规则，绝不崩溃；会话中途创建的规则文件（项目文件或 fallback）自动生效，无需手动重载
 - ✅ **响亮失败** — 非法 YAML、未知字段/action、坏 glob/正则、易回溯灾难的模式、超过 `maxRules` 都使加载失败
 - ✅ **热路径有界** — 预编译匹配器，O(规则数 × 模式数)，`maxRules` 封顶；glob 回溯度由 `maxGlobStars` 封顶
 
@@ -68,7 +68,7 @@ dsh plugin --profile web add "github:PerryLink/dsh-permission-rules#main"
 
 # 或从打包好的 tarball 安装（预构建产物，无需构建许可）
 pnpm pack
-dsh plugin --profile web add ./dsh-permission-rules-0.3.0.tgz
+dsh plugin --profile web add ./dsh-permission-rules-0.4.0.tgz
 
 # 2. 重启
 dsh --profile web
@@ -119,12 +119,13 @@ dsh --profile web --dump-config | grep -A4 'id: permission-rules'   # 验证挂�
 
 ```
 /rules                        列出当前生效规则、来源文件与最近一次重载错误
+/rules list                   裸列出的显式别名
 /rules reload                 重读本工作区的规则文件链
 /rules decisions [n]          显示本会话最近 n 条权限裁决（默认 10）
 /rules test <工具> <json>     对假设调用干跑评估，如 /rules test bash {"command":"git push origin main"}
 ```
 
-`/rules test` 还支持前置标志：`--cwd <目录>` 换一个工作区评估，`--env 键=值`（可重复）覆盖宿主环境变量以测试 `when.env`，`--agent <选择器>`（可重复）为 `agents` 维度提供身份候选。
+`/rules test` 还支持前置标志：`--cwd <目录>` 换一个工作区评估，`--env 键=值`（可重复）覆盖宿主环境变量以测试 `when.env`，`--agent <选择器>`（可重复）为 `agents` 维度提供身份候选，`--platform <平台名>` 覆盖宿主平台以测试 `when.platform`。多文件链（如 `searchUp`）下，每条规则行都会标注它自己的来源文件。
 
 命令输出只进 UI——模型只通过规则产生的工具结果感知规则。`language` 选择输出语言。规则文件的 JSON Schema 随包发布在 [docs/rules-format.schema.json](docs/rules-format.schema.json)（用 `# yaml-language-server: $schema=...` 启用编辑器补全）。
 
@@ -172,7 +173,7 @@ node scripts/repair-session-logs.mjs repair [--home DIR] [--dry-run]
 pnpm install        # node ^22.19 || >=24
 pnpm run typecheck  # tsc，src + tests
 pnpm run lint       # eslint，src + tests + scripts
-pnpm test           # vitest：106 测试 / 8 套件
+pnpm test           # vitest：133 测试 / 8 套件
 pnpm run test:coverage  # 覆盖率门禁（90/80/90/90）
 pnpm run build      # tsc 声明 + tsdown 打包（lib/）
 pnpm run pack:check # 构建 + pack（发布产物）

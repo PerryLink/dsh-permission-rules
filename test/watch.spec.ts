@@ -161,6 +161,126 @@ describe('rule-file watching', () => {
     }
   })
 
+  it('a rule file created mid-session (empty chain) is adopted without a manual reload', async () => {
+    const cwd = tempWorkspace() // no .dsh/rules.yaml yet
+    const harness = await mountHarness({ watch: true, watchStabilityThresholdMs: 10 }, { cwd })
+    try {
+      await dispatchPreExecute(harness.ctx, makeExec({ name: 'bash', arguments: {}, agent: harness.agent }))
+      // The empty chain watches the deepest existing ancestor of the
+      // would-be project file, so the creation fires an adoption. (The key
+      // is case-folded on Windows; compare paths without ASCII case.)
+      const candidateWatcher = watchers.at(-1)
+      expect(candidateWatcher?.path.toLowerCase()).toBe(cwd.toLowerCase())
+      mkdirSync(join(cwd, '.dsh'), { recursive: true })
+      writeFileSync(join(cwd, '.dsh', 'rules.yaml'), GOOD_1, 'utf8')
+      candidateWatcher?.emit('add', join(cwd, '.dsh', 'rules.yaml'))
+      await vi.waitFor(async () => {
+        const decision = await dispatchPreExecute(
+          harness.ctx,
+          makeExec({ name: 'bash', arguments: {}, agent: harness.agent }),
+        )
+        expect(decision).toEqual({ kind: 'deny', reason: 'no bash v1' })
+      })
+    } finally {
+      removeWorkspace(cwd)
+    }
+  })
+
+  it('a fallback deleted mid-session is re-adopted when recreated', async () => {
+    const cwd = tempWorkspace()
+    const fallbackDir = tempWorkspace()
+    const fallback = join(fallbackDir, 'fallback.yaml')
+    // Deployment-file validation requires the configured fallback to EXIST
+    // at mount; the candidate watch covers deletion + recreation after that.
+    writeFileSync(fallback, 'rules:\n  - match: { tools: [bash] }\n    action: deny\n    reason: fallback rules\n', 'utf8')
+    const harness = await mountHarness({ watch: true, watchStabilityThresholdMs: 10, fallbackPath: fallback }, { cwd })
+    try {
+      await dispatchPreExecute(harness.ctx, makeExec({ name: 'bash', arguments: {}, agent: harness.agent }))
+      // Chain = [fallback]: the fallback gets a file watcher, the absent
+      // project file gets a candidate watcher on its ancestor directory.
+      const fallbackWatcher = watchers.find(entry => entry.path.toLowerCase() === fallback.toLowerCase())
+      expect(fallbackWatcher).toBeDefined()
+      rmSync(fallback)
+      fallbackWatcher?.emit('unlink', fallback)
+      await vi.waitFor(async () => {
+        const decision = await dispatchPreExecute(
+          harness.ctx,
+          makeExec({ name: 'bash', arguments: {}, agent: harness.agent }),
+        )
+        expect(decision).toEqual({ kind: 'allow' })
+      })
+      // Empty chain again: both the project and fallback candidates are
+      // watched through their ancestor directories; recreate the fallback.
+      const candidateWatcher = watchers.at(-1)
+      expect(candidateWatcher?.path.toLowerCase()).toBe(fallbackDir.toLowerCase())
+      writeFileSync(fallback, 'rules:\n  - match: { tools: [bash] }\n    action: deny\n    reason: fallback rules\n', 'utf8')
+      candidateWatcher?.emit('add', fallback)
+      await vi.waitFor(async () => {
+        const decision = await dispatchPreExecute(
+          harness.ctx,
+          makeExec({ name: 'bash', arguments: {}, agent: harness.agent }),
+        )
+        expect(decision).toEqual({ kind: 'deny', reason: 'fallback rules' })
+      })
+    } finally {
+      removeWorkspace(cwd)
+      removeWorkspace(fallbackDir)
+    }
+  })
+
+  it('a recreated project file switches back from the active fallback', async () => {
+    const cwd = workspaceWithRules()
+    const fallbackDir = tempWorkspace()
+    const fallback = join(fallbackDir, 'fallback.yaml')
+    writeFileSync(fallback, 'rules:\n  - match: { tools: [bash] }\n    action: deny\n    reason: fallback rules\n', 'utf8')
+    const harness = await mountHarness({ watch: true, watchStabilityThresholdMs: 10, fallbackPath: fallback }, { cwd })
+    try {
+      await dispatchPreExecute(harness.ctx, makeExec({ name: 'bash', arguments: {}, agent: harness.agent }))
+      const projectWatcher = watchers.at(-1)
+      expect(projectWatcher).toBeDefined()
+      rmSync(join(cwd, '.dsh', 'rules.yaml'))
+      projectWatcher?.emit('unlink', join(cwd, '.dsh', 'rules.yaml'))
+      await vi.waitFor(async () => {
+        const decision = await dispatchPreExecute(
+          harness.ctx,
+          makeExec({ name: 'bash', arguments: {}, agent: harness.agent }),
+        )
+        expect(decision).toEqual({ kind: 'deny', reason: 'fallback rules' })
+      })
+      // The absent project file is now watched through its parent directory.
+      const candidateWatcher = watchers.at(-1)
+      expect(candidateWatcher?.path.toLowerCase()).toBe(join(cwd, '.dsh').toLowerCase())
+      writeFileSync(join(cwd, '.dsh', 'rules.yaml'), GOOD_2, 'utf8')
+      candidateWatcher?.emit('add', join(cwd, '.dsh', 'rules.yaml'))
+      await vi.waitFor(async () => {
+        const decision = await dispatchPreExecute(
+          harness.ctx,
+          makeExec({ name: 'bash', arguments: {}, agent: harness.agent }),
+        )
+        expect(decision).toEqual({ kind: 'deny', reason: 'no bash v2' })
+      })
+    } finally {
+      removeWorkspace(cwd)
+      removeWorkspace(fallbackDir)
+    }
+  })
+
+  it('differently-spelled paths to one workspace share a single cache entry and watcher', async () => {
+    const cwd = workspaceWithRules()
+    const harness = await mountHarness({ watch: true }, { cwd })
+    const runtime = harness.ctx.get('permissionRulesRuntime') as PermissionRulesRuntime
+    const session2 = harness.ctx.sessions.create(SessionId('same-ws'), { meta: { cwd: `${cwd}/./` } })
+    const agent2 = makeAgent(session2)
+    try {
+      await dispatchPreExecute(harness.ctx, makeExec({ name: 'bash', arguments: {}, agent: harness.agent }))
+      await dispatchPreExecute(harness.ctx, makeExec({ name: 'bash', arguments: {}, agent: agent2 }))
+      // One canonical cache key → one workspace → one watcher on the file.
+      expect(runtime.activeWatcherCount()).toBe(1)
+    } finally {
+      removeWorkspace(cwd)
+    }
+  })
+
   it('a source switch to the fallback closes the watcher on the previous source', async () => {
     const cwd = workspaceWithRules()
     const fallbackDir = tempWorkspace()

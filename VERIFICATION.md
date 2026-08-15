@@ -2,6 +2,20 @@
 
 日期：2026-08-14 · 运行时：dsh `0.1.0-rc.6`（全局安装，`dsh` on PATH）· 平台：Windows（工具面为 `pwsh`）
 
+## v0.4.0 完善轮次（2026-08-15）验证记录
+
+在 v0.3.0 基础上实施四类完善（候选文件监听、`--platform` 测试标志、规则来源归属、缓存键规范化），全部通过仓库本地门禁（typecheck / lint / vitest 133 tests / 覆盖率 90-80-90-90 / build / pack / 五语 README 同步）。关键行为均有测试锁定（`watch.spec.ts` 12 用例、`command.spec.ts` 21 用例）：
+
+- **候选文件监听**（真实缺口修复）：chokidar 5 在 Windows 上对「父目录也缺失」的路径监听不可靠（实测探针：父目录存在时 `add` 可达，父子同建时无事件），故对未生效候选文件改监听其最近存在祖先目录，事件回调里 `existsSync` 判定后再重载——空链时创建 `.dsh/rules.yaml`、fallback 挂载后删除再重建、项目文件重建从 fallback 切回，三条路径均自动采纳，无需 `/rules reload`。
+- **`/rules test --platform <name>`**：`when.platform` 维度在任何宿主上可干跑测试；未知平台名响亮报错（五语 `testBadPlatform`）。
+- **来源归属**：多文件链（`searchUp`）下每条规则行标注自己的来源文件（工作区内显示相对路径，区外显示绝对路径）；`/rules list` 为裸列出显式别名。
+- **缓存键规范化**：`resolve(cwd)` + Windows 大小写折叠，同目录不同拼写共享一条缓存与一套 watcher（`watch.spec.ts` 断言 `activeWatcherCount() === 1`）。
+
+### 待办（延续）
+
+- rc.7 上线复核（见第 0 节待办三项）不变。
+- `searchUp` 下更深祖先层的新建文件仍需 `/rules reload`（已写入 docs 与 AGENTS.md 的既定限制）。
+
 ## 0. 2026-08-14 加固轮次（Unreleased）验证记录
 
 在上一轮验证基础上实施完善方案（P0-P3），全部通过仓库本地门禁：

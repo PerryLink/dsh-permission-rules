@@ -2,6 +2,23 @@
 
 All notable changes to dsh-permission-rules are recorded here, newest first.
 
+## v0.4.0 — 2026-08-15
+
+### Hot reload and workspace identity
+
+- **Mid-session rule-file creation is adopted automatically.** Expected-but-absent rule files (the project file when it is not in effect, a fallback deleted after mount) are now watched through their deepest existing ancestor directory (chokidar cannot reliably watch a missing path whose parent is also missing), so creating `.dsh/rules.yaml` — or recreating it after a fallback took over — takes effect without a manual `/rules reload`. Under `searchUp`, only the immediate cwd-level candidate is watched; deeper ancestors still need a reload.
+- The per-workspace cache key is now the resolved cwd, case-folded on Windows: differently-spelled paths to the same workspace share one cache entry and one watcher set instead of doubling both.
+
+### Commands and observability
+
+- `/rules test` accepts `--platform <name>` (one of the closed platform list): the `when.platform` match dimension is now dry-testable on any host, completing the flag coverage of every match dimension.
+- `/rules` lists each rule with its own source file in multi-file chains (`searchUp`), via a localized `src:` attribution token; `/rules list` is an explicit alias for the bare listing.
+- All five output languages carry the new `testBadPlatform` message, the updated usage strings, and the `src` token.
+
+### Engineering
+
+- 133 tests across 8 suites (new coverage: creation-adoption watch paths, fallback recreation, cache-key dedup, `--platform`, `list`, source attribution); coverage gate held. Five-language READMEs, both rules-format references, AGENTS.md, and the `/rules` command hint updated.
+
 ## v0.3.0 — 2026-08-14
 
 ### Rules vocabulary

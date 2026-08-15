@@ -5,7 +5,9 @@
  * deny/ask decision (and NEVER short-circuits on allow or passthrough),
  * the `permissionRules/decision` audit event, the `/rules` session command
  * (`list | reload | decisions [n] | test [flags] <tool> <json>`), and
- * Chokidar-driven reloads. Every registration is an effect.
+ * Chokidar-driven reloads (effective rule files plus candidate watches on
+ * expected-but-absent files, so mid-session creation is adopted). Every
+ * registration is an effect.
  * @module dsh-permission-rules/runtime
  */
 
@@ -17,7 +19,7 @@ import type { CommandInvocation, CommandResult } from '@deepseek-ai/dsh-commands
 import type { PreToolDecision, ToolExecution } from '@deepseek-ai/dsh-tools'
 import { resolveConfig } from './config.ts'
 import type { Config, ResolvedConfig } from './config.ts'
-import { compileRules, compileRulesChain, describeRule, findUnreachableRules, matchRules, parseRulesDocument, RuleError } from './rules.ts'
+import { compileRules, compileRulesChain, describeRule, findUnreachableRules, matchRules, normalizeWorkspacePath, parseRulesDocument, PLATFORMS, RuleError } from './rules.ts'
 import type { CompileOptions, CompiledRuleset, MatchContext, RuleHit } from './rules.ts'
 import { DESCRIBE_TOKENS, UI_PROSE } from './prose.ts'
 import type { UiProse } from './prose.ts'
@@ -41,6 +43,13 @@ interface LoadedRules {
   readonly failed?: true
 }
 
+/** One live watcher: rule-file watchers key by the file path; candidate watchers key by an ancestor directory and map each cwd to the absent file they are waiting for. */
+interface WatcherEntry {
+  readonly cwds: Set<string>
+  readonly close: () => void
+  readonly candidates?: Map<string, string>
+}
+
 /**
  * State and behavior. One instance per plugin mount; disposals are owned by
  * the watcher/timer effects registered in {@link apply}.
@@ -49,8 +58,8 @@ export class PermissionRulesRuntime {
   /** Loaded (or failed) rules per workspace cwd, least-recently-used first for eviction. */
   private readonly byCwd = new Map<string, LoadedRules>()
 
-  /** Live watchers per rule-file path, with the cwds each serves. */
-  private readonly watchers = new Map<string, { readonly cwds: Set<string>; readonly close: () => void }>()
+  /** Live watchers per watched path (rule file or candidate ancestor directory), with the cwds each serves. */
+  private readonly watchers = new Map<string, WatcherEntry>()
 
   /** Debounce timers per rule-file path. */
   private readonly timers = new Map<string, ReturnType<typeof setTimeout>>()
@@ -133,6 +142,18 @@ export class PermissionRulesRuntime {
   }
 
   /**
+   * Canonical per-workspace cache key: the resolved root, case-folded on
+   * Windows so differently-spelled paths to the same workspace share one
+   * cache entry and one watcher set instead of doubling both.
+   * @param cwd - the session's absolute workspace root.
+   * @returns the canonical key.
+   */
+  private cacheKey(cwd: string): string {
+    const resolved = resolve(cwd)
+    return process.platform === 'win32' ? resolved.toLowerCase() : resolved
+  }
+
+  /**
    * The rules in effect for one cwd, loading on first use. Under
    * `badFilePolicy: 'fail'` a bad initial load throws on EVERY use (the
    * pending tool call errors loudly) while the watcher keeps observing the
@@ -143,26 +164,27 @@ export class PermissionRulesRuntime {
    * @returns the loaded rules.
    */
   rulesFor(cwd: string): LoadedRules {
-    const existing = this.byCwd.get(cwd)
+    const key = this.cacheKey(cwd)
+    const existing = this.byCwd.get(key)
     if (existing !== undefined) {
       if (existing.failed === true) {
         throw new RuleError(existing.lastError ?? `rule load failed for ${cwd}`)
       }
-      this.byCwd.delete(cwd)
-      this.byCwd.set(cwd, existing)
+      this.byCwd.delete(key)
+      this.byCwd.set(key, existing)
       return existing
     }
-    this.evictIfFull(cwd)
+    this.evictIfFull(key)
     try {
       const loaded = this.load(cwd)
-      this.byCwd.set(cwd, loaded)
-      this.reconcileWatch(cwd, loaded.sources)
+      this.byCwd.set(key, loaded)
+      this.reconcileWatch(key, loaded.sources)
       return loaded
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error)
       const sources = this.resolveSources(cwd)
-      this.byCwd.set(cwd, { cwd, sources, compiled: { rules: [], caseInsensitivePaths: this.config.caseInsensitivePaths }, lastError: message, failed: true })
-      this.reconcileWatch(cwd, sources)
+      this.byCwd.set(key, { cwd, sources, compiled: { rules: [], caseInsensitivePaths: this.config.caseInsensitivePaths }, lastError: message, failed: true })
+      this.reconcileWatch(key, sources)
       throw error
     }
   }
@@ -175,17 +197,22 @@ export class PermissionRulesRuntime {
    * @param cwd - the workspace root.
    */
   reload(cwd: string): void {
-    const previous = this.byCwd.get(cwd)
+    const key = this.cacheKey(cwd)
+    const previous = this.byCwd.get(key)
     try {
       const loaded = this.load(cwd)
-      this.byCwd.set(cwd, loaded)
-      this.reconcileWatch(cwd, loaded.sources)
+      this.byCwd.set(key, loaded)
+      this.reconcileWatch(key, loaded.sources)
       this.ctx.logger.info(`permission-rules: reloaded ${loaded.compiled.rules.length} rule(s) from ${loaded.sources.join(', ') || '(empty rule set)'} for ${cwd}`)
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error)
       this.ctx.logger.warn(`permission-rules: reload failed for ${cwd}: ${message} (keeping previous rules)`)
-      if (previous !== undefined) this.byCwd.set(cwd, { ...previous, lastError: message })
-      else this.byCwd.set(cwd, { cwd, sources: this.resolveSources(cwd), compiled: { rules: [], caseInsensitivePaths: this.config.caseInsensitivePaths }, lastError: message, failed: true })
+      if (previous !== undefined) this.byCwd.set(key, { ...previous, lastError: message })
+      else {
+        const sources = this.resolveSources(cwd)
+        this.byCwd.set(key, { cwd, sources, compiled: { rules: [], caseInsensitivePaths: this.config.caseInsensitivePaths }, lastError: message, failed: true })
+        this.reconcileWatch(key, sources)
+      }
     }
   }
 
@@ -290,12 +317,13 @@ export class PermissionRulesRuntime {
     if (verb === 'reload') {
       if (rest.length > 0) return { kind: 'error', text: prose.unknownArg(invocation.rawInput.trim()) }
       this.reload(cwd)
-      const reloaded = this.byCwd.get(cwd)
+      const reloaded = this.byCwd.get(this.cacheKey(cwd))
       if (reloaded?.lastError !== undefined) return { kind: 'error', text: prose.reloadFailed(reloaded.lastError) }
       const rules = reloaded?.compiled.rules ?? []
       const source = reloaded === undefined || reloaded.sources.length === 0 ? prose.emptySource : reloaded.sources.join(', ')
       return { kind: 'success', text: prose.reloaded(rules.length, source) }
     }
+    if (verb === 'list' && rest.length > 0) return { kind: 'error', text: prose.unknownArg(invocation.rawInput.trim()) }
     if (verb === 'decisions') {
       if (rest.length > 1) return { kind: 'error', text: prose.unknownArg(invocation.rawInput.trim()) }
       let count = 10
@@ -309,7 +337,7 @@ export class PermissionRulesRuntime {
     if (verb === 'test') {
       return this.testCommand(raw, verbRaw ?? '', invocation, cwd, prose)
     }
-    if (verb !== '') return { kind: 'error', text: prose.unknownArg(invocation.rawInput.trim()) }
+    if (verb !== '' && verb !== 'list') return { kind: 'error', text: prose.unknownArg(invocation.rawInput.trim()) }
     let loaded: LoadedRules
     try {
       loaded = this.rulesFor(cwd)
@@ -321,7 +349,8 @@ export class PermissionRulesRuntime {
       lines.push(prose.noRules(cwd, this.config.fallbackPath !== undefined ? prose.fallbackMissing : ''))
     } else {
       lines.push(prose.rulesHeader(loaded.compiled.rules.length, loaded.sources, cwd))
-      lines.push(...loaded.compiled.rules.map(rule => describeRule(rule, DESCRIBE_TOKENS[this.config.language])))
+      const multiSource = loaded.sources.length > 1
+      lines.push(...loaded.compiled.rules.map(rule => describeRule(rule, DESCRIBE_TOKENS[this.config.language], multiSource ? this.displaySource(loaded.sources[rule.sourceIndex] ?? '', cwd) : undefined)))
       const unreachable = findUnreachableRules(loaded.compiled)
       if (unreachable.length > 0) lines.push(prose.unreachableWarning(unreachable.map(index => index + 1)))
     }
@@ -339,9 +368,11 @@ export class PermissionRulesRuntime {
    * Execute `/rules test` with optional leading flags: `--cwd <dir>`
    * evaluates against that workspace (rule discovery AND path
    * normalization), `--env KEY=VALUE` (repeatable) overrides host env for
-   * `when.env` matching, and `--agent <selector>` (repeatable) supplies
-   * agent-identity candidates for the `agents` dimension. The JSON
-   * argument tail is kept verbatim, so quoted JSON survives unchanged.
+   * `when.env` matching, `--agent <selector>` (repeatable) supplies
+   * agent-identity candidates for the `agents` dimension, and
+   * `--platform <name>` overrides the host platform for `when.platform`.
+   * The JSON argument tail is kept verbatim, so quoted JSON survives
+   * unchanged.
    * @param raw - the full raw command input.
    * @param verbRaw - the verb as typed.
    * @param invocation - the received command invocation (session agent).
@@ -354,6 +385,7 @@ export class PermissionRulesRuntime {
     const envOverrides: Record<string, string> = {}
     const agentSelectors: string[] = []
     let testCwd: string | undefined
+    let testPlatform: string | undefined
     let parsed = nextToken(rest)
     while (parsed !== undefined && parsed.token.startsWith('--')) {
       const flag = parsed.token
@@ -369,6 +401,9 @@ export class PermissionRulesRuntime {
         envOverrides[value.token.slice(0, equals)] = value.token.slice(equals + 1)
       } else if (flag === '--agent') {
         agentSelectors.push(value.token)
+      } else if (flag === '--platform') {
+        if (!PLATFORMS.includes(value.token)) return { kind: 'error', text: prose.testBadPlatform(value.token) }
+        testPlatform = value.token
       } else {
         return { kind: 'error', text: prose.testUnknownFlag(flag) }
       }
@@ -392,7 +427,7 @@ export class PermissionRulesRuntime {
       return { kind: 'error', text: error instanceof Error ? error.message : String(error) }
     }
     const context: MatchContext = {
-      platform: process.platform,
+      platform: testPlatform ?? process.platform,
       env: Object.keys(envOverrides).length === 0 ? process.env : { ...process.env, ...envOverrides },
       agents: agentSelectors.length > 0 ? agentSelectors : agentCandidates(invocation.agent),
     }
@@ -401,6 +436,13 @@ export class PermissionRulesRuntime {
       kind: 'success',
       text: hit === undefined ? prose.testNoMatch(tool) : prose.testHit(tool, hit.ruleIndex, hit.rule.action, hit.rule.reason),
     }
+  }
+
+  /** Render one rule-file source for per-rule attribution: workspace-relative when inside the cwd, raw otherwise. */
+  private displaySource(source: string, cwd: string): string {
+    if (source.length === 0) return ''
+    const relative = normalizeWorkspacePath(cwd, source, this.config.caseInsensitivePaths)
+    return relative.length > 0 ? relative : source
   }
 
   /** Render the session's `permissionRules/decision` audit trail, newest last. */
@@ -487,18 +529,99 @@ export class PermissionRulesRuntime {
    * Rebind `cwd` to its current rule-source chain. When a concrete source
    * left the chain (deleted file, fallback switch), detach the workspace
    * from watchers serving other sources and close the ones left empty, so
-   * long-running hosts cannot accumulate stale watchers. An empty chain (no
-   * rule file in effect) keeps the previous watchers alive: they own the
-   * "file recreated → adopted" signal, and the workspace-cache bound keeps
-   * the set of such watchers finite.
+   * long-running hosts cannot accumulate stale watchers. Expected-but-absent
+   * rule files (the project file when it is not effective, and a configured
+   * fallback that does not exist) are covered by candidate watchers on
+   * their deepest existing ancestor directory, so a file created
+   * mid-session is adopted without a manual `/rules reload`. With
+   * `searchUp`, only the immediate cwd-level candidate is watched —
+   * deeper ancestors are discovered on the next load.
    */
   private reconcileWatch(cwd: string, sources: readonly string[]): void {
-    if (sources.length === 0) return
     for (const [watchedSource, entry] of this.watchers) {
-      if (!sources.includes(watchedSource)) entry.cwds.delete(cwd)
+      if (!sources.includes(watchedSource)) {
+        entry.cwds.delete(cwd)
+        entry.candidates?.delete(cwd)
+      }
     }
     this.pruneWatchers()
     for (const source of sources) this.attachWatch(cwd, source)
+    for (const candidate of this.candidateSources(cwd)) {
+      if (sources.includes(candidate) || existsSync(candidate)) continue
+      this.attachCandidateWatch(cwd, candidate)
+    }
+  }
+
+  /**
+   * The rule-file paths a workspace COULD be served by: the project file
+   * (an absolute `rulesFile`, or `<cwd>/<rulesFile>` — the immediate level
+   * only under `searchUp`) plus the configured fallback.
+   */
+  private candidateSources(cwd: string): string[] {
+    const candidates: string[] = [isAbsolute(this.config.rulesFile) ? this.config.rulesFile : join(cwd, this.config.rulesFile)]
+    const fallback = this.config.fallbackPath
+    if (fallback !== undefined) candidates.push(isAbsolute(fallback) ? fallback : resolve(fallback))
+    return candidates
+  }
+
+  /**
+   * Watch one expected-but-absent rule file through its deepest existing
+   * ancestor directory. Chokidar cannot reliably watch a missing path when
+   * its parent is also missing, but directory watching is dependable; every
+   * relevant event re-checks existence and only triggers a reload once the
+   * candidate actually appeared, so unrelated workspace activity while the
+   * file is absent costs a stat, not a reload.
+   */
+  private attachCandidateWatch(cwd: string, candidate: string): void {
+    if (!this.config.watch) return
+    const dir = this.deepestExistingDir(dirname(candidate))
+    const existing = this.watchers.get(dir)
+    if (existing !== undefined) {
+      existing.cwds.add(cwd)
+      existing.candidates?.set(cwd, candidate)
+      return
+    }
+    const cwds = new Set([cwd])
+    const candidates = new Map([[cwd, candidate]])
+    const watcher = chokidar.watch(dir, { persistent: true, ignoreInitial: true })
+    const onEvent = (): void => this.scheduleReload(dir)
+    watcher.on('add', onEvent)
+    watcher.on('addDir', onEvent)
+    watcher.on('change', onEvent)
+    watcher.on('unlink', onEvent)
+    watcher.on('unlinkDir', onEvent)
+    watcher.on('error', (error: unknown) => {
+      this.ctx.logger.warn(`permission-rules: watcher error on ${dir}: ${String(error)}`)
+    })
+    this.watchers.set(dir, {
+      cwds,
+      candidates,
+      close: () => {
+        void watcher.close().catch((error: unknown) => {
+          this.ctx.logger.warn(`permission-rules: failed to close watcher on ${dir}: ${String(error)}`)
+        })
+      },
+    })
+    this.ctx.effect(() => () => {
+      this.watchers.get(dir)?.close()
+      this.watchers.delete(dir)
+      const timer = this.timers.get(dir)
+      if (timer !== undefined) {
+        clearTimeout(timer)
+        this.timers.delete(dir)
+      }
+    })
+  }
+
+  /** The deepest existing ancestor directory of `dir` (candidate watchers target directories, never missing files). */
+  private deepestExistingDir(dir: string): string {
+    let current = dir
+    for (;;) {
+      if (existsSync(current)) return current
+      const parent = dirname(current)
+      if (parent === current) return current
+      current = parent
+    }
   }
 
   /** Close and drop watchers whose workspace sets are empty, clearing their debounce timers. */
@@ -527,7 +650,10 @@ export class PermissionRulesRuntime {
     const oldest = this.byCwd.keys().next().value
     if (oldest === undefined) return
     this.byCwd.delete(oldest)
-    for (const entry of this.watchers.values()) entry.cwds.delete(oldest)
+    for (const entry of this.watchers.values()) {
+      entry.cwds.delete(oldest)
+      entry.candidates?.delete(oldest)
+    }
     this.pruneWatchers()
   }
 
@@ -541,13 +667,24 @@ export class PermissionRulesRuntime {
     return this.timers.size
   }
 
-  /** Debounce watch events into one reload per stability window. */
+  /**
+   * Debounce watch events into one reload per stability window. A
+   * candidate (directory) watcher only reloads a cwd once its expected
+   * file actually exists — unrelated events while the file is absent are
+   * dropped before any re-read.
+   */
   private scheduleReload(source: string): void {
     const existing = this.timers.get(source)
     if (existing !== undefined) clearTimeout(existing)
     const timer = setTimeout(() => {
       this.timers.delete(source)
-      for (const cwd of this.watchers.get(source)?.cwds ?? []) this.reload(cwd)
+      const entry = this.watchers.get(source)
+      if (entry === undefined) return
+      for (const cwd of entry.cwds) {
+        const candidate = entry.candidates?.get(cwd)
+        if (candidate !== undefined && !existsSync(candidate)) continue
+        this.reload(cwd)
+      }
     }, this.config.watchStabilityThresholdMs)
     this.timers.set(source, timer)
   }
@@ -568,7 +705,7 @@ export function apply(ctx: Context, config: Config): void {
   ctx.commands.register({
     name: 'rules',
     description: 'list, reload, audit, or dry-test the active permission rules for this workspace',
-    input: { hint: '[reload | decisions [n] | test [--cwd <dir>] [--env K=V] [--agent <sel>] <tool> <json-args>]' },
+    input: { hint: '[list | reload | decisions [n] | test [--cwd <dir>] [--env K=V] [--agent <sel>] [--platform <name>] <tool> <json-args>]' },
     handler: invocation => runtime.command(invocation),
   })
 }
