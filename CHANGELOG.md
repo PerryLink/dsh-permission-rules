@@ -2,6 +2,12 @@
 
 All notable changes to dsh-permission-rules are recorded here, newest first.
 
+## v0.4.2 — 2026-08-15
+
+### Ecosystem intake
+
+- Declares the DSH Hub Workshop intake manifest in `package.json#dshWorkshop` (`omdsh-workshop-package/v1`): `harness-profile` integration via the bundle patch, transactional install with generation rollback, restart-profile activation with supported dispose, structured permissions (`files:read`, `files:watch`, `session:append`, `network:none`), RC.6 compatibility, and a named `/rules` command capability. Runtime evidence paths stay `null` — author-declared only until Harness-produced lifecycle evidence exists.
+
 ## v0.4.1 — 2026-08-15
 
 ### Audit safety on every host (fixes [#2](https://github.com/PerryLink/dsh-permission-rules/issues/2))
