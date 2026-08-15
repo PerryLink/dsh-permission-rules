@@ -11,6 +11,8 @@
 [![Node](https://img.shields.io/badge/node-%5E22.19%20%7C%7C%20%3E%3D24-brightgreen.svg)](#)
 [![CI](https://img.shields.io/github/actions/workflow/status/PerryLink/dsh-permission-rules/ci.yml?branch=main&label=CI)](https://github.com/PerryLink/dsh-permission-rules/actions)
 [![Version](https://img.shields.io/github/v/tag/PerryLink/dsh-permission-rules?label=version)](https://github.com/PerryLink/dsh-permission-rules/releases)
+[![npm version](https://img.shields.io/npm/v/dsh-permission-rules)](https://www.npmjs.com/package/dsh-permission-rules)
+[![npm downloads](https://img.shields.io/npm/dm/dsh-permission-rules)](https://www.npmjs.com/package/dsh-permission-rules)
 
 [English](README.md) · [简体中文](README.zh.md) · [Español](README.es.md) · [Português](README.pt.md) · [हिन्दी](README.hi.md)
 
@@ -183,9 +185,10 @@ node scripts/check-readme-sync.mjs  # पाँच-भाषा README सिं
 
 headless एंड-टू-एंड सत्यापन रिकॉर्ड (deny द्वारा shell टूल रोकना, ask का approval seam से गुज़रना, `--dump-config`) [VERIFICATION.md](VERIFICATION.md) में देखें।
 
-## आभार
+## योगदानकर्ता
 
-- [@22xuan](https://github.com/22xuan) को धन्यवाद — rc.6 होस्ट द्वारा ऑडिट इवेंट के `ignorable` मार्कर को चुपचाप गिराने की विस्तृत रिपोर्ट ([#2](https://github.com/PerryLink/dsh-permission-rules/issues/2)) और अपस्ट्रीम harness चर्चा खोलने के लिए — रनटाइम होस्ट-क्षमता पहचान और दस्तावेज़ सुधार सीधे उसी विश्लेषण से निकले हैं।
+- [@PerryLink](https://github.com/PerryLink) — निर्माता और अनुरक्षक: नियम शब्दावली व मूल्यांकन, runtime, HMR निगरानी, सत्र-लॉग ऑडिट और पाँच-भाषा दस्तावेज़।
+- [@22xuan](https://github.com/22xuan) — rc.6 होस्ट द्वारा ऑडिट इवेंट के `ignorable` मार्कर को चुपचाप गिराने की विस्तृत रिपोर्ट ([#2](https://github.com/PerryLink/dsh-permission-rules/issues/2)) और अपस्ट्रीम harness चर्चा; v0.4.1 की रनटाइम होस्ट-क्षमता पहचान और दस्तावेज़ सुधार सीधे उसी विश्लेषण से निकले हैं।
 
 ## लाइसेंस
 

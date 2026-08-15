@@ -11,6 +11,8 @@
 [![Node](https://img.shields.io/badge/node-%5E22.19%20%7C%7C%20%3E%3D24-brightgreen.svg)](#)
 [![CI](https://img.shields.io/github/actions/workflow/status/PerryLink/dsh-permission-rules/ci.yml?branch=main&label=CI)](https://github.com/PerryLink/dsh-permission-rules/actions)
 [![Version](https://img.shields.io/github/v/tag/PerryLink/dsh-permission-rules?label=version)](https://github.com/PerryLink/dsh-permission-rules/releases)
+[![npm version](https://img.shields.io/npm/v/dsh-permission-rules)](https://www.npmjs.com/package/dsh-permission-rules)
+[![npm downloads](https://img.shields.io/npm/dm/dsh-permission-rules)](https://www.npmjs.com/package/dsh-permission-rules)
 
 [English](README.md) · [简体中文](README.zh.md) · [Español](README.es.md) · [Português](README.pt.md) · [हिन्दी](README.hi.md)
 
@@ -183,9 +185,10 @@ node scripts/check-readme-sync.mjs  # five-language README sync gate (also in CI
 
 See [VERIFICATION.md](VERIFICATION.md) for the headless end-to-end verification record (deny blocking a shell tool, ask routing through the approval seam, `--dump-config`).
 
-## Acknowledgments
+## Contributors
 
-- Thanks to [@22xuan](https://github.com/22xuan) for the detailed report on rc.6 hosts silently dropping the audit event's `ignorable` marker ([#2](https://github.com/PerryLink/dsh-permission-rules/issues/2)) and for filing the upstream harness discussion — the runtime host-capability detection and the documentation correction drew directly from that analysis.
+- [@PerryLink](https://github.com/PerryLink) — creator and maintainer: rule vocabulary and evaluation, runtime, HMR watch, session-log audit, and the five-language docs.
+- [@22xuan](https://github.com/22xuan) — the detailed report on rc.6 hosts silently dropping the audit event's `ignorable` marker ([#2](https://github.com/PerryLink/dsh-permission-rules/issues/2)) and the upstream harness discussion; the v0.4.1 runtime host-capability detection and the documentation correction drew directly from that analysis.
 
 ## License
 

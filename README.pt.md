@@ -11,6 +11,8 @@
 [![Node](https://img.shields.io/badge/node-%5E22.19%20%7C%7C%20%3E%3D24-brightgreen.svg)](#)
 [![CI](https://img.shields.io/github/actions/workflow/status/PerryLink/dsh-permission-rules/ci.yml?branch=main&label=CI)](https://github.com/PerryLink/dsh-permission-rules/actions)
 [![Version](https://img.shields.io/github/v/tag/PerryLink/dsh-permission-rules?label=version)](https://github.com/PerryLink/dsh-permission-rules/releases)
+[![npm version](https://img.shields.io/npm/v/dsh-permission-rules)](https://www.npmjs.com/package/dsh-permission-rules)
+[![npm downloads](https://img.shields.io/npm/dm/dsh-permission-rules)](https://www.npmjs.com/package/dsh-permission-rules)
 
 [English](README.md) · [简体中文](README.zh.md) · [Español](README.es.md) · [Português](README.pt.md) · [हिन्दी](README.hi.md)
 
@@ -183,9 +185,10 @@ node scripts/check-readme-sync.mjs  # portão de sincronização dos READMEs em 
 
 Veja [VERIFICATION.md](VERIFICATION.md) para o registro de verificação headless de ponta a ponta (deny bloqueando uma ferramenta de shell, ask roteado pelo seam de aprovação, `--dump-config`).
 
-## Agradecimentos
+## Contribuidores
 
-- Agradecemos a [@22xuan](https://github.com/22xuan) pelo relatório detalhado sobre hosts rc.6 descartando silenciosamente o marcador `ignorable` dos eventos de auditoria ([#2](https://github.com/PerryLink/dsh-permission-rules/issues/2)) e por abrir a discussão no harness upstream — a detecção de capacidade do host em tempo de execução e a correção da documentação derivam diretamente dessa análise.
+- [@PerryLink](https://github.com/PerryLink) — criador e mantenedor: vocabulário e avaliação de regras, runtime, vigilância HMR, auditoria do registro da sessão e documentação em cinco idiomas.
+- [@22xuan](https://github.com/22xuan) — o relatório detalhado sobre hosts rc.6 descartando silenciosamente o marcador `ignorable` dos eventos de auditoria ([#2](https://github.com/PerryLink/dsh-permission-rules/issues/2)) e a discussão no harness upstream; a detecção de capacidade do host da v0.4.1 e a correção da documentação derivam diretamente dessa análise.
 
 ## Licença
 

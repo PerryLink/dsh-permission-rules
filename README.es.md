@@ -11,6 +11,8 @@
 [![Node](https://img.shields.io/badge/node-%5E22.19%20%7C%7C%20%3E%3D24-brightgreen.svg)](#)
 [![CI](https://img.shields.io/github/actions/workflow/status/PerryLink/dsh-permission-rules/ci.yml?branch=main&label=CI)](https://github.com/PerryLink/dsh-permission-rules/actions)
 [![Version](https://img.shields.io/github/v/tag/PerryLink/dsh-permission-rules?label=version)](https://github.com/PerryLink/dsh-permission-rules/releases)
+[![npm version](https://img.shields.io/npm/v/dsh-permission-rules)](https://www.npmjs.com/package/dsh-permission-rules)
+[![npm downloads](https://img.shields.io/npm/dm/dsh-permission-rules)](https://www.npmjs.com/package/dsh-permission-rules)
 
 [English](README.md) · [简体中文](README.zh.md) · [Español](README.es.md) · [Português](README.pt.md) · [हिन्दी](README.hi.md)
 
@@ -183,9 +185,10 @@ node scripts/check-readme-sync.mjs  # puerta de sincronización de READMEs en ci
 
 Consulta [VERIFICATION.md](VERIFICATION.md) para el registro de verificación headless de extremo a extremo (deny bloqueando una herramienta de shell, ask enrutado por el seam de aprobación, `--dump-config`).
 
-## Agradecimientos
+## Colaboradores
 
-- Gracias a [@22xuan](https://github.com/22xuan) por el detallado informe sobre los hosts rc.6 que descartan silenciosamente el marcador `ignorable` de los eventos de auditoría ([#2](https://github.com/PerryLink/dsh-permission-rules/issues/2)) y por abrir la discusión en el harness upstream — la detección de capacidades del host en tiempo de ejecución y la corrección de la documentación derivan directamente de ese análisis.
+- [@PerryLink](https://github.com/PerryLink) — creador y mantenedor: vocabulario y evaluación de reglas, runtime, vigilancia HMR, auditoría del registro de sesión y documentación en cinco idiomas.
+- [@22xuan](https://github.com/22xuan) — el detallado informe sobre los hosts rc.6 que descartan silenciosamente el marcador `ignorable` de los eventos de auditoría ([#2](https://github.com/PerryLink/dsh-permission-rules/issues/2)) y la discusión en el harness upstream; la detección de capacidades del host de v0.4.1 y la corrección de la documentación derivan directamente de ese análisis.
 
 ## Licencia
 

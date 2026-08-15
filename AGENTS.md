@@ -15,6 +15,7 @@ Standalone DeepSeek Harness plugin repository (`dsh-permission-rules`). Developm
 - `docs/rules-format.md` (+ `.en.md`) — the rule file schema and the 5-rule security baseline; `docs/rules-format.schema.json` is the machine-readable schema for editor completion.
 - `scripts/repair-session-logs.mjs` — one-off repair for session logs written before the marker: rewrites targeted audit rows to carry `ignorable: true` (frame-preserving zstd rewrite, backups, `scan`/`repair`/`--dry-run` modes).
 - `scripts/check-readme-sync.mjs` — five-language README sync gate (section structure, config-table keys, `/rules` command docs); wired into CI.
+- `.github/ISSUE_TEMPLATE/*` + `.github/PULL_REQUEST_TEMPLATE.md` + `SECURITY.md` — structured issue forms (bug/feature), PR checklist, and the private vulnerability-reporting policy.
 
 ## Hard rules applied here
 
@@ -34,6 +35,7 @@ Standalone DeepSeek Harness plugin repository (`dsh-permission-rules`). Developm
 - `docs/rules-format.md` is the Chinese reference for the rule vocabulary; `docs/rules-format.en.md` is its English twin — update both together, plus `docs/rules-format.schema.json` whenever the vocabulary changes.
 - When the repo is published on GitHub, set topics `dsh`, `dsh-plugin`, `deepseek-harness`, `deepseek`, `cordis`, `permission`, `approval`, `ai-safety` (the ecosystem's visibility channel is the `dsh-plugin` topic; see dsh-plugin-guide §9).
 - License is Apache-2.0 (`LICENSE` + the package.json `license` field).
+- Community engineering: GitHub Discussions enabled (welcome post in Announcements); `main` branch protection requires the `gates` CI status (strict off), allows force pushes, and does NOT require PR reviews — maintainer direct pushes stay available, PRs with a red CI cannot merge. The About homepage points at the npm package page and topics mirror `package.json` keywords.
 
 ## Build
 

@@ -11,6 +11,8 @@
 [![Node](https://img.shields.io/badge/node-%5E22.19%20%7C%7C%20%3E%3D24-brightgreen.svg)](#)
 [![CI](https://img.shields.io/github/actions/workflow/status/PerryLink/dsh-permission-rules/ci.yml?branch=main&label=CI)](https://github.com/PerryLink/dsh-permission-rules/actions)
 [![Version](https://img.shields.io/github/v/tag/PerryLink/dsh-permission-rules?label=version)](https://github.com/PerryLink/dsh-permission-rules/releases)
+[![npm version](https://img.shields.io/npm/v/dsh-permission-rules)](https://www.npmjs.com/package/dsh-permission-rules)
+[![npm downloads](https://img.shields.io/npm/dm/dsh-permission-rules)](https://www.npmjs.com/package/dsh-permission-rules)
 
 [English](README.md) · [简体中文](README.zh.md) · [Español](README.es.md) · [Português](README.pt.md) · [हिन्दी](README.hi.md)
 
@@ -183,9 +185,10 @@ node scripts/check-readme-sync.mjs  # 五语 README 同步门禁（CI 同步执�
 
 headless 端到端验证记录（deny 阻止 shell 工具、ask 走审批 seam、`--dump-config`）见 [VERIFICATION.md](VERIFICATION.md)。
 
-## 致谢
+## 贡献者
 
-- 感谢 [@22xuan](https://github.com/22xuan) 关于 rc.6 宿主静默丢弃审计事件 `ignorable` 标记的详尽报告（[#2](https://github.com/PerryLink/dsh-permission-rules/issues/2)）以及其向上游 harness 提交的讨论——运行时宿主能力探测与文档修正均直接源自该分析。
+- [@PerryLink](https://github.com/PerryLink) — 创建者与维护者：规则词汇与求值、运行时、HMR 监听、会话日志审计及五语文档。
+- [@22xuan](https://github.com/22xuan) — 关于 rc.6 宿主静默丢弃审计事件 `ignorable` 标记的详尽报告（[#2](https://github.com/PerryLink/dsh-permission-rules/issues/2)）及其向上游 harness 提交的讨论；v0.4.1 的运行时宿主能力探测与文档修正均直接源自该分析。
 
 ## License
 
