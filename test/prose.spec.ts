@@ -40,6 +40,8 @@ describe('UI_PROSE', () => {
     expect(prose.usage.length).toBeGreaterThan(0)
     expect(prose.decisionsHeader(SAMPLE.shown, SAMPLE.total)).toContain('3')
     expect(prose.noDecisions.length).toBeGreaterThan(0)
+    expect(prose.auditDisabledNotice.length).toBeGreaterThan(0)
+    expect(prose.auditDisabledNotice).toContain('allowUnmarkedAudit')
     expect(prose.invalidDecisionsCount(SAMPLE.arg)).toContain(SAMPLE.arg)
     expect(prose.dryRunNotice.length).toBeGreaterThan(0)
     expect(prose.decisionLine(SAMPLE.seq, SAMPLE.action, SAMPLE.tool, SAMPLE.ruleIndex, SAMPLE.reason, false, undefined)).toContain(SAMPLE.tool)

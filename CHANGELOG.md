@@ -2,6 +2,19 @@
 
 All notable changes to dsh-permission-rules are recorded here, newest first.
 
+## v0.4.1 — 2026-08-15
+
+### Audit safety on every host (fixes [#2](https://github.com/PerryLink/dsh-permission-rules/issues/2))
+
+- Hosts whose `Session.append` predates the `ignorable` envelope marker (the `0.1.0-rc.6` line) silently drop the marker, writing audit events that make sessions unresumable on stricter harness builds (`SessionFormatUnsupportedError`). The runtime now detects such hosts BEFORE the first append (peer-version pre-check) and re-checks after the first append (probe of the returned envelope), then degrades gracefully: session-log audit is disabled with a one-time warning so session logs stay loadable everywhere.
+- New `allowUnmarkedAudit` config (default `false`): set `true` to opt back into the in-session audit trail on pre-marker hosts (accepting that those sessions may need `scripts/repair-session-logs.mjs` before loading on a newer harness). `/rules decisions` explains the disabled audit on degraded hosts.
+- `events.ts` no longer claims rc.6 hosts are harmless ("no failure either way") — the failure mode is documented accurately, and `isMarkedAuditEvent`/`isUnmarkedHostVersion` ship as exported capability helpers.
+- Thanks to [@22xuan](https://github.com/22xuan) for the detailed report and the upstream harness discussion; credited in the README Acknowledgments.
+
+### Engineering
+
+- 139 tests across 9 suites: new `audit-support.spec.ts` covers the version-line classification, the envelope probe, the pre-append degradation, the opt-in, and the `/rules decisions` notice. Five-language READMEs (config table, Known limitations, Acknowledgments), AGENTS.md, CHANGELOG, and VERIFICATION updated.
+
 ## v0.4.0 — 2026-08-15
 
 ### Hot reload and workspace identity

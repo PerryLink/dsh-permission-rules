@@ -2,6 +2,18 @@
 
 日期：2026-08-14 · 运行时：dsh `0.1.0-rc.6`（全局安装，`dsh` on PATH）· 平台：Windows（工具面为 `pwsh`）
 
+## v0.4.1 审计安全修复（2026-08-15）验证记录
+
+响应社区反馈 [Issue #2](https://github.com/PerryLink/dsh-permission-rules/issues/2)（22xuan）：rc.6 宿主的 `Session.append` 静默丢弃 `{ ignorable: true }` 选项，审计事件无标记落盘，导致会话在更严格构建上无法恢复（`SessionFormatUnsupportedError`）。已对照本地 rc.6 源码核实（`lib/index.js` `append()` 只透传 `sourceEventSeqs`/`surfaceOp`，返回事件无 `ignorable` 字段）。
+
+修复（全部有测试锁定，`test/audit-support.spec.ts` 6 用例 + config/prose 用例）：
+
+- **预检先行**：首次审计写入前读取 peer 版本（`@deepseek-ai/dsh-session/package.json` 经 `createRequire`），`0.1.0-rc.1`–`rc.6` 判定为已知无标记宿主 → **一次也不写入**，一次性警告后停用会话日志审计（rc.6 上会话日志零污染）。
+- **写入后探针**：非已知版本线在首次 append 后检查返回事件信封是否带 `ignorable: true`（`isMarkedAuditEvent`），不带则降级——post-rc.6 宿主行为同样被实证锁定。
+- **opt-in 逃生门**：新配置 `allowUnmarkedAudit`（默认 false）；设 true 恢复 rc.6 上的会话内轨迹（接受未来升级时需 `repair-session-logs.mjs` 的风险）。`/rules decisions` 在降级宿主上显示说明行（五语 `auditDisabledNotice`）。
+- 测试 harness 默认 `allowUnmarkedAudit: true` 挂载（既有审计断言不变）；`isUnmarkedHostVersion`/`isMarkedAuditEvent` 导出为能力判定助手。
+- 文档：五语 README（config 表新增一行、Known limitations 如实重写、新增 Acknowledgments 致谢 22xuan）、AGENTS.md、CHANGELOG、`events.ts` 注释全部修正。
+
 ## v0.4.0 完善轮次（2026-08-15）验证记录
 
 在 v0.3.0 基础上实施四类完善（候选文件监听、`--platform` 测试标志、规则来源归属、缓存键规范化），全部通过仓库本地门禁（typecheck / lint / vitest 133 tests / 覆盖率 90-80-90-90 / build / pack / 五语 README 同步）。关键行为均有测试锁定（`watch.spec.ts` 12 用例、`command.spec.ts` 21 用例）：

@@ -14,3 +14,6 @@
         maxRules: 256
         patternMode: glob
         watch: true
+        # allowUnmarkedAudit: false   # hosts that predate the ignorable marker
+        #                             # degrade to audit-off by default (safe);
+        #                             # set true to keep the in-session trail

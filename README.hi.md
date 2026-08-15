@@ -53,7 +53,7 @@ tools/pre-execute waterfall                     approval/request waterfall (answ
 - ✅ **नियम मेटाडेटा** — `enabled: false`, `description`, `tags`; `/rules` पहले किसी catch-all से छिपे नियमों की चेतावनी देता है
 - ✅ **waterfall-सुरक्षित** — `allow`/पास-थ्रू हमेशा `next()` बुलाते हैं; केवल `deny`/`ask` शॉर्ट-सर्किट करते हैं
 - ✅ **आधिकारिक approval seam** — `ask` `ctx.approval` से होकर जाता है; कभी पुनः-कार्यान्वित नहीं, कभी बायपास नहीं
-- ✅ **पूर्ण ऑडिट** — `permissionRules/decision` इवेंट हर कॉल के लिए नियम क्रिया, workspace cwd और अंतिम परिणाम रखते हैं; `/rules decisions` सत्र में रास्ता फिर चलाता है
+- ✅ **पूर्ण ऑडिट** — `permissionRules/decision` इवेंट हर कॉल के लिए नियम क्रिया, workspace cwd और अंतिम परिणाम रखते हैं; `/rules decisions` सत्र में रास्ता फिर चलाता है; ऑडिट एन्वेलप मार्कर से पुराने होस्ट अप्राप्य लॉग लिखने के बजाय एक-बार चेतावनी के साथ ऑडिट-बंद हो जाते हैं (`allowUnmarkedAudit` पुनः चालू करता है)
 - ✅ **dry-run रोलआउट** — `enforce: false` केवल ऑडिट करता है कि नीति *क्या करती* (काल्पनिक क्रिया + वास्तविक डाउनस्ट्रीम परिणाम, `dryRun` चिह्नित) और हर कॉल को पास करता है; उत्पादन में नई नीति का सुरक्षित परीक्षण
 - ✅ **dry-run परीक्षण** — `/rules test <tool> <json-args>` कुछ भी निष्पादित किए बिना सक्रिय नियमों का मूल्यांकन करता है, हर मिलान आयाम के लिए `--cwd`, `--env`, `--agent` और `--platform` ओवरराइड के साथ
 - ✅ **हॉट रीलोड** — debounce सहित Chokidar निगरानी; टूटा हुआ संपादन पिछले नियम रखता है, कभी क्रैश नहीं करता; सत्र के बीच बनाई गई नियम फ़ाइल (प्रोजेक्ट की या fallback) स्वतः अपनाई जाती है, मैनुअल रीलोड की आवश्यकता नहीं
@@ -68,7 +68,7 @@ dsh plugin --profile web add "github:PerryLink/dsh-permission-rules#main"
 
 # या पैक किए गए tarball से (बिल्ट आर्टिफ़ैक्ट, build अनुमति की ज़रूरत नहीं)
 pnpm pack
-dsh plugin --profile web add ./dsh-permission-rules-0.4.0.tgz
+dsh plugin --profile web add ./dsh-permission-rules-0.4.1.tgz
 
 # 2. पुनः आरंभ करें
 dsh --profile web
@@ -114,6 +114,7 @@ dsh --profile web --dump-config | grep -A4 'id: permission-rules'   # पंक�
 | `searchUp` | `false` | सत्र cwd से पैरेंट निर्देशिकाओं पर चलकर हर मिली नियम फ़ाइल मिलाता है, निकटतम पहले |
 | `maxGlobStars` | `2` | प्रति glob पैटर्न असीमित `*`/`**` क्वांटिफ़ायर की कठोर सीमा (बैकट्रैकिंग-डिग्री सीमा) |
 | `enforce` | `true` | `false` = dry-run मोड: deny/ask मिलान केवल ऑडिट में `dryRun` चिह्न के साथ दर्ज होते हैं (काल्पनिक क्रिया + वास्तविक डाउनस्ट्रीम परिणाम) और हर कॉल पास होती है — लागू करने से पहले नीति का परीक्षण करें |
+| `allowUnmarkedAudit` | `false` | जिन होस्ट का `Session.append` `ignorable` मार्कर से पुराना है (`0.1.0-rc.6` शृंखला) वे बिना-चिह्न ऑडिट इवेंट लिखते हैं, जिससे सत्र कठोर बिल्ड पर अप्राप्य हो जाते हैं: प्लगइन ऐसे होस्ट का पता लगाकर एक-बार चेतावनी के साथ सत्र-लॉग ऑडिट बंद कर देता है। सत्र में रास्ता वापस चाहिए तो `true` सेट करें (मौजूदा लॉग `scripts/repair-session-logs.mjs` से मरम्मत करें) |
 
 ### सेशन कमांड
 
@@ -151,7 +152,7 @@ dsh --profile web --dump-config | grep -A4 'id: permission-rules'   # पंक�
 
 ## ज्ञात सीमाएँ
 
-- `permissionRules/decision` एन्वेलप के `ignorable: true` मार्कर के साथ जोड़ा जाता है, इसलिए कोई भी harness बिल्ड लॉग लोड कर लेता है — जो पाठक इस आउट-ऑफ-रेपो प्रकार को नहीं जानते वे सत्र अस्वीकार करने के बजाय केवल ऑडिट रिकॉर्ड छोड़ देते हैं। (rc.6 होस्ट मार्कर को स्वीकार कर अनदेखा करते हैं, पहले जैसा ही व्यवहार बना रहता है; rc.6 होस्ट पर लिखे सत्रों में मार्कर नहीं होता और required-on-read शब्दार्थ वाले होस्ट पर लोड से पहले `scripts/repair-session-logs.mjs` की ज़रूरत पड़ सकती है।)
+- `permissionRules/decision` एन्वेलप के `ignorable: true` मार्कर के साथ जोड़ा जाता है, इसलिए कोई भी harness बिल्ड लॉग लोड कर लेता है — जो पाठक इस आउट-ऑफ-रेपो प्रकार को नहीं जानते वे सत्र अस्वीकार करने के बजाय केवल ऑडिट रिकॉर्ड छोड़ देते हैं। मार्कर से पुराने होस्ट (`0.1.0-rc.6` शृंखला) इसे चुपचाप गिरा देते हैं: प्लगइन रनटाइम पर उन्हें पहचानता है (peer संस्करण पूर्व-जाँच + जोड़े गए एन्वेलप की जाँच) और एक-बार चेतावनी के साथ सत्र-लॉग ऑडिट बंद कर देता है, ताकि लॉग हर जगह लोड होते रहें। सत्र में रास्ता वापस चाहिए तो `allowUnmarkedAudit: true` सेट करें; बिना-चिह्न लिखे गए लॉग required-on-read शब्दार्थ वाले होस्ट पर लोड से पहले `scripts/repair-session-logs.mjs` से मरम्मत किए जा सकते हैं।
 - `paths` उम्मीदवार ह्यूरिस्टिक हैं: केवल दस्तावेज़ित आर्गुमेंट-कुंजियाँ पथ मिलान में आती हैं, और workspace-सापेक्ष मिलान केवल तभी ASCII-केस-असंवेदनशील होता है जब `caseInsensitivePaths` चालू हो।
 - globs एक रूढ़िवादी उपसमुच्चय हैं (brace विस्तार नहीं) — दो पैटर्न लिखें या regex मोड इस्तेमाल करें।
 - regex बैकट्रैकिंग गार्ड संरचनात्मक है, संपूर्ण नहीं: शाब्दिक उपसर्ग के बिना विकल्प-अस्पष्टता के मामले (जैसे कृत्रिम lookarounds) लेखक की ज़िम्मेदारी हैं; अविश्वसनीय फ़ाइलों के लिए glob मोड पसंद करें।
@@ -173,7 +174,7 @@ node scripts/repair-session-logs.mjs repair [--home DIR] [--dry-run]
 pnpm install        # node ^22.19 || >=24
 pnpm run typecheck  # tsc, src + tests
 pnpm run lint       # eslint, src + tests + scripts
-pnpm test           # vitest: 133 tests, 8 suites
+pnpm test           # vitest: 139 tests, 9 suites
 pnpm run test:coverage  # कवरेज द्वार (90/80/90/90)
 pnpm run build      # tsc डिक्लेरेशन + tsdown bundles (lib/)
 pnpm run pack:check # build + pack (प्रकाशित आर्टिफ़ैक्ट)
@@ -181,6 +182,10 @@ node scripts/check-readme-sync.mjs  # पाँच-भाषा README सिं
 ```
 
 headless एंड-टू-एंड सत्यापन रिकॉर्ड (deny द्वारा shell टूल रोकना, ask का approval seam से गुज़रना, `--dump-config`) [VERIFICATION.md](VERIFICATION.md) में देखें।
+
+## आभार
+
+- [@22xuan](https://github.com/22xuan) को धन्यवाद — rc.6 होस्ट द्वारा ऑडिट इवेंट के `ignorable` मार्कर को चुपचाप गिराने की विस्तृत रिपोर्ट ([#2](https://github.com/PerryLink/dsh-permission-rules/issues/2)) और अपस्ट्रीम harness चर्चा खोलने के लिए — रनटाइम होस्ट-क्षमता पहचान और दस्तावेज़ सुधार सीधे उसी विश्लेषण से निकले हैं।
 
 ## लाइसेंस
 

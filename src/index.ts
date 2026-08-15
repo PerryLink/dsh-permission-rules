@@ -22,7 +22,7 @@ export const name = 'permission-rules'
 export const inject = ['commands', 'tools']
 
 export { apply }
-export { PermissionRulesRuntime } from './runtime.ts'
+export { PermissionRulesRuntime, isUnmarkedHostVersion } from './runtime.ts'
 export * from './config.ts'
 export * from './events.ts'
 export * from './rules.ts'

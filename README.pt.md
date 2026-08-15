@@ -53,7 +53,7 @@ Um segundo modelo responde *"ESTA chamada é segura?"* com julgamento, mas custa
 - ✅ **Metadados de regras** — `enabled: false`, `description`, `tags`; `/rules` avisa sobre regras encobertas por um catch-all anterior
 - ✅ **Seguro para o waterfall** — `allow`/passagem sempre chamam `next()`; somente `deny`/`ask` curto-circuitam
 - ✅ **Seam de aprovação oficial** — `ask` flui por `ctx.approval`; nunca reimplementado, nunca contornado
-- ✅ **Auditoria completa** — os eventos `permissionRules/decision` carregam a ação da regra, o cwd do workspace E o resultado final de cada chamada; `/rules decisions` reproduz o rastro na sessão
+- ✅ **Auditoria completa** — os eventos `permissionRules/decision` carregam a ação da regra, o cwd do workspace E o resultado final de cada chamada; `/rules decisions` reproduz o rastro na sessão; hosts anteriores ao marcador de envelope de auditoria degradam para auditoria desativada com um aviso único em vez de gravar registros irrecuperáveis (`allowUnmarkedAudit` reativa)
 - ✅ **Implantação em simulação** — `enforce: false` audita o que a política *faria* (ação hipotética + resultado real posterior, marcado com `dryRun`) enquanto deixa todas as chamadas passarem; teste seguro de políticas em produção
 - ✅ **Teste em seco** — `/rules test <tool> <json-args>` avalia as regras ativas sem executar nada, com sobrescritas `--cwd`, `--env`, `--agent` e `--platform` para cada dimensão
 - ✅ **Recarga a quente** — vigilância Chokidar com debounce; uma edição quebrada mantém as regras anteriores, nunca quebra; um arquivo de regras criado no meio da sessão (o do projeto ou o fallback) é adotado automaticamente, sem recarga manual
@@ -68,7 +68,7 @@ dsh plugin --profile web add "github:PerryLink/dsh-permission-rules#main"
 
 # ou a partir de um tarball empacotado (artefatos compilados, sem permissão de build)
 pnpm pack
-dsh plugin --profile web add ./dsh-permission-rules-0.4.0.tgz
+dsh plugin --profile web add ./dsh-permission-rules-0.4.1.tgz
 
 # 2. reinicie
 dsh --profile web
@@ -114,6 +114,7 @@ Todos os ajustes são campos `Config` do Schemastery (alteráveis no cordis.yml)
 | `searchUp` | `false` | Percorre os diretórios pais a partir do cwd da sessão e combina cada arquivo de regras encontrado, o mais próximo primeiro |
 | `maxGlobStars` | `2` | Limite rígido de quantificadores `*`/`**` ilimitados por padrão glob (cota do grau de backtracking) |
 | `enforce` | `true` | `false` = modo simulação: acertos deny/ask são apenas registrados na auditoria com um marcador `dryRun` (ação hipotética + resultado real posterior) e todas as chamadas passam — teste uma política antes de aplicá-la |
+| `allowUnmarkedAudit` | `false` | Hosts cujo `Session.append` é anterior ao marcador `ignorable` (a linha `0.1.0-rc.6`) gravam eventos de auditoria sem marcação, tornando as sessões irrecuperáveis em builds mais rígidos: o plugin os detecta e desativa a auditoria do registro da sessão com um aviso único. Defina `true` para reativar o rastro na sessão (repare registros existentes com `scripts/repair-session-logs.mjs`) |
 
 ### Comandos de sessão
 
@@ -151,7 +152,7 @@ A saída dos comandos é somente UI — o modelo aprende as regras apenas pelos 
 
 ## Limitações conhecidas
 
-- `permissionRules/decision` é anexado com o marcador de envelope `ignorable: true`, então qualquer build do harness carrega o log — leitores que não conhecem o tipo fora do repositório simplesmente pulam o registro de auditoria em vez de recusar a sessão. (Hosts rc.6 aceitam e ignoram o marcador, mantendo exatamente o comportamento anterior; sessões gravadas em hosts rc.6 não têm o marcador e podem precisar de `scripts/repair-session-logs.mjs` antes de carregar em hosts com semântica required-on-read.)
+- `permissionRules/decision` é anexado com o marcador de envelope `ignorable: true`, então qualquer build do harness carrega o log — leitores que não conhecem o tipo fora do repositório simplesmente pulam o registro de auditoria em vez de recusar a sessão. Hosts cujo `Session.append` é anterior ao marcador (a linha `0.1.0-rc.6`) o DESCARTAM silenciosamente: o plugin os detecta em tempo de execução (verificação prévia da versão do peer + sonda do envelope anexado) e desativa a auditoria do registro da sessão com um aviso único, mantendo os registros carregáveis em qualquer lugar. Defina `allowUnmarkedAudit: true` para reativar o rastro na sessão; registros já gravados sem o marcador podem ser reparados com `scripts/repair-session-logs.mjs` antes de carregar em hosts com semântica required-on-read.
 - Os candidatos de `paths` são heurísticos: apenas as chaves de argumentos documentadas alimentam a correspondência de caminhos, e a correspondência relativa ao workspace ignora maiúsculas ASCII somente quando `caseInsensitivePaths` está ativo.
 - Os globs são um subconjunto conservador (sem expansão de chaves) — escreva dois padrões ou use o modo regex.
 - O guard de backtracking de regex é estrutural, não exaustivo: casos de ambiguidade por alternância sem prefixos literais (ex.: lookarounds elaborados) são responsabilidade do autor; prefira o modo glob para arquivos não confiáveis.
@@ -173,7 +174,7 @@ node scripts/repair-session-logs.mjs repair [--home DIR] [--dry-run]
 pnpm install        # node ^22.19 || >=24
 pnpm run typecheck  # tsc, src + tests
 pnpm run lint       # eslint, src + tests + scripts
-pnpm test           # vitest: 133 tests, 8 suites
+pnpm test           # vitest: 139 tests, 9 suites
 pnpm run test:coverage  # portão de cobertura (90/80/90/90)
 pnpm run build      # declarações tsc + bundles tsdown (lib/)
 pnpm run pack:check # build + pack (o artefato publicado)
@@ -181,6 +182,10 @@ node scripts/check-readme-sync.mjs  # portão de sincronização dos READMEs em 
 ```
 
 Veja [VERIFICATION.md](VERIFICATION.md) para o registro de verificação headless de ponta a ponta (deny bloqueando uma ferramenta de shell, ask roteado pelo seam de aprovação, `--dump-config`).
+
+## Agradecimentos
+
+- Agradecemos a [@22xuan](https://github.com/22xuan) pelo relatório detalhado sobre hosts rc.6 descartando silenciosamente o marcador `ignorable` dos eventos de auditoria ([#2](https://github.com/PerryLink/dsh-permission-rules/issues/2)) e por abrir a discussão no harness upstream — a detecção de capacidade do host em tempo de execução e a correção da documentação derivam diretamente dessa análise.
 
 ## Licença
 

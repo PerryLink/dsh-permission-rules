@@ -53,7 +53,7 @@ A second model answers *"is THIS call okay?"* with judgment, but costs a round-t
 - ✅ **Rule metadata** — `enabled: false`, `description`, `tags`; `/rules` warns about rules shadowed by an earlier catch-all
 - ✅ **Waterfall-safe** — `allow`/passthrough always call `next()`; only `deny`/`ask` short-circuit
 - ✅ **Official approval seam** — `ask` flows through `ctx.approval`; never re-implemented, never bypassed
-- ✅ **Full audit** — `permissionRules/decision` events carry the rule action, the workspace cwd, AND the final outcome for every call; `/rules decisions` replays the trail in-session
+- ✅ **Full audit** — `permissionRules/decision` events carry the rule action, the workspace cwd, AND the final outcome for every call; `/rules decisions` replays the trail in-session; hosts that predate the audit envelope marker degrade to audit-off with a one-time warning instead of writing unresumable logs (`allowUnmarkedAudit` opts back in)
 - ✅ **Dry-run rollout** — `enforce: false` audits what the policy *would* do (would-be action + real downstream outcome, `dryRun`-marked) while passing every call through; safe policy trialing in production
 - ✅ **Dry-run testing** — `/rules test <tool> <json-args>` evaluates the active rules without executing anything, with `--cwd`, `--env`, `--agent`, and `--platform` overrides for every match dimension
 - ✅ **Hot reload** — Chokidar watch with debounce; a broken edit keeps the previous rules, never crashes; a rule file created mid-session (the project file or the fallback) is adopted automatically, no manual reload
@@ -68,7 +68,7 @@ dsh plugin --profile web add "github:PerryLink/dsh-permission-rules#main"
 
 # or from a packed tarball (built artifacts, no build permission needed)
 pnpm pack
-dsh plugin --profile web add ./dsh-permission-rules-0.4.0.tgz
+dsh plugin --profile web add ./dsh-permission-rules-0.4.1.tgz
 
 # 2. restart
 dsh --profile web
@@ -114,6 +114,7 @@ All tunables are Schemastery `Config` fields (changeable from cordis.yml). An id
 | `searchUp` | `false` | Walk parent directories from the session cwd and merge every found rule file, nearest first |
 | `maxGlobStars` | `2` | Hard cap on unbounded `*`/`**` quantifiers per glob pattern (backtracking-degree bound) |
 | `enforce` | `true` | `false` = dry-run mode: deny/ask hits are audit-logged with a `dryRun` marker (would-be action + real downstream outcome) and every call passes through — trial a policy before enforcing it |
+| `allowUnmarkedAudit` | `false` | Hosts whose `Session.append` predates the `ignorable` marker (the `0.1.0-rc.6` line) write audit events unmarked, making sessions unresumable on stricter builds: the plugin detects them and disables session-log audit with a one-time warning. Set `true` to opt back into the in-session trail (repair existing logs with `scripts/repair-session-logs.mjs`) |
 
 ### Session commands
 
@@ -151,7 +152,7 @@ Command output is UI-only — the model learns the rules only through the tool r
 
 ## Known limitations
 
-- `permissionRules/decision` is appended with the envelope's `ignorable: true` marker, so any harness build loads the log — readers that do not know the out-of-repo type simply skip the audit record instead of refusing the session. (rc.6 hosts accept and ignore the marker, keeping the exact pre-marker behavior; sessions written on rc.6 hosts lack the marker and may need `scripts/repair-session-logs.mjs` before loading on hosts with required-on-read semantics.)
+- `permissionRules/decision` is appended with the envelope's `ignorable: true` marker, so any harness build loads the log — readers that do not know the out-of-repo type simply skip the audit record instead of refusing the session. Hosts whose `Session.append` predates the marker (the `0.1.0-rc.6` line) silently DROP it: the plugin detects them at runtime (peer-version pre-check + a probe of the appended envelope) and disables session-log audit with a one-time warning, so session logs stay loadable everywhere. Set `allowUnmarkedAudit: true` to opt back into the in-session trail; logs already written without the marker can be repaired with `scripts/repair-session-logs.mjs` before loading on hosts with required-on-read semantics.
 - `paths` candidates are heuristic: only the documented argument keys feed path matching, and workspace-relative matching is ASCII-case-insensitive only when `caseInsensitivePaths` is on.
 - Globs are a conservative subset (no brace expansion) — write two patterns, or use regex mode.
 - The regex backtracking guard is structural, not exhaustive: alternation-ambiguity cases without literal prefixes (e.g. crafted lookarounds) are the author's responsibility; prefer glob mode for untrusted files.
@@ -173,7 +174,7 @@ node scripts/repair-session-logs.mjs repair [--home DIR] [--dry-run]
 pnpm install        # node ^22.19 || >=24
 pnpm run typecheck  # tsc, src + tests
 pnpm run lint       # eslint, src + tests + scripts
-pnpm test           # vitest: 133 tests, 8 suites
+pnpm test           # vitest: 139 tests, 9 suites
 pnpm run test:coverage  # coverage gate (90/80/90/90)
 pnpm run build      # tsc declarations + tsdown bundles (lib/)
 pnpm run pack:check # build + pack (the published artifact)
@@ -181,6 +182,10 @@ node scripts/check-readme-sync.mjs  # five-language README sync gate (also in CI
 ```
 
 See [VERIFICATION.md](VERIFICATION.md) for the headless end-to-end verification record (deny blocking a shell tool, ask routing through the approval seam, `--dump-config`).
+
+## Acknowledgments
+
+- Thanks to [@22xuan](https://github.com/22xuan) for the detailed report on rc.6 hosts silently dropping the audit event's `ignorable` marker ([#2](https://github.com/PerryLink/dsh-permission-rules/issues/2)) and for filing the upstream harness discussion — the runtime host-capability detection and the documentation correction drew directly from that analysis.
 
 ## License
 

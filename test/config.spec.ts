@@ -24,6 +24,7 @@ describe('resolveConfig', () => {
       searchUp: false,
       maxGlobStars: 2,
       enforce: true,
+      allowUnmarkedAudit: false,
     })
     expect(resolved.caseInsensitivePaths).toBe(process.platform === 'win32')
   })
@@ -44,6 +45,7 @@ describe('resolveConfig', () => {
       searchUp: true,
       maxGlobStars: 1,
       enforce: false,
+      allowUnmarkedAudit: true,
     })
     expect(resolved.rulesFile).toBe('.rules.yml')
     expect(resolved.fallbackPath).toBe('/etc/rules.yaml')
@@ -59,6 +61,7 @@ describe('resolveConfig', () => {
     expect(resolved.searchUp).toBe(true)
     expect(resolved.maxGlobStars).toBe(1)
     expect(resolved.enforce).toBe(false)
+    expect(resolved.allowUnmarkedAudit).toBe(true)
   })
 
   it('fails loud on non-positive or non-integer maxRules', () => {
@@ -103,5 +106,6 @@ describe('resolveConfig', () => {
     expect(() => resolveConfig({ searchUp: 1 as never })).toThrow(/searchUp/)
     expect(() => resolveConfig({ enforce: 'no' as never })).toThrow(/enforce/)
     expect(() => resolveConfig({ caseInsensitivePaths: 0 as never })).toThrow(/caseInsensitivePaths/)
+    expect(() => resolveConfig({ allowUnmarkedAudit: 'yes' as never })).toThrow(/allowUnmarkedAudit/)
   })
 })

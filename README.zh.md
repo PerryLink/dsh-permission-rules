@@ -53,7 +53,7 @@ tools/pre-execute waterfall                     approval/request waterfall（ans
 - ✅ **规则元数据** — `enabled: false`、`description`、`tags`；`/rules` 会告警被前面通配规则遮蔽的规则
 - ✅ **waterfall 安全** — `allow`/透传一律 `next()`；只有 `deny`/`ask` 短路
 - ✅ **官方审批 seam** — `ask` 走 `ctx.approval`；不重复实现、绝不绕过
-- ✅ **完整审计** — `permissionRules/decision` 事件记录规则动作、工作区 cwd 与最终裁决；`/rules decisions` 可在会话内回放审计轨迹
+- ✅ **完整审计** — `permissionRules/decision` 事件记录规则动作、工作区 cwd 与最终裁决；`/rules decisions` 可在会话内回放审计轨迹；早于审计信封标记的宿主自动降级为关闭审计并一次性警告，绝不写出无法恢复的日志（`allowUnmarkedAudit` 可重新开启）
 - ✅ **干跑上线** — `enforce: false` 只审计策略「本会做什么」（记录本会动作 + 下游真实结果，带 `dryRun` 标记），所有调用照常透传；可在生产环境安全试跑新策略
 - ✅ **干跑测试** — `/rules test <工具> <json-参数>` 不执行任何东西地评估规则命中，支持 `--cwd`、`--env`、`--agent`、`--platform` 覆盖每个匹配维度
 - ✅ **热更新** — Chokidar 监视 + 去抖；改坏了保留旧规则，绝不崩溃；会话中途创建的规则文件（项目文件或 fallback）自动生效，无需手动重载
@@ -68,7 +68,7 @@ dsh plugin --profile web add "github:PerryLink/dsh-permission-rules#main"
 
 # 或从打包好的 tarball 安装（预构建产物，无需构建许可）
 pnpm pack
-dsh plugin --profile web add ./dsh-permission-rules-0.4.0.tgz
+dsh plugin --profile web add ./dsh-permission-rules-0.4.1.tgz
 
 # 2. 重启
 dsh --profile web
@@ -114,6 +114,7 @@ dsh --profile web --dump-config | grep -A4 'id: permission-rules'   # 验证挂�
 | `searchUp` | `false` | 从会话 cwd 向上逐级查找并合并规则文件，最近的优先 |
 | `maxGlobStars` | `2` | 每个 glob 模式的无界 `*`/`**` 量词数硬上界（回溯度封顶） |
 | `enforce` | `true` | `false` = 干跑模式：deny/ask 命中只写审计（带 `dryRun` 标记，记录本会动作与下游真实结果），所有调用照常透传——先试跑策略再强制执行 |
+| `allowUnmarkedAudit` | `false` | 早于 `ignorable` 信封标记的宿主（`0.1.0-rc.6` 系列）会写出无标记审计事件，使会话在更严格构建上无法恢复：插件会探测到此类宿主并停用会话日志审计（一次性警告）。设 `true` 重新开启会话内轨迹（已有日志用 `scripts/repair-session-logs.mjs` 修复） |
 
 ### 会话命令
 
@@ -151,7 +152,7 @@ dsh --profile web --dump-config | grep -A4 'id: permission-rules'   # 验证挂�
 
 ## 已知局限
 
-- `permissionRules/decision` 以信封 `ignorable: true` 标记写入，任何 harness 构建都能加载日志——不认识该仓库外类型的第一方读取器会跳过这条审计记录而不是拒绝整个会话。（rc.6 宿主会接受并忽略该标记，行为与打标前完全一致；rc.6 宿主写出的日志没有该标记，在 required-on-read 语义的宿主上加载前可能需要 `scripts/repair-session-logs.mjs`。）
+- `permissionRules/decision` 以信封 `ignorable: true` 标记写入，任何 harness 构建都能加载日志——不认识该仓库外类型的第一方读取器会跳过这条审计记录而不是拒绝整个会话。早于该标记的宿主（`0.1.0-rc.6` 系列）会静默丢弃它：插件在运行时探测（peer 版本预检 + 已写事件信封探针），探测到即停用会话日志审计并一次性警告，确保会话日志在任何构建上都能加载。设 `allowUnmarkedAudit: true` 重新开启会话内轨迹；已写出且缺标记的日志可在 required-on-read 语义的宿主上加载前用 `scripts/repair-session-logs.mjs` 修复。
 - `paths` 候选是启发式的：只有文档化的参数键进入路径匹配；工作区相对匹配仅在 `caseInsensitivePaths` 开启时忽略 ASCII 大小写。
 - glob 是保守子集（不支持花括号展开）——写两条模式，或用 regex 模式。
 - regex 回溯守卫是结构性的而非穷尽的：不含字面量前缀的交替歧义（如精心构造的环视）由作者自负其责；不可信文件请优先用 glob 模式。
@@ -173,7 +174,7 @@ node scripts/repair-session-logs.mjs repair [--home DIR] [--dry-run]
 pnpm install        # node ^22.19 || >=24
 pnpm run typecheck  # tsc，src + tests
 pnpm run lint       # eslint，src + tests + scripts
-pnpm test           # vitest：133 测试 / 8 套件
+pnpm test           # vitest：139 测试 / 9 套件
 pnpm run test:coverage  # 覆盖率门禁（90/80/90/90）
 pnpm run build      # tsc 声明 + tsdown 打包（lib/）
 pnpm run pack:check # 构建 + pack（发布产物）
@@ -181,6 +182,10 @@ node scripts/check-readme-sync.mjs  # 五语 README 同步门禁（CI 同步执�
 ```
 
 headless 端到端验证记录（deny 阻止 shell 工具、ask 走审批 seam、`--dump-config`）见 [VERIFICATION.md](VERIFICATION.md)。
+
+## 致谢
+
+- 感谢 [@22xuan](https://github.com/22xuan) 关于 rc.6 宿主静默丢弃审计事件 `ignorable` 标记的详尽报告（[#2](https://github.com/PerryLink/dsh-permission-rules/issues/2)）以及其向上游 harness 提交的讨论——运行时宿主能力探测与文档修正均直接源自该分析。
 
 ## License
 

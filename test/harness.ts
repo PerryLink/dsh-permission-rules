@@ -156,7 +156,11 @@ export async function mountHarness(
   // `watch: true`. Real chokidar watchers on the temp workspaces trip a
   // libuv assertion (src\win\fs-event.c) on Windows + Node 24 when the
   // dirs are removed mid-test, crashing the coverage worker.
-  await ctx.plugin(plugin as unknown as import('@deepseek-ai/cordis').Plugin, { watch: false, ...pluginConfig })
+  // Session-log audit is opted IN by default for the same reason: the real
+  // rc.6 peers are known-unmarked hosts, so the production default would
+  // disable the audit events most specs assert on; the degradation default
+  // itself is covered by test/audit-support.spec.ts.
+  await ctx.plugin(plugin as unknown as import('@deepseek-ai/cordis').Plugin, { watch: false, allowUnmarkedAudit: true, ...pluginConfig })
   const injected: UserMessage[] = []
   const agent = makeAgent(session, injected)
   return { ctx, session, agent, injected, cwd, subagents }

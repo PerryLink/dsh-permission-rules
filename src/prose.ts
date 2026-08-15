@@ -34,6 +34,8 @@ export interface UiProse {
   decisionsHeader: (shown: number, total: number) => string
   /** Line shown when the session log holds no audit decisions. */
   noDecisions: string
+  /** Notice appended to `/rules decisions` when session-log audit is disabled on this host (ignorable marker not honored). */
+  auditDisabledNotice: string
   /** Rejection of a malformed decisions count. */
   invalidDecisionsCount: (arg: string) => string
   /** One audit-decision row (dry-run rows mark the actual outcome). */
@@ -91,6 +93,7 @@ const EN: UiProse = {
   usage: 'Usage: /rules [list | reload | decisions [n] | test <tool> <json-args>]',
   decisionsHeader: (shown, total) => `Last ${shown} of ${total} permission decision(s) for this session:`,
   noDecisions: 'No permission decisions recorded in this session yet.',
+  auditDisabledNotice: 'Session-log audit is disabled on this host: its Session.append predates the ignorable marker and would make sessions unresumable elsewhere (set allowUnmarkedAudit: true to opt back in).',
   invalidDecisionsCount: arg => `Invalid decisions count "${arg}": give a positive integer (default 10).`,
   decisionLine: (seq, action, toolName, ruleIndex, reason, dryRun, outcome) => {
     const rule = ruleIndex === undefined ? '' : ` (rule ${ruleIndex + 1})`
@@ -121,6 +124,7 @@ const ZH: UiProse = {
   usage: '用法：/rules [list | reload | decisions [n] | test <工具名> <json-参数>]',
   decisionsHeader: (shown, total) => `本会话最近 ${shown}/${total} 条权限裁决：`,
   noDecisions: '本会话还没有记录任何权限裁决。',
+  auditDisabledNotice: '本宿主上会话日志审计已停用：其 Session.append 早于 ignorable 标记支持，会令会话在其他宿主上无法恢复（设 allowUnmarkedAudit: true 可重新开启）。',
   invalidDecisionsCount: arg => `无效的裁决条数 "${arg}"：请给正整数（默认 10）。`,
   decisionLine: (seq, action, toolName, ruleIndex, reason, dryRun, outcome) => {
     const rule = ruleIndex === undefined ? '' : `（规则 ${ruleIndex + 1}）`
@@ -151,6 +155,7 @@ const ES: UiProse = {
   usage: 'Uso: /rules [list | reload | decisions [n] | test <herramienta> <json-args>]',
   decisionsHeader: (shown, total) => `Últimas ${shown} de ${total} decisión(es) de permiso de esta sesión:`,
   noDecisions: 'Esta sesión aún no registra decisiones de permiso.',
+  auditDisabledNotice: 'La auditoría del registro de sesión está desactivada en este host: su Session.append es anterior al marcador ignorable y haría las sesiones irrecuperables en otros hosts (establece allowUnmarkedAudit: true para reactivarla).',
   invalidDecisionsCount: arg => `Cantidad de decisiones inválida "${arg}": indique un entero positivo (por defecto 10).`,
   decisionLine: (seq, action, toolName, ruleIndex, reason, dryRun, outcome) => {
     const rule = ruleIndex === undefined ? '' : ` (regla ${ruleIndex + 1})`
@@ -181,6 +186,7 @@ const PT: UiProse = {
   usage: 'Uso: /rules [list | reload | decisions [n] | test <ferramenta> <json-args>]',
   decisionsHeader: (shown, total) => `Últimas ${shown} de ${total} decisão(ões) de permissão desta sessão:`,
   noDecisions: 'Esta sessão ainda não registrou decisões de permissão.',
+  auditDisabledNotice: 'A auditoria do registro da sessão está desativada neste host: seu Session.append é anterior ao marcador ignorable e tornaria as sessões irrecuperáveis em outros hosts (defina allowUnmarkedAudit: true para reativar).',
   invalidDecisionsCount: arg => `Quantidade de decisões inválida "${arg}": informe um inteiro positivo (padrão 10).`,
   decisionLine: (seq, action, toolName, ruleIndex, reason, dryRun, outcome) => {
     const rule = ruleIndex === undefined ? '' : ` (regra ${ruleIndex + 1})`
@@ -211,6 +217,7 @@ const HI: UiProse = {
   usage: 'उपयोग: /rules [list | reload | decisions [n] | test <टूल> <json-args>]',
   decisionsHeader: (shown, total) => `इस सत्र के अंतिम ${shown}/${total} अनुमति निर्णय:`,
   noDecisions: 'इस सत्र में अभी कोई अनुमति निर्णय दर्ज नहीं है।',
+  auditDisabledNotice: 'इस होस्ट पर सत्र-लॉग ऑडिट अक्षम है: इसका Session.append ignorable मार्कर से पुराना है और सत्र अन्य होस्ट पर अप्राप्य बन जाते (पुनः चालू करने के लिए allowUnmarkedAudit: true सेट करें)।',
   invalidDecisionsCount: arg => `अमान्य निर्णय-संख्या "${arg}": एक धनात्मक पूर्णांक दें (डिफ़ॉल्ट 10)।`,
   decisionLine: (seq, action, toolName, ruleIndex, reason, dryRun, outcome) => {
     const rule = ruleIndex === undefined ? '' : ` (नियम ${ruleIndex + 1})`

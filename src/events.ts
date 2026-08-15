@@ -17,9 +17,16 @@
  * downstream — an auditable "what would the policy have done" trail.
  *
  * The event is appended with the envelope's `ignorable: true` marker (see
- * {@link AuditAppend}), so a harness build whose generated event vocabulary
- * does not include this out-of-repo type still loads the log — it skips the
- * audit record instead of refusing the whole session.
+ * {@link AuditAppend}). Harness builds that honor the marker (post-rc.6)
+ * stamp it on the envelope and skip unknown ignorable records when loading,
+ * so the audit can never refuse a session. Builds whose `Session.append`
+ * predates the marker — the `0.1.0-rc.6` line — silently DROP the options
+ * bag: the event then lands UNMARKED and makes the session unresumable on
+ * hosts with required-on-read semantics (`SessionFormatUnsupportedError`).
+ * The runtime detects this at first use (peer version pre-check plus a
+ * probe of the appended envelope) and disables session-log audit on such
+ * hosts with a one-time warning; `allowUnmarkedAudit: true` opts back in,
+ * and `scripts/repair-session-logs.mjs` repairs already-polluted logs.
  * @module dsh-permission-rules/events
  */
 
@@ -77,12 +84,27 @@ export interface AuditDecision {
 /**
  * `Session.append` narrowed to this plugin's audit event. The options bag
  * exists only on host builds that expose the `ignorable` envelope-marker
- * surface (post-rc.6 `@deepseek-ai/dsh-session`); an rc.6 host accepts and
- * ignores the third argument, appending the identical event without the
- * marker — no behavior change, no failure either way.
+ * surface (post-rc.6 `@deepseek-ai/dsh-session`); an rc.6 host accepts the
+ * call but silently drops the third argument — the event is appended
+ * WITHOUT the marker, which is exactly what breaks later resume on stricter
+ * hosts. The runtime treats the marker as optional-but-probed: see
+ * {@link isMarkedAuditEvent}.
  */
 export type AuditAppend = (
   type: 'permissionRules/decision',
   data: AuditDecision,
   options?: { ignorable?: true },
 ) => unknown
+
+/**
+ * Whether an `append` call actually honored the `ignorable` marker: the
+ * logged event returned by the host carries `ignorable === true` on
+ * marker-aware builds and nothing on pre-marker builds. `false` (or any
+ * non-event return) means the host dropped the marker and the event landed
+ * unmarked — the runtime then degrades instead of polluting further logs.
+ * @param result - the return value of the audit append.
+ * @returns true only when the marker is present on the returned envelope.
+ */
+export function isMarkedAuditEvent(result: unknown): boolean {
+  return typeof result === 'object' && result !== null && (result as { ignorable?: unknown }).ignorable === true
+}

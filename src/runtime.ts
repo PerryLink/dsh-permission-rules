@@ -12,6 +12,7 @@
  */
 
 import { existsSync, readFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import chokidar from 'chokidar'
 import type { Context } from '@deepseek-ai/cordis'
@@ -23,6 +24,7 @@ import { compileRules, compileRulesChain, describeRule, findUnreachableRules, ma
 import type { CompileOptions, CompiledRuleset, MatchContext, RuleHit } from './rules.ts'
 import { DESCRIBE_TOKENS, UI_PROSE } from './prose.ts'
 import type { UiProse } from './prose.ts'
+import { isMarkedAuditEvent } from './events.ts'
 import type { AuditAppend, AuditDecision, DecisionOutcome } from './events.ts'
 
 export const name = 'permission-rules'
@@ -63,6 +65,9 @@ export class PermissionRulesRuntime {
 
   /** Debounce timers per rule-file path. */
   private readonly timers = new Map<string, ReturnType<typeof setTimeout>>()
+
+  /** Whether the host honors the audit envelope's `ignorable` marker: unknown until the first decision (or peer-version check). */
+  private auditSupport: 'unknown' | 'supported' | 'unsupported' = 'unknown'
 
   constructor(
     private readonly ctx: Context,
@@ -265,13 +270,17 @@ export class PermissionRulesRuntime {
    * Append the log-only `permissionRules/decision` audit event for every
    * decision (passthrough included unless `audit: 'hits'`), requesting the
    * envelope's `ignorable: true` marker so any harness build can load the
-   * log (readers that do not know the type skip the audit record instead of
-   * refusing the session). `source` names the matched rule's file, or the
-   * nearest effective file on a passthrough; `cwd` names the workspace the
-   * rules were resolved for; `dryRun` marks would-be deny/ask hits under
-   * `enforce: false`. Agentless calls have no session to audit; append
-   * failures are contained so an audit hiccup can never change a
-   * permission decision.
+   * log. Hosts whose `Session.append` predates the marker (the rc.6 line)
+   * silently drop it, leaving sessions unresumable on stricter hosts — the
+   * runtime therefore detects such hosts BEFORE the first append (peer
+   * version) and re-checks after the first append (returned envelope), then
+   * degrades: session-log audit is disabled with a one-time warning unless
+   * `allowUnmarkedAudit: true` opts back in. `source` names the matched
+   * rule's file, or the nearest effective file on a passthrough; `cwd`
+   * names the workspace the rules were resolved for; `dryRun` marks
+   * would-be deny/ask hits under `enforce: false`. Agentless calls have no
+   * session to audit; append failures are contained so an audit hiccup can
+   * never change a permission decision.
    * @param exec - the pending call.
    * @param loaded - the rules in effect.
    * @param hit - the first matching rule, or undefined for passthrough.
@@ -282,8 +291,17 @@ export class PermissionRulesRuntime {
     if (this.config.audit === 'hits' && hit === undefined) return
     const agent = exec.agent
     if (agent === undefined) return
+    if (this.auditSupport === 'unsupported') return
+    if (this.auditSupport === 'unknown' && !this.config.allowUnmarkedAudit) {
+      const version = this.peerVersion()
+      if (version !== null && isUnmarkedHostVersion(version)) {
+        this.auditSupport = 'unsupported'
+        this.warnUnmarkedAuditHost()
+        return
+      }
+    }
     try {
-      ;(agent.session.append as unknown as AuditAppend)('permissionRules/decision', {
+      const result = this.appendAudit(agent, {
         toolName: exec.name,
         callId: exec.callId,
         source: hit === undefined ? (loaded.sources[0] ?? '') : (loaded.sources[hit.rule.sourceIndex] ?? ''),
@@ -292,10 +310,40 @@ export class PermissionRulesRuntime {
         cwd: loaded.cwd,
         ...hit !== undefined ? { ruleIndex: hit.ruleIndex, reason: hit.rule.reason } : {},
         ...dryRun ? { dryRun: true as const } : {},
-      }, { ignorable: true })
+      })
+      if (this.auditSupport === 'unknown' && !this.config.allowUnmarkedAudit) {
+        if (isMarkedAuditEvent(result)) {
+          this.auditSupport = 'supported'
+        } else {
+          this.auditSupport = 'unsupported'
+          this.warnUnmarkedAuditHost()
+        }
+      }
     } catch (error: unknown) {
       this.ctx.logger.warn(`permission-rules: audit append failed: ${String(error)}`)
     }
+  }
+
+  /** Append one audit event through the session surface; the probe seam for host-capability detection. */
+  private appendAudit(agent: NonNullable<ToolExecution['agent']>, data: AuditDecision): unknown {
+    return (agent.session.append as unknown as AuditAppend)('permissionRules/decision', data, { ignorable: true })
+  }
+
+  /** The installed `@deepseek-ai/dsh-session` version, or `null` when unresolvable (falls back to the append probe). */
+  private peerVersion(): string | null {
+    try {
+      const pkg = createRequire(import.meta.url)('@deepseek-ai/dsh-session/package.json') as { version?: unknown }
+      return typeof pkg.version === 'string' ? pkg.version : null
+    } catch {
+      return null
+    }
+  }
+
+  /** One-time warning that session-log audit was disabled to keep session logs loadable. */
+  private warnUnmarkedAuditHost(): void {
+    this.ctx.logger.warn(
+      'permission-rules: this host drops the ignorable marker on audit events (Session.append predates it), which would make sessions unresumable on stricter harness builds — session-log audit is disabled; set allowUnmarkedAudit: true to opt back in, and repair existing logs with scripts/repair-session-logs.mjs (see https://github.com/PerryLink/dsh-permission-rules/issues/2)',
+    )
   }
 
   /**
@@ -448,13 +496,18 @@ export class PermissionRulesRuntime {
   /** Render the session's `permissionRules/decision` audit trail, newest last. */
   private decisionsCommand(invocation: CommandInvocation, count: number, prose: UiProse): CommandResult {
     const decisions = invocation.agent.session.events.filter(event => event.type === 'permissionRules/decision')
-    if (decisions.length === 0) return { kind: 'success', text: prose.noDecisions }
-    const shown = decisions.slice(-count)
-    const lines = [prose.decisionsHeader(shown.length, decisions.length)]
-    for (const event of shown) {
-      const data = event.data as AuditDecision
-      lines.push(prose.decisionLine(event.seq, data.action, data.toolName, data.ruleIndex, data.reason, data.dryRun === true, data.outcome))
+    const lines: string[] = []
+    if (decisions.length === 0) {
+      lines.push(prose.noDecisions)
+    } else {
+      const shown = decisions.slice(-count)
+      lines.push(prose.decisionsHeader(shown.length, decisions.length))
+      for (const event of shown) {
+        const data = event.data as AuditDecision
+        lines.push(prose.decisionLine(event.seq, data.action, data.toolName, data.ruleIndex, data.reason, data.dryRun === true, data.outcome))
+      }
     }
+    if (this.auditSupport === 'unsupported') lines.push(prose.auditDisabledNotice)
     return { kind: 'success', text: lines.join('\n') }
   }
 
@@ -708,6 +761,22 @@ export function apply(ctx: Context, config: Config): void {
     input: { hint: '[list | reload | decisions [n] | test [--cwd <dir>] [--env K=V] [--agent <sel>] [--platform <name>] <tool> <json-args>]' },
     handler: invocation => runtime.command(invocation),
   })
+}
+
+/**
+ * Whether a `@deepseek-ai/dsh-session` version line predates the
+ * `ignorable` envelope-marker surface: the `0.1.0-rc.6` line and earlier
+ * silently drop the marker from `Session.append` options, so audit events
+ * written by those builds land unmarked and break resume on stricter
+ * hosts. Non-matching (post-rc.6, stable, or unresolvable) versions are
+ * treated as possibly-marker-aware and verified by the append probe.
+ * @param version - the installed peer version string.
+ * @returns true for the known-unmarked rc.1–rc.6 lines.
+ */
+export function isUnmarkedHostVersion(version: string): boolean {
+  const match = /^0\.1\.0-rc\.(\d+)$/.exec(version.trim())
+  if (match === null) return false
+  return Number(match[1]) <= 6
 }
 
 /**

@@ -64,6 +64,17 @@ export interface Config {
    * policy in production before enforcing it.
    */
   enforce?: boolean
+  /**
+   * Whether to keep appending audit events to the session log on hosts
+   * whose `Session.append` predates the `ignorable` envelope marker
+   * (the `0.1.0-rc.6` line). Defaults to `false`: such hosts write the
+   * events UNMARKED, which makes the session unresumable on stricter
+   * hosts, so the runtime detects the host and disables session-log audit
+   * with a one-time warning instead. Set `true` to opt back into the
+   * in-session audit trail (and accept that those sessions may need
+   * `scripts/repair-session-logs.mjs` before loading on a newer harness).
+   */
+  allowUnmarkedAudit?: boolean
 }
 
 /** Config after {@link resolveConfig}: every optional field has its explicit default. */
@@ -82,6 +93,7 @@ export interface ResolvedConfig {
   readonly searchUp: boolean
   readonly maxGlobStars: number
   readonly enforce: boolean
+  readonly allowUnmarkedAudit: boolean
 }
 
 /** Schemastery schema: the loader validates and fills defaults before `apply`. */
@@ -100,6 +112,7 @@ export const Config: z<Config> = z.object({
   searchUp: z.boolean().default(false),
   maxGlobStars: z.number().default(2),
   enforce: z.boolean().default(true),
+  allowUnmarkedAudit: z.boolean().default(false),
 })
 
 /**
@@ -142,6 +155,7 @@ export function resolveConfig(config: Config = {}): ResolvedConfig {
   assertBoolean('searchUp', searchUp)
   assertBoolean('caseInsensitivePaths', config.caseInsensitivePaths ?? process.platform === 'win32')
   assertBoolean('enforce', config.enforce ?? true)
+  assertBoolean('allowUnmarkedAudit', config.allowUnmarkedAudit ?? false)
   return {
     rulesFile,
     fallbackPath: config.fallbackPath,
@@ -157,6 +171,7 @@ export function resolveConfig(config: Config = {}): ResolvedConfig {
     searchUp,
     maxGlobStars,
     enforce: config.enforce ?? true,
+    allowUnmarkedAudit: config.allowUnmarkedAudit ?? false,
   }
 }
 
