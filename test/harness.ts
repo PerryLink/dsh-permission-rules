@@ -152,7 +152,11 @@ export async function mountHarness(
   ctx.provide('tools', { get: () => undefined, restrict: () => () => undefined } as never)
   await ctx.plugin(Commands)
   const plugin = await import('../src/index.ts')
-  await ctx.plugin(plugin as unknown as import('@deepseek-ai/cordis').Plugin, pluginConfig)
+  // Watch off by default: only the chokidar-mocked watch.spec passes
+  // `watch: true`. Real chokidar watchers on the temp workspaces trip a
+  // libuv assertion (src\win\fs-event.c) on Windows + Node 24 when the
+  // dirs are removed mid-test, crashing the coverage worker.
+  await ctx.plugin(plugin as unknown as import('@deepseek-ai/cordis').Plugin, { watch: false, ...pluginConfig })
   const injected: UserMessage[] = []
   const agent = makeAgent(session, injected)
   return { ctx, session, agent, injected, cwd, subagents }

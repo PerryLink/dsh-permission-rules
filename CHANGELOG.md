@@ -18,6 +18,7 @@ All notable changes to dsh-permission-rules are recorded here, newest first.
 ### Engineering
 
 - 133 tests across 8 suites (new coverage: creation-adoption watch paths, fallback recreation, cache-key dedup, `--platform`, `list`, source attribution); coverage gate held. Five-language READMEs, both rules-format references, AGENTS.md, and the `/rules` command hint updated.
+- The test harness now mounts with `watch: false` by default (only the chokidar-mocked watch suite opts in): real watchers on temp workspaces tripped a Node 24 + Windows libuv assertion (`src\win\fs-event.c`) when dirs were removed mid-test — the pre-existing cause of the red windows-latest/Node 24 matrix cells since v0.3.0.
 
 ## v0.3.0 — 2026-08-14
 

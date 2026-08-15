@@ -10,6 +10,7 @@
 - **`/rules test --platform <name>`**：`when.platform` 维度在任何宿主上可干跑测试；未知平台名响亮报错（五语 `testBadPlatform`）。
 - **来源归属**：多文件链（`searchUp`）下每条规则行标注自己的来源文件（工作区内显示相对路径，区外显示绝对路径）；`/rules list` 为裸列出显式别名。
 - **缓存键规范化**：`resolve(cwd)` + Windows 大小写折叠，同目录不同拼写共享一条缓存与一套 watcher（`watch.spec.ts` 断言 `activeWatcherCount() === 1`）。
+- **CI 稳定性修复**：v0.3.0 起 windows-latest/Node 24 矩阵格持续变红，根因是真实 chokidar watcher 在临时工作区被测试删除时触发 Node 24 libuv 断言（`src\win\fs-event.c:72`，测试进程崩溃 → vitest worker `ERR_IPC_CHANNEL_CLOSED`）。修复：`test/harness.ts` 默认 `watch: false` 挂载（仅 chokidar 被 mock 的 `watch.spec.ts` 显式开启），测试套件不再创建真实 watcher。
 
 ### 待办（延续）
 
