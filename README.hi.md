@@ -152,6 +152,11 @@ dsh --profile web --dump-config | grep -A4 'id: permission-rules'   # पंक�
 - `Drifter-yh/dsh-tool-policy` — deny-by-default टूल नीति; दोहराने से बचने के लिए यहाँ दस्तावेज़ित।
 - `dsh-auto-review` — इस चक्र का AI-सहारा आधा भाग, जिसका यह प्लगइन अग्रिम छोर है।
 
+## डिज़ाइन चर्चाएँ
+
+- [क्षमता प्रोफ़ाइलें](https://github.com/PerryLink/dsh-permission-rules/issues/6) — कार्य/सत्र के अनुसार बदली जा सकने वाली नामित अनुमति सेटें (ट्रैकिंग इश्यू)।
+- [Task-scoped capabilities: combining Harness permissions with external enforcement](https://github.com/deepseek-ai/deepseek-harness/discussions/2506) — बाहरी प्रवर्तन सीमा पर upstream चर्चा, जिसने प्रोफ़ाइल विचार को प्रेरित किया।
+
 ## ज्ञात सीमाएँ
 
 - `permissionRules/decision` एन्वेलप के `ignorable: true` मार्कर के साथ जोड़ा जाता है, इसलिए कोई भी harness बिल्ड लॉग लोड कर लेता है — जो पाठक इस आउट-ऑफ-रेपो प्रकार को नहीं जानते वे सत्र अस्वीकार करने के बजाय केवल ऑडिट रिकॉर्ड छोड़ देते हैं। मार्कर से पुराने होस्ट (`0.1.0-rc.6` शृंखला) इसे चुपचाप गिरा देते हैं: प्लगइन रनटाइम पर उन्हें पहचानता है (peer संस्करण पूर्व-जाँच + जोड़े गए एन्वेलप की जाँच) और एक-बार चेतावनी के साथ सत्र-लॉग ऑडिट बंद कर देता है, ताकि लॉग हर जगह लोड होते रहें। सत्र में रास्ता वापस चाहिए तो `allowUnmarkedAudit: true` सेट करें; बिना-चिह्न लिखे गए लॉग required-on-read शब्दार्थ वाले होस्ट पर लोड से पहले `scripts/repair-session-logs.mjs` से मरम्मत किए जा सकते हैं।

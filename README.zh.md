@@ -152,6 +152,11 @@ dsh --profile web --dump-config | grep -A4 'id: permission-rules'   # 验证挂�
 - `Drifter-yh/dsh-tool-policy` — deny-by-default 工具策略；在此声明差异化，避免重复实现。
 - `dsh-auto-review` — 本插件所前置的"AI 兜底"半环。
 
+## 设计讨论
+
+- [Capability profiles（能力配置）](https://github.com/PerryLink/dsh-permission-rules/issues/6) — 具名、可按任务/会话切换的权限集（跟踪 issue）。
+- [Task-scoped capabilities: combining Harness permissions with external enforcement](https://github.com/deepseek-ai/deepseek-harness/discussions/2506) — 上游关于外部执行边界的讨论，是 profiles 构想的来源。
+
 ## 已知局限
 
 - `permissionRules/decision` 以信封 `ignorable: true` 标记写入，任何 harness 构建都能加载日志——不认识该仓库外类型的第一方读取器会跳过这条审计记录而不是拒绝整个会话。早于该标记的宿主（`0.1.0-rc.6` 系列）会静默丢弃它：插件在运行时探测（peer 版本预检 + 已写事件信封探针），探测到即停用会话日志审计并一次性警告，确保会话日志在任何构建上都能加载。设 `allowUnmarkedAudit: true` 重新开启会话内轨迹；已写出且缺标记的日志可在 required-on-read 语义的宿主上加载前用 `scripts/repair-session-logs.mjs` 修复。

@@ -152,6 +152,11 @@ A saída dos comandos é somente UI — o modelo aprende as regras apenas pelos 
 - `Drifter-yh/dsh-tool-policy` — política de ferramentas deny-by-default; documentada aqui para evitar implementação duplicada.
 - `dsh-auto-review` — a metade de apoio de IA do ciclo que este plugin lidera.
 
+## Discussões de design
+
+- [Perfis de capacidade](https://github.com/PerryLink/dsh-permission-rules/issues/6) — conjuntos de permissões nomeados e alternáveis por tarefa/sessão (issue de acompanhamento).
+- [Task-scoped capabilities: combining Harness permissions with external enforcement](https://github.com/deepseek-ai/deepseek-harness/discussions/2506) — a discussão upstream sobre o limite da aplicação externa que motivou a ideia dos perfis.
+
 ## Limitações conhecidas
 
 - `permissionRules/decision` é anexado com o marcador de envelope `ignorable: true`, então qualquer build do harness carrega o log — leitores que não conhecem o tipo fora do repositório simplesmente pulam o registro de auditoria em vez de recusar a sessão. Hosts cujo `Session.append` é anterior ao marcador (a linha `0.1.0-rc.6`) o DESCARTAM silenciosamente: o plugin os detecta em tempo de execução (verificação prévia da versão do peer + sonda do envelope anexado) e desativa a auditoria do registro da sessão com um aviso único, mantendo os registros carregáveis em qualquer lugar. Defina `allowUnmarkedAudit: true` para reativar o rastro na sessão; registros já gravados sem o marcador podem ser reparados com `scripts/repair-session-logs.mjs` antes de carregar em hosts com semântica required-on-read.

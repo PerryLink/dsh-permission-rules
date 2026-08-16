@@ -152,6 +152,11 @@ Command output is UI-only — the model learns the rules only through the tool r
 - `Drifter-yh/dsh-tool-policy` — deny-by-default tool policy; documented here to avoid duplicate implementation.
 - `dsh-auto-review` — the AI-backstop half of the loop this plugin fronts.
 
+## Design discussions
+
+- [Capability profiles](https://github.com/PerryLink/dsh-permission-rules/issues/6) — named, switchable permission sets per task/session (tracking issue).
+- [Task-scoped capabilities: combining Harness permissions with external enforcement](https://github.com/deepseek-ai/deepseek-harness/discussions/2506) — the upstream discussion on the external-enforcement boundary that motivated the profiles idea.
+
 ## Known limitations
 
 - `permissionRules/decision` is appended with the envelope's `ignorable: true` marker, so any harness build loads the log — readers that do not know the out-of-repo type simply skip the audit record instead of refusing the session. Hosts whose `Session.append` predates the marker (the `0.1.0-rc.6` line) silently DROP it: the plugin detects them at runtime (peer-version pre-check + a probe of the appended envelope) and disables session-log audit with a one-time warning, so session logs stay loadable everywhere. Set `allowUnmarkedAudit: true` to opt back into the in-session trail; logs already written without the marker can be repaired with `scripts/repair-session-logs.mjs` before loading on hosts with required-on-read semantics.
