@@ -57,6 +57,34 @@ declare module '@deepseek-ai/dsh-session/types' {
       cwd: string
       dryRun?: true
     }
+    /**
+     * One process-level network block (proxy layer), appended when the
+     * block can be attributed to a session — log-only audit with the same
+     * `ignorable` marker discipline as `permissionRules/decision`. `tool`
+     * is the attributed shell tool (`bash`/`pwsh`) or `'subprocess'` when
+     * no in-flight shell execution could be named; `attributed` records
+     * which case. `domain`/`scheme`/`port` name the blocked target,
+     * `action` is `deny` or `ask` (an ask at the proxy cannot ride the
+     * approval seam — no session context — and blocks with a message),
+     * `mode` is the network policy mode in effect, and `ruleIndex`/`reason`
+     * appear only on rule hits.
+     */
+    'permissionRules/network': {
+      kind: 'block'
+      tool: string
+      attributed: boolean
+      callId?: CallId
+      domain: string
+      scheme?: 'http' | 'https'
+      port?: number
+      action: 'deny' | 'ask'
+      mode: string
+      matched: boolean
+      source: string
+      ruleIndex?: number
+      reason?: string
+      time: number
+    }
   }
 }
 
@@ -79,6 +107,24 @@ export interface AuditDecision {
   cwd: string
   /** `true` on dry-run records (`enforce: false`) — matched but never enforced. */
   dryRun?: true
+}
+
+/** The payload of one `permissionRules/network` audit record. */
+export interface AuditNetworkBlock {
+  kind: 'block'
+  tool: string
+  attributed: boolean
+  callId?: CallId
+  domain: string
+  scheme?: 'http' | 'https'
+  port?: number
+  action: 'deny' | 'ask'
+  mode: string
+  matched: boolean
+  source: string
+  ruleIndex?: number
+  reason?: string
+  time: number
 }
 
 /**

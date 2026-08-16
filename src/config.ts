@@ -9,6 +9,8 @@
 import { isAbsolute } from 'node:path'
 import z from '@deepseek-ai/schemastery'
 import type { PatternMode } from './rules.ts'
+import type { NetworkMode, UnlistedAction } from './network.ts'
+import { NETWORK_MODES } from './network.ts'
 import type { UiLanguage } from './prose.ts'
 
 /** What happens when a discovered rule file exists but cannot be parsed or compiled. */
@@ -16,6 +18,44 @@ export type BadFilePolicy = 'fail' | 'ignore-with-warning'
 
 /** Which decisions are audit-logged: every call, or only rule hits. */
 export type AuditGranularity = 'all' | 'hits'
+
+/** Loopback-target handling at the proxy layer. */
+export type LoopbackPolicy = 'allow' | 'policy'
+
+/** NO_PROXY handling for policy-injected subprocess environment. */
+export type NoProxyPolicy = 'clear' | 'preserve'
+
+/**
+ * The process-level network policy block. Every field is optional —
+ * {@link ResolvedConfig} supplies the defaults. `mode: 'auto'` maps the
+ * official sandbox preset onto the three network modes (read-only →
+ * deny-all, workspace-write → whitelist, danger-full-access → allow-all);
+ * on hosts without the sandbox-policy service `auto` resolves to
+ * `autoFallback` (`allow-all` by default, so pre-network hosts keep their
+ * permissive behavior until configured).
+ */
+export interface NetworkConfig {
+  /** Master switch: `false` disables the proxy, the env injection, and the web-tool mode defaults. */
+  enabled?: boolean
+  /** Policy mode: `auto` follows the sandbox preset, or an explicit mode. */
+  mode?: 'auto' | NetworkMode
+  /** Mode used when `mode: 'auto'` and the sandbox-policy service is absent or unknown. */
+  autoFallback?: NetworkMode
+  /** Whitelist-mode handling of targets no rule matched: `ask` (default) or `deny`. */
+  unlisted?: UnlistedAction
+  /** Local proxy bind address (loopback only — the proxy never listens publicly). */
+  proxyBind?: string
+  /** Local proxy port; `0` picks a free ephemeral port. */
+  proxyPort?: number
+  /** Cap on recent-block records kept for the settings page. */
+  proxyMaxRecent?: number
+  /** Loopback targets: `allow` (default, Codex parity) or `policy` (evaluated like any target). */
+  loopback?: LoopbackPolicy
+  /** Whether proxy environment variables are injected for subprocesses. */
+  injectEnv?: boolean
+  /** Subprocess NO_PROXY handling: `clear` enforces the policy (default) or `preserve` keeps ambient values. */
+  noProxy?: NoProxyPolicy
+}
 
 /** Raw plugin config — every field optional; {@link Config} supplies the defaults. */
 export interface Config {
@@ -75,6 +115,22 @@ export interface Config {
    * `scripts/repair-session-logs.mjs` before loading on a newer harness).
    */
   allowUnmarkedAudit?: boolean
+  /** Process-level network policy (all optional; defaults inside). */
+  network?: NetworkConfig
+}
+
+/** Network config after {@link resolveConfig}: every optional field has its explicit default. */
+export interface ResolvedNetworkConfig {
+  readonly enabled: boolean
+  readonly mode: 'auto' | NetworkMode
+  readonly autoFallback: NetworkMode
+  readonly unlisted: UnlistedAction
+  readonly proxyBind: string
+  readonly proxyPort: number
+  readonly proxyMaxRecent: number
+  readonly loopback: LoopbackPolicy
+  readonly injectEnv: boolean
+  readonly noProxy: NoProxyPolicy
 }
 
 /** Config after {@link resolveConfig}: every optional field has its explicit default. */
@@ -94,6 +150,7 @@ export interface ResolvedConfig {
   readonly maxGlobStars: number
   readonly enforce: boolean
   readonly allowUnmarkedAudit: boolean
+  readonly network: ResolvedNetworkConfig
 }
 
 /** Schemastery schema: the loader validates and fills defaults before `apply`. */
@@ -113,6 +170,18 @@ export const Config: z<Config> = z.object({
   maxGlobStars: z.number().default(2),
   enforce: z.boolean().default(true),
   allowUnmarkedAudit: z.boolean().default(false),
+  network: z.object({
+    enabled: z.boolean().default(true),
+    mode: z.union(['auto', ...NETWORK_MODES] as const).default('auto'),
+    autoFallback: z.union(NETWORK_MODES as [NetworkMode, ...NetworkMode[]]).default('allow-all'),
+    unlisted: z.union(['ask', 'deny'] as const).default('ask'),
+    proxyBind: z.string().default('127.0.0.1'),
+    proxyPort: z.number().default(0),
+    proxyMaxRecent: z.number().default(100),
+    loopback: z.union(['allow', 'policy'] as const).default('allow'),
+    injectEnv: z.boolean().default(true),
+    noProxy: z.union(['clear', 'preserve'] as const).default('clear'),
+  }),
 })
 
 /**
@@ -156,6 +225,7 @@ export function resolveConfig(config: Config = {}): ResolvedConfig {
   assertBoolean('caseInsensitivePaths', config.caseInsensitivePaths ?? process.platform === 'win32')
   assertBoolean('enforce', config.enforce ?? true)
   assertBoolean('allowUnmarkedAudit', config.allowUnmarkedAudit ?? false)
+  const network = resolveNetworkConfig(config.network)
   return {
     rulesFile,
     fallbackPath: config.fallbackPath,
@@ -172,6 +242,47 @@ export function resolveConfig(config: Config = {}): ResolvedConfig {
     maxGlobStars,
     enforce: config.enforce ?? true,
     allowUnmarkedAudit: config.allowUnmarkedAudit ?? false,
+    network,
+  }
+}
+
+/** Validate and default the optional `network` block; bad values fail the mount loudly. */
+function resolveNetworkConfig(raw: NetworkConfig | undefined): ResolvedNetworkConfig {
+  const mode = raw?.mode ?? 'auto'
+  if (mode !== 'auto') assertEnum('network.mode', mode, NETWORK_MODES)
+  const autoFallback = raw?.autoFallback ?? 'allow-all'
+  assertEnum('network.autoFallback', autoFallback, NETWORK_MODES)
+  const unlisted = raw?.unlisted ?? 'ask'
+  assertEnum('network.unlisted', unlisted, ['ask', 'deny'])
+  const loopback = raw?.loopback ?? 'allow'
+  assertEnum('network.loopback', loopback, ['allow', 'policy'])
+  const noProxy = raw?.noProxy ?? 'clear'
+  assertEnum('network.noProxy', noProxy, ['clear', 'preserve'])
+  assertBoolean('network.enabled', raw?.enabled ?? true)
+  assertBoolean('network.injectEnv', raw?.injectEnv ?? true)
+  const proxyBind = raw?.proxyBind ?? '127.0.0.1'
+  if (typeof proxyBind !== 'string' || proxyBind.trim().length === 0) {
+    throw new TypeError(`network.proxyBind must be a non-empty string, got ${typeof proxyBind}`)
+  }
+  const proxyPort = raw?.proxyPort ?? 0
+  if (!Number.isSafeInteger(proxyPort) || proxyPort < 0 || proxyPort > 65535) {
+    throw new TypeError(`network.proxyPort must be an integer 0-65535, got ${String(raw?.proxyPort)}`)
+  }
+  const proxyMaxRecent = raw?.proxyMaxRecent ?? 100
+  if (!Number.isSafeInteger(proxyMaxRecent) || proxyMaxRecent <= 0) {
+    throw new TypeError(`network.proxyMaxRecent must be a positive safe integer, got ${String(raw?.proxyMaxRecent)}`)
+  }
+  return {
+    enabled: raw?.enabled ?? true,
+    mode: mode as 'auto' | NetworkMode,
+    autoFallback,
+    unlisted,
+    proxyBind: proxyBind.trim(),
+    proxyPort,
+    proxyMaxRecent,
+    loopback,
+    injectEnv: raw?.injectEnv ?? true,
+    noProxy,
   }
 }
 

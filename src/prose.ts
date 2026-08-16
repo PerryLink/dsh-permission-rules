@@ -58,6 +58,16 @@ export interface UiProse {
   unreachableWarning: (numbers: readonly number[]) => string
   /** Empty-source placeholder in the rules header. */
   emptySource: string
+  /** Line shown when the network policy is disabled (`network.enabled: false`). */
+  networkDisabled: string
+  /** Header naming the network mode, its sandbox preset, and proxy liveness. */
+  networkHeader: (mode: string, sandboxMode: string | undefined, configuredMode: string, proxyActive: boolean, proxyPort: number) => string
+  /** Cumulative block counters line. */
+  networkCounters: (denied: number, askBlocked: number) => string
+  /** Line shown when no proxy blocks were recorded yet. */
+  noNetworkBlocks: string
+  /** One recent proxy-block row. */
+  networkBlockLine: (time: number, tool: string, attributed: boolean, domain: string, scheme: string | undefined, port: number | undefined, action: string, matched: boolean, ruleIndex: number | undefined, reason: string | undefined) => string
 }
 
 /** Tokens `describeRule` uses for its match-dimension prefixes. */
@@ -70,6 +80,11 @@ export interface DescribeTokens {
   absent: string
   when: string
   platform: string
+  network: string
+  domains: string
+  ips: string
+  ports: string
+  schemes: string
   disabled: string
   tags: string
   /** Prefix of the per-rule source-file attribution. */
@@ -90,7 +105,7 @@ const EN: UiProse = {
   lastReloadWarning: error => `Warning: the last reload failed (${error}); the rules listed above are the previous ones.`,
   dryRunNotice: 'Dry-run mode (enforce: false): deny/ask hits are audit-logged only — every call is passed through.',
   unknownArg: arg => `Unknown /rules argument "${arg}". ${EN.usage}`,
-  usage: 'Usage: /rules [list | reload | decisions [n] | test <tool> <json-args>]',
+  usage: 'Usage: /rules [list | reload | network | decisions [n] | test <tool> <json-args>]',
   decisionsHeader: (shown, total) => `Last ${shown} of ${total} permission decision(s) for this session:`,
   noDecisions: 'No permission decisions recorded in this session yet.',
   auditDisabledNotice: 'Session-log audit is disabled on this host: its Session.append predates the ignorable marker and would make sessions unresumable elsewhere (set allowUnmarkedAudit: true to opt back in).',
@@ -110,6 +125,18 @@ const EN: UiProse = {
   testUsage: 'Usage: /rules test [--cwd <dir>] [--env KEY=VALUE]... [--agent <selector>]... [--platform <name>] <tool> <json-args>, e.g. /rules test bash {"command":"git push origin main"}',
   unreachableWarning: numbers => `Warning: rule${numbers.length > 1 ? 's' : ''} ${numbers.join(', ')} ${numbers.length > 1 ? 'are' : 'is'} unreachable (shadowed by an earlier catch-all rule).`,
   emptySource: '(no rule file — empty rule set)',
+  networkDisabled: 'Network policy disabled (network.enabled: false): no proxy, no web-tool mode defaults.',
+  networkHeader: (mode, sandboxMode, configuredMode, proxyActive, proxyPort) => `Network policy: mode ${mode}${sandboxMode === undefined ? '' : ` (sandbox preset ${sandboxMode})`}${configuredMode === 'auto' ? '' : ` (configured ${configuredMode})`}; proxy ${proxyActive ? `active on 127.0.0.1:${proxyPort}` : 'INACTIVE (bind failed — shell network policy is not enforced)'}.`,
+  networkCounters: (denied, askBlocked) => `Blocks: ${denied} denied, ${askBlocked} ask-blocked.`,
+  noNetworkBlocks: 'No network blocks recorded yet.',
+  networkBlockLine: (time, tool, attributed, domain, scheme, port, action, matched, ruleIndex, reason) => {
+    const when = new Date(time).toISOString()
+    const who = `${tool}${attributed ? '' : ' (unattributed)'}`
+    const target = `${scheme ?? '?'}://${domain}${port === undefined ? '' : `:${port}`}`
+    const by = matched ? (ruleIndex === undefined ? '' : ` (rule ${ruleIndex + 1})`) : ' (mode default)'
+    const why = reason === undefined ? '' : `: ${short(reason)}`
+    return `- ${when} ${action} ${who} → ${target}${by}${why}`
+  },
 }
 
 const ZH: UiProse = {
@@ -121,7 +148,7 @@ const ZH: UiProse = {
   lastReloadWarning: error => `警告：上次重载失败（${error}）；以上列出的是之前的规则。`,
   dryRunNotice: '干跑模式（enforce: false）：deny/ask 命中仅写入审计日志——所有调用照常透传。',
   unknownArg: arg => `未知的 /rules 参数 "${arg}"。${ZH.usage}`,
-  usage: '用法：/rules [list | reload | decisions [n] | test <工具名> <json-参数>]',
+  usage: '用法：/rules [list | reload | network | decisions [n] | test <工具名> <json-参数>]',
   decisionsHeader: (shown, total) => `本会话最近 ${shown}/${total} 条权限裁决：`,
   noDecisions: '本会话还没有记录任何权限裁决。',
   auditDisabledNotice: '本宿主上会话日志审计已停用：其 Session.append 早于 ignorable 标记支持，会令会话在其他宿主上无法恢复（设 allowUnmarkedAudit: true 可重新开启）。',
@@ -141,6 +168,18 @@ const ZH: UiProse = {
   testUsage: '用法：/rules test [--cwd <目录>] [--env 键=值]... [--agent <选择器>]... [--platform <平台名>] <工具名> <json-参数>，例如 /rules test bash {"command":"git push origin main"}',
   unreachableWarning: numbers => `警告：规则 ${numbers.join('、')} 不可达（被前面的通配规则遮蔽）。`,
   emptySource: '（无规则文件——空规则集）',
+  networkDisabled: '网络策略已停用（network.enabled: false）：无代理、无 web 工具模式默认裁决。',
+  networkHeader: (mode, sandboxMode, configuredMode, proxyActive, proxyPort) => `网络策略：模式 ${mode}${sandboxMode === undefined ? '' : `（沙箱预设 ${sandboxMode}）`}${configuredMode === 'auto' ? '' : `（显式配置 ${configuredMode}）`}；代理${proxyActive ? `运行于 127.0.0.1:${proxyPort}` : '未激活（绑定失败——shell 网络策略未生效）'}。`,
+  networkCounters: (denied, askBlocked) => `拦截：拒绝 ${denied} 次，待审批阻断 ${askBlocked} 次。`,
+  noNetworkBlocks: '尚未记录任何网络拦截。',
+  networkBlockLine: (time, tool, attributed, domain, scheme, port, action, matched, ruleIndex, reason) => {
+    const when = new Date(time).toISOString()
+    const who = `${tool}${attributed ? '' : '（未归属）'}`
+    const target = `${scheme ?? '?'}://${domain}${port === undefined ? '' : `:${port}`}`
+    const by = matched ? (ruleIndex === undefined ? '' : `（规则 ${ruleIndex + 1}）`) : '（模式默认）'
+    const why = reason === undefined ? '' : `：${short(reason)}`
+    return `- ${when} ${action} ${who} → ${target}${by}${why}`
+  },
 }
 
 const ES: UiProse = {
@@ -152,7 +191,7 @@ const ES: UiProse = {
   lastReloadWarning: error => `Aviso: la última recarga falló (${error}); las reglas mostradas son las anteriores.`,
   dryRunNotice: 'Modo simulación (enforce: false): los aciertos deny/ask solo se registran en auditoría — todas las llamadas pasan.',
   unknownArg: arg => `Argumento de /rules desconocido "${arg}". ${ES.usage}`,
-  usage: 'Uso: /rules [list | reload | decisions [n] | test <herramienta> <json-args>]',
+  usage: 'Uso: /rules [list | reload | network | decisions [n] | test <herramienta> <json-args>]',
   decisionsHeader: (shown, total) => `Últimas ${shown} de ${total} decisión(es) de permiso de esta sesión:`,
   noDecisions: 'Esta sesión aún no registra decisiones de permiso.',
   auditDisabledNotice: 'La auditoría del registro de sesión está desactivada en este host: su Session.append es anterior al marcador ignorable y haría las sesiones irrecuperables en otros hosts (establece allowUnmarkedAudit: true para reactivarla).',
@@ -172,6 +211,18 @@ const ES: UiProse = {
   testUsage: 'Uso: /rules test [--cwd <dir>] [--env CLAVE=VALOR]... [--agent <selector>]... [--platform <nombre>] <herramienta> <json-args>, p. ej. /rules test bash {"command":"git push origin main"}',
   unreachableWarning: numbers => `Aviso: ${numbers.length > 1 ? 'las reglas' : 'la regla'} ${numbers.join(', ')} ${numbers.length > 1 ? 'son inalcanzables' : 'es inalcanzable'} (tapada por una regla general anterior).`,
   emptySource: '(sin archivo de reglas — conjunto vacío)',
+  networkDisabled: 'Política de red desactivada (network.enabled: false): sin proxy, sin valores predeterminados de modo para herramientas web.',
+  networkHeader: (mode, sandboxMode, configuredMode, proxyActive, proxyPort) => `Política de red: modo ${mode}${sandboxMode === undefined ? '' : ` (preset sandbox ${sandboxMode})`}${configuredMode === 'auto' ? '' : ` (configurado ${configuredMode})`}; proxy ${proxyActive ? `activo en 127.0.0.1:${proxyPort}` : 'INACTIVO (fallo de bind — la política de red de shell no se aplica)'}.`,
+  networkCounters: (denied, askBlocked) => `Bloqueos: ${denied} denegados, ${askBlocked} bloqueados por aprobación.`,
+  noNetworkBlocks: 'Aún no se han registrado bloqueos de red.',
+  networkBlockLine: (time, tool, attributed, domain, scheme, port, action, matched, ruleIndex, reason) => {
+    const when = new Date(time).toISOString()
+    const who = `${tool}${attributed ? '' : ' (sin atribuir)'}`
+    const target = `${scheme ?? '?'}://${domain}${port === undefined ? '' : `:${port}`}`
+    const by = matched ? (ruleIndex === undefined ? '' : ` (regla ${ruleIndex + 1})`) : ' (modo predeterminado)'
+    const why = reason === undefined ? '' : `: ${short(reason)}`
+    return `- ${when} ${action} ${who} → ${target}${by}${why}`
+  },
 }
 
 const PT: UiProse = {
@@ -183,7 +234,7 @@ const PT: UiProse = {
   lastReloadWarning: error => `Aviso: a última recarga falhou (${error}); as regras listadas são as anteriores.`,
   dryRunNotice: 'Modo simulação (enforce: false): acertos deny/ask são apenas registrados na auditoria — todas as chamadas passam.',
   unknownArg: arg => `Argumento de /rules desconhecido "${arg}". ${PT.usage}`,
-  usage: 'Uso: /rules [list | reload | decisions [n] | test <ferramenta> <json-args>]',
+  usage: 'Uso: /rules [list | reload | network | decisions [n] | test <ferramenta> <json-args>]',
   decisionsHeader: (shown, total) => `Últimas ${shown} de ${total} decisão(ões) de permissão desta sessão:`,
   noDecisions: 'Esta sessão ainda não registrou decisões de permissão.',
   auditDisabledNotice: 'A auditoria do registro da sessão está desativada neste host: seu Session.append é anterior ao marcador ignorable e tornaria as sessões irrecuperáveis em outros hosts (defina allowUnmarkedAudit: true para reativar).',
@@ -203,6 +254,18 @@ const PT: UiProse = {
   testUsage: 'Uso: /rules test [--cwd <dir>] [--env CHAVE=VALOR]... [--agent <seletor>]... [--platform <nome>] <ferramenta> <json-args>, ex.: /rules test bash {"command":"git push origin main"}',
   unreachableWarning: numbers => `Aviso: ${numbers.length > 1 ? 'as regras' : 'a regra'} ${numbers.join(', ')} ${numbers.length > 1 ? 'são inalcançáveis' : 'é inalcançável'} (encoberta por uma regra geral anterior).`,
   emptySource: '(sem arquivo de regras — conjunto vazio)',
+  networkDisabled: 'Política de rede desativada (network.enabled: false): sem proxy, sem padrões de modo para ferramentas web.',
+  networkHeader: (mode, sandboxMode, configuredMode, proxyActive, proxyPort) => `Política de rede: modo ${mode}${sandboxMode === undefined ? '' : ` (preset sandbox ${sandboxMode})`}${configuredMode === 'auto' ? '' : ` (configurado ${configuredMode})`}; proxy ${proxyActive ? `ativo em 127.0.0.1:${proxyPort}` : 'INATIVO (falha de bind — a política de rede do shell não está ativa)'}.`,
+  networkCounters: (denied, askBlocked) => `Bloqueios: ${denied} negados, ${askBlocked} bloqueados por aprovação.`,
+  noNetworkBlocks: 'Nenhum bloqueio de rede registrado ainda.',
+  networkBlockLine: (time, tool, attributed, domain, scheme, port, action, matched, ruleIndex, reason) => {
+    const when = new Date(time).toISOString()
+    const who = `${tool}${attributed ? '' : ' (não atribuído)'}`
+    const target = `${scheme ?? '?'}://${domain}${port === undefined ? '' : `:${port}`}`
+    const by = matched ? (ruleIndex === undefined ? '' : ` (regra ${ruleIndex + 1})`) : ' (modo padrão)'
+    const why = reason === undefined ? '' : `: ${short(reason)}`
+    return `- ${when} ${action} ${who} → ${target}${by}${why}`
+  },
 }
 
 const HI: UiProse = {
@@ -214,7 +277,7 @@ const HI: UiProse = {
   lastReloadWarning: error => `चेतावनी: अंतिम पुनः लोड विफल रहा (${error}); ऊपर सूचीबद्ध नियम पिछले वाले हैं।`,
   dryRunNotice: 'ड्राई-रन मोड (enforce: false): deny/ask हिट केवल ऑडिट में दर्ज होते हैं — हर कॉल पास हो जाती है।',
   unknownArg: arg => `अज्ञात /rules तर्क "${arg}"। ${HI.usage}`,
-  usage: 'उपयोग: /rules [list | reload | decisions [n] | test <टूल> <json-args>]',
+  usage: 'उपयोग: /rules [list | reload | network | decisions [n] | test <टूल> <json-args>]',
   decisionsHeader: (shown, total) => `इस सत्र के अंतिम ${shown}/${total} अनुमति निर्णय:`,
   noDecisions: 'इस सत्र में अभी कोई अनुमति निर्णय दर्ज नहीं है।',
   auditDisabledNotice: 'इस होस्ट पर सत्र-लॉग ऑडिट अक्षम है: इसका Session.append ignorable मार्कर से पुराना है और सत्र अन्य होस्ट पर अप्राप्य बन जाते (पुनः चालू करने के लिए allowUnmarkedAudit: true सेट करें)।',
@@ -234,6 +297,18 @@ const HI: UiProse = {
   testUsage: 'उपयोग: /rules test [--cwd <dir>] [--env KEY=मान]... [--agent <चयनकर्ता>]... [--platform <नाम>] <टूल> <json-args>, जैसे /rules test bash {"command":"git push origin main"}',
   unreachableWarning: numbers => `चेतावनी: नियम ${numbers.join(', ')} अप्राप्य हैं (पहले वाले सर्व-मिलान नियम से ढके हुए)।`,
   emptySource: '(कोई नियम फ़ाइल नहीं — खाली नियम-समूह)',
+  networkDisabled: 'नेटवर्क नीति अक्षम (network.enabled: false): कोई प्रॉक्सी नहीं, कोई वेब-टूल मोड डिफ़ॉल्ट नहीं।',
+  networkHeader: (mode, sandboxMode, configuredMode, proxyActive, proxyPort) => `नेटवर्क नीति: मोड ${mode}${sandboxMode === undefined ? '' : ` (सैंडबॉक्स प्रीसेट ${sandboxMode})`}${configuredMode === 'auto' ? '' : ` (कॉन्फ़िगर किया ${configuredMode})`}; प्रॉक्सी ${proxyActive ? `सक्रिय 127.0.0.1:${proxyPort} पर` : 'निष्क्रिय (बाइंड विफल — शेल नेटवर्क नीति लागू नहीं)'}।`,
+  networkCounters: (denied, askBlocked) => `ब्लॉक: ${denied} अस्वीकृत, ${askBlocked} अनुमोदन-ब्लॉक।`,
+  noNetworkBlocks: 'अभी तक कोई नेटवर्क ब्लॉक दर्ज नहीं हुआ।',
+  networkBlockLine: (time, tool, attributed, domain, scheme, port, action, matched, ruleIndex, reason) => {
+    const when = new Date(time).toISOString()
+    const who = `${tool}${attributed ? '' : ' (असाइन नहीं)'}`
+    const target = `${scheme ?? '?'}://${domain}${port === undefined ? '' : `:${port}`}`
+    const by = matched ? (ruleIndex === undefined ? '' : ` (नियम ${ruleIndex + 1})`) : ' (मोड डिफ़ॉल्ट)'
+    const why = reason === undefined ? '' : `: ${short(reason)}`
+    return `- ${when} ${action} ${who} → ${target}${by}${why}`
+  },
 }
 
 /** The localized prose tables by language. */
@@ -241,9 +316,9 @@ export const UI_PROSE: Readonly<Record<UiLanguage, UiProse>> = { en: EN, zh: ZH,
 
 /** `describeRule` match-dimension tokens by language. */
 export const DESCRIBE_TOKENS: Readonly<Record<UiLanguage, DescribeTokens>> = {
-  en: { allTools: 'all tools', tools: 'tools', agents: 'agents', params: 'params', paths: 'paths', absent: 'absent', when: 'when', platform: 'platform', disabled: 'disabled', tags: 'tags', src: 'src' },
-  zh: { allTools: '全部工具', tools: '工具', agents: '代理', params: '参数', paths: '路径', absent: '缺省键', when: '条件', platform: '平台', disabled: '已禁用', tags: '标签', src: '来源' },
-  es: { allTools: 'todas las herramientas', tools: 'herramientas', agents: 'agentes', params: 'parámetros', paths: 'rutas', absent: 'ausentes', when: 'cuándo', platform: 'plataforma', disabled: 'deshabilitada', tags: 'etiquetas', src: 'origen' },
-  pt: { allTools: 'todas as ferramentas', tools: 'ferramentas', agents: 'agentes', params: 'parâmetros', paths: 'caminhos', absent: 'ausentes', when: 'quando', platform: 'plataforma', disabled: 'desativada', tags: 'etiquetas', src: 'origem' },
-  hi: { allTools: 'सभी टूल', tools: 'टूल', agents: 'एजेंट', params: 'पैरामीटर', paths: 'पथ', absent: 'अनुपस्थित', when: 'शर्त', platform: 'प्लेटफ़ॉर्म', disabled: 'अक्षम', tags: 'टैग', src: 'स्रोत' },
+  en: { allTools: 'all tools', tools: 'tools', agents: 'agents', params: 'params', paths: 'paths', absent: 'absent', when: 'when', platform: 'platform', network: 'network', domains: 'domains', ips: 'ips', ports: 'ports', schemes: 'schemes', disabled: 'disabled', tags: 'tags', src: 'src' },
+  zh: { allTools: '全部工具', tools: '工具', agents: '代理', params: '参数', paths: '路径', absent: '缺省键', when: '条件', platform: '平台', network: '网络', domains: '域名', ips: 'IP', ports: '端口', schemes: '协议', disabled: '已禁用', tags: '标签', src: '来源' },
+  es: { allTools: 'todas las herramientas', tools: 'herramientas', agents: 'agentes', params: 'parámetros', paths: 'rutas', absent: 'ausentes', when: 'cuándo', platform: 'plataforma', network: 'red', domains: 'dominios', ips: 'IP', ports: 'puertos', schemes: 'esquemas', disabled: 'deshabilitada', tags: 'etiquetas', src: 'origen' },
+  pt: { allTools: 'todas as ferramentas', tools: 'ferramentas', agents: 'agentes', params: 'parâmetros', paths: 'caminhos', absent: 'ausentes', when: 'quando', platform: 'plataforma', network: 'rede', domains: 'domínios', ips: 'IP', ports: 'portas', schemes: 'esquemas', disabled: 'desativada', tags: 'etiquetas', src: 'origem' },
+  hi: { allTools: 'सभी टूल', tools: 'टूल', agents: 'एजेंट', params: 'पैरामीटर', paths: 'पथ', absent: 'अनुपस्थित', when: 'शर्त', platform: 'प्लेटफ़ॉर्म', network: 'नेटवर्क', domains: 'डोमेन', ips: 'IP', ports: 'पोर्ट', schemes: 'स्कीम', disabled: 'अक्षम', tags: 'टैग', src: 'स्रोत' },
 }

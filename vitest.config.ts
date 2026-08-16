@@ -9,7 +9,9 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       include: ['src/**/*.ts'],
-      exclude: ['src/index.ts'],
+      // The browser client half runs in the web UI; this repo has no client
+      // test harness, so it is excluded from the host-side coverage gate.
+      exclude: ['src/index.ts', 'src/client/**'],
       thresholds: {
         statements: 90,
         branches: 80,

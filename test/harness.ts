@@ -160,7 +160,7 @@ export async function mountHarness(
   // rc.6 peers are known-unmarked hosts, so the production default would
   // disable the audit events most specs assert on; the degradation default
   // itself is covered by test/audit-support.spec.ts.
-  await ctx.plugin(plugin as unknown as import('@deepseek-ai/cordis').Plugin, { watch: false, allowUnmarkedAudit: true, ...pluginConfig })
+  await ctx.plugin(plugin as unknown as import('@deepseek-ai/cordis').Plugin, { watch: false, allowUnmarkedAudit: true, network: { enabled: false }, ...pluginConfig })
   const injected: UserMessage[] = []
   const agent = makeAgent(session, injected)
   return { ctx, session, agent, injected, cwd, subagents }

@@ -19,6 +19,32 @@ export type PatternMode = 'glob' | 'regex'
 /** Closed action list for runtime normalization of untrusted values. */
 export const RULE_ACTIONS: readonly RuleAction[] = ['allow', 'deny', 'ask']
 
+/** URL schemes a network rule may name (the proxy classifies CONNECT tunnels as `https`). */
+export type SchemeName = 'http' | 'https'
+
+/** Closed scheme list for runtime normalization of untrusted values. */
+export const SCHEMES: readonly SchemeName[] = ['http', 'https']
+
+/** Hostname characters that make a URL candidate parseable as a network target. */
+export const URL_CANDIDATE_KEYS: readonly string[] = [
+  'url',
+  'urls',
+  'uri',
+  'endpoint',
+  'base_url',
+  'baseUrl',
+  'webhook',
+  'link',
+  'href',
+  'origin',
+  'remote',
+  'repository',
+  'repo',
+]
+
+/** Top-level argument keys whose string values hold a shell command (URL-scanned for shell tools). */
+const COMMAND_CANDIDATE_KEYS: readonly string[] = ['command', 'cmd', 'script', 'command_line', 'commandLine']
+
 /** Platform names a `when.platform` entry may name (Node `process.platform` values). */
 export const PLATFORMS: readonly string[] = ['aix', 'android', 'darwin', 'freebsd', 'linux', 'openbsd', 'sunos', 'win32']
 
@@ -78,6 +104,11 @@ export interface RuleMatchDoc {
   agents: string[]
   /** Environment/platform conditions; every listed env key must be present and match. */
   when: WhenDoc
+  /**
+   * Network scope, when this rule is a network rule; absent means the rule
+   * never evaluates URL/connection targets.
+   */
+  network?: NetworkDoc
 }
 
 /** The parsed `when` conditions. */
@@ -86,6 +117,41 @@ export interface WhenDoc {
   env: Record<string, string[]>
   /** Platform names; ANY match satisfies the dimension. */
   platform: string[]
+}
+
+/**
+ * The parsed network match dimensions; a rule WITHOUT this block has no
+ * network scope (it stays a file/command rule exactly as before). A rule
+ * WITH this block is a network rule: it matches a tool call only when the
+ * call carries a URL candidate satisfying every listed dimension (AND),
+ * and it matches proxy-layer connections (shell subprocess traffic)
+ * against the connection target.
+ */
+export interface NetworkDoc {
+  /**
+   * Domain patterns (lowercased; a trailing `.` is stripped). A pattern
+   * WITHOUT wildcards is subdomain-inclusive — `example.com` also matches
+   * `api.example.com` — while `*.example.com` matches subdomains only and
+   * `*`/`**` compile as ordinary globs. ANY pattern matching the target
+   * host satisfies the dimension.
+   */
+  domains: string[]
+  /**
+   * IP patterns: an exact IPv4/IPv6 literal, a glob (e.g. `10.0.*.*`), or
+   * an IPv4 CIDR (`10.0.0.0/8`). A literal IP in the URL is always a
+   * candidate; the proxy additionally resolves hostnames and tests their
+   * addresses, while `tools/pre-execute` matches literal IPs only (no DNS
+   * in the hot path). ANY match satisfies the dimension.
+   */
+  ips: string[]
+  /**
+   * Port patterns: `*`, one port (`443`), or an inclusive range
+   * (`8000-9000`). Evaluated against the effective port (URL port, else
+   * 80/443 by scheme). ANY match satisfies the dimension.
+   */
+  ports: string[]
+  /** Schemes; the target scheme must be one of them (ANY). */
+  schemes: SchemeName[]
 }
 
 /** One compiled rule, ready for the `tools/pre-execute` hot path. */
@@ -110,8 +176,32 @@ export interface CompiledRule {
     readonly env: ReadonlyMap<string, readonly RegExp[]>
     readonly platform: readonly string[]
   }
+  /** Compiled network dimensions, when this rule has network scope. */
+  readonly network?: CompiledNetwork
   /** The original source strings, kept for the `/rules` display. */
   readonly source: RuleDocEntry
+}
+
+/** One compiled port pattern: an inclusive range; `max: Infinity` is the `*` catch-all. */
+export interface CompiledPortRange {
+  readonly min: number
+  readonly max: number
+}
+
+/** One compiled IP pattern: a glob RegExp, an IPv4 CIDR block, or an exact literal (IPv6/odd shapes). */
+export interface CompiledIpPattern {
+  readonly regex?: RegExp
+  readonly cidr?: { readonly network: number; readonly prefix: number }
+  readonly literal?: string
+}
+
+/** The compiled network dimensions of one rule (absent block = no network scope). */
+export interface CompiledNetwork {
+  /** Subdomain-inclusive exact domains and glob domains, all anchored + case-insensitive. */
+  readonly domains: readonly RegExp[]
+  readonly ips: readonly CompiledIpPattern[]
+  readonly ports: readonly CompiledPortRange[]
+  readonly schemes: readonly SchemeName[]
 }
 
 /** A compiled, size-capped ruleset. */
@@ -247,6 +337,7 @@ function compileRule(entry: RuleDocEntry, index: number, sourceIndex: number, op
     paths,
     absent: entry.match.absent,
     ...(env.size === 0 && entry.match.when.platform.length === 0 ? {} : { when: { env, platform: entry.match.when.platform } }),
+    ...(entry.match.network === undefined ? {} : { network: compileNetwork(entry.match.network, options.maxGlobStars) }),
     source: entry,
   }
 }
@@ -286,6 +377,7 @@ export function matchRules(
     if (rule.params.size > 0 && (argRecord === undefined || !matchParams(rule, argRecord))) continue
     if (rule.absent.length > 0 && !matchAbsent(rule, argRecord)) continue
     if (rule.paths.length > 0 && (argRecord === undefined || !matchPaths(rule, argRecord, cwd, ruleset.caseInsensitivePaths))) continue
+    if (rule.network !== undefined && (argRecord === undefined || !matchNetwork(rule, argRecord))) continue
     return { ruleIndex: rule.index, rule }
   }
   return undefined
@@ -315,7 +407,7 @@ export function findUnreachableRules(ruleset: CompiledRuleset): number[] {
 
 /** Whether every match dimension of one rule is empty. */
 function isCatchAll(rule: CompiledRule): boolean {
-  return rule.tools.length === 0 && rule.agents.length === 0 && rule.params.size === 0 && rule.paths.length === 0 && rule.absent.length === 0 && rule.when === undefined
+  return rule.tools.length === 0 && rule.agents.length === 0 && rule.params.size === 0 && rule.paths.length === 0 && rule.absent.length === 0 && rule.when === undefined && rule.network === undefined
 }
 
 /**
@@ -345,6 +437,14 @@ export function describeRule(rule: CompiledRule, tokens: DescribeTokens, source?
     .join(' ')
   const platformPart = rule.source.match.when.platform.length > 0 ? `${tokens.platform}:${rule.source.match.when.platform.join(',')}` : ''
   if (whenParts.length > 0 || platformPart.length > 0) parts.push(`${tokens.when}:${whenParts}${whenParts.length > 0 && platformPart.length > 0 ? ' ' : ''}${platformPart}`)
+  const networkParts: string[] = []
+  if (rule.source.match.network !== undefined) {
+    if (rule.source.match.network.domains.length > 0) networkParts.push(`${tokens.domains}:${rule.source.match.network.domains.join(',')}`)
+    if (rule.source.match.network.ips.length > 0) networkParts.push(`${tokens.ips}:${rule.source.match.network.ips.join(',')}`)
+    if (rule.source.match.network.ports.length > 0) networkParts.push(`${tokens.ports}:${rule.source.match.network.ports.join(',')}`)
+    if (rule.source.match.network.schemes.length > 0) networkParts.push(`${tokens.schemes}:${rule.source.match.network.schemes.join(',')}`)
+  }
+  if (networkParts.length > 0) parts.push(`${tokens.network}:${networkParts.join(' ')}`)
   const match = parts.length > 0 ? `[${parts.join(' ')}]` : `[${tokens.allTools}]`
   const disabled = rule.enabled ? '' : ` (${tokens.disabled})`
   const sourcePart = source !== undefined && source.length > 0 ? ` [${tokens.src}:${source}]` : ''
@@ -363,6 +463,11 @@ export interface DescribeTokens {
   readonly absent: string
   readonly when: string
   readonly platform: string
+  readonly network: string
+  readonly domains: string
+  readonly ips: string
+  readonly ports: string
+  readonly schemes: string
   readonly disabled: string
   readonly tags: string
   /** Prefix of the per-rule source-file attribution. */
@@ -375,7 +480,7 @@ function truncate(text: string, limit: number): string {
 }
 
 /** Whether a rule's tools dimension selects the tool. */
-function matchTools(rule: CompiledRule, toolName: string): boolean {
+export function matchTools(rule: CompiledRule, toolName: string): boolean {
   if (rule.tools.length === 0) return true
   return rule.tools.some(regex => regex.test(toolName))
 }
@@ -415,7 +520,7 @@ function matchAbsent(rule: CompiledRule, argRecord: Record<string, unknown> | un
 }
 
 /** Whether a rule's when dimension holds for the host facts. */
-function matchWhen(rule: CompiledRule, context: MatchContext): boolean {
+export function matchWhen(rule: CompiledRule, context: MatchContext): boolean {
   const when = rule.when
   if (when === undefined) return true
   if (when.platform.length > 0 && !when.platform.includes(context.platform ?? process.platform)) return false
@@ -517,9 +622,9 @@ function parseRuleEntry(raw: unknown, index: number): RuleDocEntry {
 function parseMatch(raw: unknown, at: string): RuleMatchDoc {
   if (raw === undefined) return { tools: [], agents: [], params: {}, paths: [], absent: [], when: { env: {}, platform: [] } }
   const record = asRecord(raw, `${at}.match`)
-  const unknownFields = Object.keys(record).filter(key => key !== 'tools' && key !== 'agents' && key !== 'params' && key !== 'paths' && key !== 'absent' && key !== 'when')
+  const unknownFields = Object.keys(record).filter(key => key !== 'tools' && key !== 'agents' && key !== 'params' && key !== 'paths' && key !== 'absent' && key !== 'when' && key !== 'network')
   if (unknownFields.length > 0) {
-    throw new RuleError(`${at}.match: unknown field${unknownFields.length > 1 ? 's' : ''} ${unknownFields.map(k => JSON.stringify(k)).join(', ')} (allowed: tools, agents, params, paths, absent, when)`)
+    throw new RuleError(`${at}.match: unknown field${unknownFields.length > 1 ? 's' : ''} ${unknownFields.map(k => JSON.stringify(k)).join(', ')} (allowed: tools, agents, params, paths, absent, when, network)`)
   }
   return {
     tools: parseStringList(record['tools'], `${at}.match.tools`),
@@ -528,6 +633,7 @@ function parseMatch(raw: unknown, at: string): RuleMatchDoc {
     paths: parseStringList(record['paths'], `${at}.match.paths`),
     absent: parseStringList(record['absent'], `${at}.match.absent`),
     when: parseWhen(record['when'], `${at}.match.when`),
+    ...(record['network'] === undefined ? {} : { network: parseNetwork(record['network'], `${at}.match.network`) }),
   }
 }
 
@@ -571,6 +677,39 @@ function parseWhen(raw: unknown, at: string): WhenDoc {
     }
   }
   return { env, platform }
+}
+
+/**
+ * Validate the `network` block of one rule. Every listed pattern is
+ * shape-validated here (port ranges, CIDR strings, closed scheme
+ * vocabulary); compilation of globs happens in {@link compileNetwork}.
+ * Scalar values (YAML numbers like `443` for ports) are stringified like
+ * every other pattern list, so numeric ports parse as their decimal
+ * strings. A block with every dimension empty is rejected — a network
+ * rule must name at least one target dimension.
+ */
+function parseNetwork(raw: unknown, at: string): NetworkDoc {
+  const record = asRecord(raw, at)
+  const unknownFields = Object.keys(record).filter(key => key !== 'domains' && key !== 'ips' && key !== 'ports' && key !== 'schemes')
+  if (unknownFields.length > 0) {
+    throw new RuleError(`${at}: unknown field${unknownFields.length > 1 ? 's' : ''} ${unknownFields.map(k => JSON.stringify(k)).join(', ')} (allowed: domains, ips, ports, schemes)`)
+  }
+  const domains = parsePatternValues(record['domains'], `${at}.domains`)
+  const ips = parsePatternValues(record['ips'], `${at}.ips`)
+  for (const pattern of ips) parseIpPattern(pattern, `${at}.ips`)
+  const ports = parsePatternValues(record['ports'], `${at}.ports`)
+  for (const pattern of ports) parsePortPattern(pattern, `${at}.ports`)
+  const schemes: SchemeName[] = []
+  for (const [index, value] of parsePatternValues(record['schemes'], `${at}.schemes`).entries()) {
+    if (!SCHEMES.includes(value as SchemeName)) {
+      throw new RuleError(`${at}.schemes[${index}] must be one of ${SCHEMES.map(s => JSON.stringify(s)).join(' | ')}, got ${JSON.stringify(value)}`)
+    }
+    schemes.push(value as SchemeName)
+  }
+  if (domains.length === 0 && ips.length === 0 && ports.length === 0 && schemes.length === 0) {
+    throw new RuleError(`${at}: a network block must name at least one of domains, ips, ports, schemes (drop the block for a tool-level rule)`)
+  }
+  return { domains, ips, ports, schemes }
 }
 
 /**
@@ -673,6 +812,286 @@ export function extractPathCandidates(args: Record<string, unknown>): string[] {
   }
   walk(args, 0)
   return candidates
+}
+
+// --- Network targets -------------------------------------------------------
+
+/** One parsed network target (a URL candidate or a proxy connection target). */
+export interface NetworkTarget {
+  /** `http` or `https`, or undefined for scheme-less host candidates. */
+  readonly scheme: SchemeName | undefined
+  /** Lowercased hostname (brackets stripped for IPv6) or literal IP, trailing dot stripped. */
+  readonly host: string
+  /** Effective port: URL port, else 80/443 by scheme; undefined for bare hostnames. */
+  readonly port: number | undefined
+  /** Literal IP when `host` is one; the proxy appends resolved addresses here. */
+  readonly ips: readonly string[]
+}
+
+/** One regex the command-scan extracts URL substrings with (embedded URLs in shell command text). */
+const EMBEDDED_URL = /https?:\/\/[^\s"'<>)\]\\]+/g
+
+/**
+ * Whether the tool is a shell tool: its `command` argument is scanned for
+ * embedded URLs. Every other tool contributes URL candidates only through
+ * {@link URL_CANDIDATE_KEYS}.
+ */
+export function isShellTool(toolName: string): boolean {
+  return toolName === 'bash' || toolName === 'pwsh'
+}
+
+/**
+ * Collect URL-candidate strings from tool arguments: values under the
+ * {@link URL_CANDIDATE_KEYS} at ANY nesting depth (capped like path
+ * extraction), plus embedded `http(s)://` substrings of command-shaped
+ * arguments (shell command text). Deterministic: own key order, duplicates
+ * kept.
+ * @param args - the parsed tool arguments.
+ * @returns raw candidate strings, each already an http(s) URL or a bare host.
+ */
+export function extractUrlCandidates(args: Record<string, unknown>): string[] {
+  const candidates: string[] = []
+  const walk = (node: unknown, depth: number): void => {
+    if (depth > MAX_ARGUMENT_DEPTH) return
+    if (Array.isArray(node)) {
+      for (const element of node) walk(element, depth + 1)
+      return
+    }
+    if (typeof node !== 'object' || node === null) return
+    for (const [key, value] of Object.entries(node)) {
+      if (URL_CANDIDATE_KEYS.includes(key)) {
+        if (typeof value === 'string') candidates.push(value)
+        else if (Array.isArray(value)) {
+          for (const element of value) {
+            if (typeof element === 'string') candidates.push(element)
+          }
+        }
+      }
+      if (COMMAND_CANDIDATE_KEYS.includes(key) && typeof value === 'string') {
+        for (const match of value.matchAll(EMBEDDED_URL)) candidates.push(match[0])
+      }
+      walk(value, depth + 1)
+    }
+  }
+  walk(args, 0)
+  return candidates
+}
+
+/**
+ * Parse one raw candidate into a {@link NetworkTarget}. Full `http(s)://`
+ * URLs parse through WHATWG URL semantics; a bare `host[:port]` candidate
+ * (no spaces, no slashes) becomes a scheme-less target (the `scheme` key
+ * is present with value `undefined`). Anything else yields `undefined` —
+ * a rule simply cannot match a non-target candidate.
+ * @param raw - the candidate string.
+ * @returns the parsed target, or undefined.
+ */
+export function parseUrlTarget(raw: string): NetworkTarget | undefined {
+  const text = raw.trim()
+  if (text.length === 0 || /\s/.test(text)) return undefined
+  const parsed = tryParseHttpUrl(text)
+  if (parsed !== undefined) return parsed
+  if (!/^[A-Za-z0-9._[\]-]+(?::\d+)?$/.test(text)) return undefined
+  const colon = text.lastIndexOf(':')
+  const host = normalizeHost(colon < 0 ? text : text.slice(0, colon))
+  if (host.length === 0) return undefined
+  const port = colon < 0 ? undefined : parsePortNumber(text.slice(colon + 1))
+  if (colon >= 0 && port === undefined) return undefined
+  return { scheme: undefined, host, port, ips: literalIpOf(host) }
+}
+
+/** Parse a full http(s) URL, or undefined when it is not one. */
+function tryParseHttpUrl(text: string): NetworkTarget | undefined {
+  let url: URL
+  try {
+    url = new URL(text)
+  } catch {
+    // WHATWG URL rejects UNBRACKETED IPv6 hosts (`http://::1`); rewrite the
+    // literal into brackets and re-parse so bare IPv6 targets behave like
+    // their bracketed forms.
+    const bare = /^(https?):\/\/([0-9a-fA-F:]+)(?::(\d+))?(\/.*)?$/.exec(text)
+    if (bare === null || bare[2] === undefined || bare[2].split(':').length < 3) return undefined
+    const rewritten = `${bare[1]}://[${bare[2]}]${bare[3] !== undefined ? `:${bare[3]}` : ''}${bare[4] ?? ''}`
+    try {
+      url = new URL(rewritten)
+    } catch {
+      return undefined
+    }
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return undefined
+  const host = normalizeHost(url.hostname)
+  if (host.length === 0) return undefined
+  const port = url.port.length > 0 ? Number(url.port) : url.protocol === 'https:' ? 443 : 80
+  return { scheme: url.protocol === 'https:' ? 'https' : 'http', host, port, ips: literalIpOf(host) }
+}
+
+/** Lowercase, strip IPv6 brackets, strip one trailing dot. */
+function normalizeHost(host: string): string {
+  let out = host.toLowerCase().replace(/^\[|\]$/g, '')
+  while (out.endsWith('.')) out = out.slice(0, -1)
+  return out
+}
+
+/** The literal IP of a host, or `[]` when the host is a name. */
+function literalIpOf(host: string): readonly string[] {
+  return isIpLiteral(host) ? [host.toLowerCase()] : []
+}
+
+/** Whether a host string is an IP literal (IPv4 or IPv6). */
+export function isIpLiteral(host: string): boolean {
+  return /^[0-9.]+$/.test(host) ? /^\d{1,3}(\.\d{1,3}){3}$/.test(host) : host.includes(':')
+}
+
+/** Parse `80` or `8000-9000` or `*`; invalid shapes throw at load. */
+function parsePortPattern(pattern: string, at: string): void {
+  if (pattern === '*') return
+  const single = /^\d+$/.exec(pattern)
+  if (single !== null) {
+    const port = Number(single[0])
+    if (port > 65535) throw new RuleError(`${at}: port ${JSON.stringify(pattern)} is out of range (0-65535)`)
+    return
+  }
+  const range = /^(\d+)-(\d+)$/.exec(pattern)
+  if (range === null) throw new RuleError(`${at}: port ${JSON.stringify(pattern)} must be "*", a single port, or a low-high range like "8000-9000"`)
+  const low = Number(range[1])
+  const high = Number(range[2])
+  if (low > high || low > 65535 || high > 65535) throw new RuleError(`${at}: port range ${JSON.stringify(pattern)} is invalid (0-65535, low <= high)`)
+}
+
+/** Validate one IP pattern shape (exact literal, glob, or IPv4 CIDR). */
+function parseIpPattern(pattern: string, at: string): void {
+  if (pattern.length === 0) throw new RuleError(`${at}: IP patterns must be non-empty`)
+  const cidr = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\/(\d{1,2})$/.exec(pattern)
+  if (cidr !== null) {
+    const octets = cidr.slice(1, 5).map(Number)
+    if (octets.some(octet => octet > 255) || Number(cidr[5]) > 32) {
+      throw new RuleError(`${at}: CIDR ${JSON.stringify(pattern)} is invalid (octets 0-255, prefix 0-32)`)
+    }
+  }
+}
+
+/** Parse one port pattern into its compiled range; shape-validated at parse time. */
+function compilePortPattern(pattern: string): CompiledPortRange {
+  if (pattern === '*') return { min: 0, max: Infinity }
+  const single = /^\d+$/.exec(pattern)
+  if (single !== null) {
+    const port = Number(single[0])
+    return { min: port, max: port }
+  }
+  const range = /^(\d+)-(\d+)$/.exec(pattern)
+  const low = Number(range?.[1] ?? 0)
+  const high = Number(range?.[2] ?? 0)
+  return { min: low, max: high }
+}
+
+/** Compile one IP pattern: CIDR first, then glob; exact literals glob-compile to themselves. */
+function compileIpPattern(pattern: string, maxGlobStars: number): CompiledIpPattern {
+  const cidr = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\/(\d{1,2})$/.exec(pattern)
+  if (cidr !== null) {
+    const octets = cidr.slice(1, 5).map(Number) as [number, number, number, number]
+    const prefix = Number(cidr[5])
+    const network = ((octets[0] << 24) | (octets[1] << 16) | (octets[2] << 8) | octets[3]) >>> 0
+    return { cidr: { network, prefix } }
+  }
+  if (!/[[*?]/.test(pattern) && !pattern.includes(':')) {
+    return { literal: pattern.toLowerCase() }
+  }
+  return { regex: compileGlob(pattern, { segments: false, maxStars: maxGlobStars, caseInsensitive: true }) }
+}
+
+/**
+ * Compile one domain pattern. A pattern without glob metacharacters is
+ * subdomain-inclusive (Codex semantics: `example.com` also matches
+ * `api.example.com`); anything with `*`/`?`/`[` compiles as a
+ * case-insensitive glob (so `*.example.com` matches subdomains only).
+ */
+function compileDomainPattern(pattern: string, maxGlobStars: number): RegExp {
+  const normalized = normalizeHost(pattern)
+  if (normalized.length === 0) throw new RuleError(`network domain patterns must be non-empty, got ${JSON.stringify(pattern)}`)
+  if (/[*?[\]\\]/.test(normalized)) {
+    return compileGlob(normalized, { segments: false, maxStars: maxGlobStars, caseInsensitive: true })
+  }
+  const literal = normalized.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')
+  return new RegExp(`^(?:[A-Za-z0-9_-]+\\.)*${literal}$`, 'iu')
+}
+
+/** Compile the network block of one rule; pattern errors throw at load. */
+function compileNetwork(doc: NetworkDoc, maxGlobStars: number): CompiledNetwork {
+  return {
+    domains: doc.domains.map(pattern => compileDomainPattern(pattern, maxGlobStars)),
+    ips: doc.ips.map(pattern => compileIpPattern(pattern, maxGlobStars)),
+    ports: doc.ports.map(compilePortPattern),
+    schemes: doc.schemes,
+  }
+}
+
+/**
+ * Whether a rule's network dimension holds for a tool call: at least one
+ * URL candidate must parse into a target satisfying EVERY listed
+ * dimension. Calls without any URL candidate can never satisfy a
+ * network-scoped rule (like the paths dimension).
+ */
+function matchNetwork(rule: CompiledRule, args: Record<string, unknown>): boolean {
+  const network = rule.network
+  if (network === undefined) return true
+  const targets = extractUrlCandidates(args)
+    .map(parseUrlTarget)
+    .filter((target): target is NetworkTarget => target !== undefined)
+  return targets.some(target => targetMatchesNetwork(target, network))
+}
+
+/**
+ * Evaluate one target against one compiled network block (pure; shared by
+ * the pre-execute path and the proxy layer). Domain patterns are tested
+ * against the host string as-is — including literal-IP hosts, so a
+ * catch-all glob like `*` matches `127.0.0.1` too (Codex parity keeps
+ * loopback reachable only via the `loopback` short-circuit, never by
+ * name matching). Literal-IP hosts are tested against `ips` patterns
+ * directly; `target.ips` may carry additional resolved addresses
+ * supplied by the proxy.
+ * @param target - the parsed target.
+ * @param network - the compiled network dimensions.
+ * @returns true when EVERY listed dimension holds.
+ */
+export function targetMatchesNetwork(target: NetworkTarget, network: CompiledNetwork): boolean {
+  if (network.domains.length > 0) {
+    if (!network.domains.some(regex => regex.test(target.host))) return false
+  }
+  if (network.ips.length > 0) {
+    const candidates = [...target.ips]
+    if (!network.ips.some(pattern => candidates.some(candidate => ipMatches(pattern, candidate)))) return false
+  }
+  if (network.ports.length > 0) {
+    const port = target.port
+    if (port === undefined || !network.ports.some(range => port >= range.min && port <= range.max)) return false
+  }
+  if (network.schemes.length > 0) {
+    if (target.scheme === undefined || !network.schemes.includes(target.scheme)) return false
+  }
+  return true
+}
+
+/** Whether one compiled IP pattern matches one candidate address (lowercased, unbracketed). */
+function ipMatches(pattern: CompiledIpPattern, candidate: string): boolean {
+  const normalized = normalizeHost(candidate)
+  if (pattern.cidr !== undefined) {
+    const parts = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(normalized)
+    if (parts === null) return false
+    const octets = parts.slice(1, 5).map(Number) as [number, number, number, number]
+    if (octets.some(octet => octet > 255)) return false
+    const value = ((octets[0] << 24) | (octets[1] << 16) | (octets[2] << 8) | octets[3]) >>> 0
+    const mask = pattern.cidr.prefix === 0 ? 0 : (0xffffffff << (32 - pattern.cidr.prefix)) >>> 0
+    return (value & mask) === (pattern.cidr.network & mask)
+  }
+  if (pattern.literal !== undefined) return normalized === pattern.literal
+  return pattern.regex?.test(normalized) ?? false
+}
+
+/** Parse one explicit port number, or undefined when out of range. */
+function parsePortNumber(text: string): number | undefined {
+  if (!/^\d+$/.test(text)) return undefined
+  const port = Number(text)
+  return port <= 65535 ? port : undefined
 }
 
 /**

@@ -40,7 +40,7 @@ describe('/rules command', () => {
       expect(text).toContain(join(cwd, '.dsh', 'rules.yaml'))
       expect(text).toContain('1. deny [tools:bash,pwsh params:command=git push* paths:**/secrets/**]: 禁止 push 到受保护路径')
       expect(text).toContain('2. ask [tools:edit,write]: 写文件需要确认')
-      expect(text).toContain('Usage: /rules [list | reload | decisions [n] | test <tool> <json-args>]')
+      expect(text).toContain('Usage: /rules [list | reload | network | decisions [n] | test <tool> <json-args>]')
     } finally {
       removeWorkspace(cwd)
     }

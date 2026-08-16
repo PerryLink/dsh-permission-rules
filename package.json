@@ -1,7 +1,7 @@
 {
   "name": "dsh-permission-rules",
-  "version": "0.4.2",
-  "description": "Declarative Claude Code-style permission rules for DeepSeek Harness: ordered allow/deny/ask rules with tool-name, argument (glob/regex), and workspace-path matching on the tools/pre-execute waterfall, full session-log audit, and HMR rule reload.",
+  "version": "0.5.0",
+  "description": "Declarative Claude Code-style permission rules plus a Codex-style process-level network policy for DeepSeek Harness: ordered allow/deny/ask rules with tool-name, argument (glob/regex), workspace-path, and network-target (domain/ip/port/scheme) matching on the tools/pre-execute waterfall, a built-in local HTTP/CONNECT proxy governing shell subprocess traffic, three network modes mapped onto the official sandbox presets, full session-log audit, HMR rule reload, and a settings page with a rule editor, block counters, and recent interception lists.",
   "private": false,
   "type": "module",
   "main": "./lib/index.js",
@@ -10,6 +10,14 @@
     ".": {
       "types": "./lib/types/index.d.ts",
       "default": "./lib/index.js"
+    },
+    "./typert": {
+      "types": "./lib/types/typert.host.d.ts",
+      "default": "./lib/typert.host.js"
+    },
+    "./client": {
+      "types": "./lib/types/client/index.d.ts",
+      "default": "./lib/client.js"
     },
     "./package.json": "./package.json"
   },
@@ -31,6 +39,15 @@
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-connection",
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-settings"
+      ]
     }
   },
   "dshWorkshop": {
@@ -53,11 +70,13 @@
     "permissions": [
       "files:read",
       "files:watch",
+      "files:write",
       "session:append",
-      "network:none"
+      "network:outbound"
     ],
     "compatibility": {
       "dshVersions": [
+        "0.1.0-rc.5",
         "0.1.0-rc.6"
       ]
     },
@@ -82,7 +101,10 @@
     "policy",
     "allow-deny-ask",
     "approval",
-    "safety"
+    "safety",
+    "network",
+    "network-policy",
+    "proxy"
   ],
   "author": "dsh-permission-rules contributors",
   "repository": {
@@ -103,22 +125,32 @@
     "@deepseek-ai/dsh-llm": "0.1.0-rc.6",
     "@deepseek-ai/dsh-session": "0.1.0-rc.6",
     "@deepseek-ai/dsh-tools": "0.1.0-rc.6",
-    "@deepseek-ai/schemastery": "^3.18.0"
+    "@deepseek-ai/dsh-typert-protocol": "0.1.0-rc.6",
+    "@deepseek-ai/schemastery": "^3.18.0",
+    "react": "^18.2.0"
   },
   "dependencies": {
+    "@types/react": "18.3.31",
     "chokidar": "^5.0.0",
     "tsdown": "^0.22.14",
     "typescript": "^5.9.0",
-    "yaml": "^2.8.0"
+    "yaml": "^2.8.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
     "@deepseek-ai/dsh-agent": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-connection": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-locale": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-runtime": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-ui-settings": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-ui-slots": "0.1.0-rc.6",
     "@deepseek-ai/dsh-commands": "0.1.0-rc.6",
     "@deepseek-ai/dsh-llm": "0.1.0-rc.6",
     "@deepseek-ai/dsh-session": "0.1.0-rc.6",
     "@deepseek-ai/dsh-subagent": "0.1.0-rc.6",
     "@deepseek-ai/dsh-tools": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-typert-protocol": "0.1.0-rc.6",
     "@deepseek-ai/dsh-user-approval": "0.1.0-rc.6",
     "@deepseek-ai/schemastery": "^3.18.0",
     "@eslint/js": "^10.0.1",
@@ -127,6 +159,8 @@
     "dsh-auto-review": "file:vendor/dsh-auto-review-0.4.0.tgz",
     "eslint": "^10.8.1",
     "globals": "^17.11.0",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
     "typescript-eslint": "^8.67.0",
     "vitest": "^3.2.0"
   },

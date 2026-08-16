@@ -2,6 +2,23 @@
 
 All notable changes to dsh-permission-rules are recorded here, newest first.
 
+## v0.5.0 — 2026-08-16
+
+### Added
+
+- **Process-level network policy (Codex-style).** Shell subprocess traffic flows through a built-in local HTTP/CONNECT proxy, and every connection is decided by ordered network rules (`match.network` with `domains` / `ips` / `ports` / `schemes` — globs, wildcards, CIDRs, port ranges; numeric YAML ports are accepted) or by the three network modes mapped onto the official sandbox presets (`deny-all` / `whitelist` / `allow-all` with an `auto` mode).
+- URL-candidate extraction on the tools/pre-execute hot path: network rules fire on web-tool arguments and on URLs embedded in bash/pwsh command text; loopback targets can short-circuit rules per policy.
+- Proxy-layer audit: denied connections append `permissionRules/network` to the owning session (same adaptive `ignorable` gate as `permissionRules/decision`), with block counters and recent interceptions in `/rules network` and the settings page.
+- Settings page with a network-mode editor, a known-source rule editor and validated saves; the Typert remote surface (`src/typert.host.ts` / `src/remote-service.ts` / `src/wire.ts`) serves the snapshot and editor.
+
+### Fixed
+
+- Proxy environment injection snapshots every variable before writing any, so `restore()` puts back the exact original values on case-insensitive (Windows) environments.
+- Blocked CONNECT tunnels are denied before any TCP connection to the target.
+- `auditNetworkBlock` invoked `Session.append` with a lost `this` binding; blocked-connection audit events now land.
+- Bare IPv6 loopback candidates (`::1`, full-form `0:0:0:0:0:0:0:1`) parse and are recognized as loopback; literal-IP hosts still match wildcard domain rules.
+- `.dsh/rules.yaml` writes create missing parent directories.
+
 ## v0.4.2 — 2026-08-15
 
 ### Ecosystem intake

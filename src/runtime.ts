@@ -11,21 +11,28 @@
  * @module dsh-permission-rules/runtime
  */
 
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import chokidar from 'chokidar'
 import type { Context } from '@deepseek-ai/cordis'
 import type { CommandInvocation, CommandResult } from '@deepseek-ai/dsh-commands'
+import type { CallId } from '@deepseek-ai/dsh-llm'
 import type { PreToolDecision, ToolExecution } from '@deepseek-ai/dsh-tools'
 import { resolveConfig } from './config.ts'
 import type { Config, ResolvedConfig } from './config.ts'
-import { compileRules, compileRulesChain, describeRule, findUnreachableRules, matchRules, normalizeWorkspacePath, parseRulesDocument, PLATFORMS, RuleError } from './rules.ts'
-import type { CompileOptions, CompiledRuleset, MatchContext, RuleHit } from './rules.ts'
+import { compileRules, compileRulesChain, describeRule, findUnreachableRules, isShellTool, matchRules, normalizeWorkspacePath, parseRulesDocument, PLATFORMS, RuleError } from './rules.ts'
+import type { CompileOptions, CompiledRuleset, MatchContext, NetworkTarget, RuleHit } from './rules.ts'
 import { DESCRIBE_TOKENS, UI_PROSE } from './prose.ts'
 import type { UiProse } from './prose.ts'
+import { blockMessage, decideNetworkTarget, defaultDecision, networkModeForSandbox } from './network.ts'
+import type { NetworkChain, NetworkDecision, NetworkMode } from './network.ts'
+import { injectProxyEnv, NetworkProxy } from './proxy.ts'
+import type { NetworkBlockRecord, ProxyAttribution } from './proxy.ts'
+import { PermissionRulesRemoteService } from './remote-service.ts'
+import { attachSettingsSection } from './settings.ts'
 import { isMarkedAuditEvent } from './events.ts'
-import type { AuditAppend, AuditDecision, DecisionOutcome } from './events.ts'
+import type { AuditAppend, AuditDecision, AuditNetworkBlock, DecisionOutcome } from './events.ts'
 
 export const name = 'permission-rules'
 
@@ -52,9 +59,23 @@ interface WatcherEntry {
   readonly candidates?: Map<string, string>
 }
 
+/** One in-flight shell execution, for proxy-block attribution (newest first). */
+interface InFlightShell {
+  readonly tool: string
+  readonly callId: unknown
+  readonly startedAt: number
+  readonly agent?: ToolExecution['agent']
+}
+
+/** The network-capable tools whose unlisted calls fall back to the mode default at `tools/pre-execute`. */
+const WEB_TOOLS: readonly string[] = ['web_fetch', 'web_search']
+
+/** Stale in-flight entries are dropped after this many milliseconds (attribution is best-effort). */
+const IN_FLIGHT_TTL_MS = 10 * 60 * 1000
+
 /**
  * State and behavior. One instance per plugin mount; disposals are owned by
- * the watcher/timer effects registered in {@link apply}.
+ * the watcher/timer/proxy effects registered in {@link apply}.
  */
 export class PermissionRulesRuntime {
   /** Loaded (or failed) rules per workspace cwd, least-recently-used first for eviction. */
@@ -69,18 +90,43 @@ export class PermissionRulesRuntime {
   /** Whether the host honors the audit envelope's `ignorable` marker: unknown until the first decision (or peer-version check). */
   private auditSupport: 'unknown' | 'supported' | 'unsupported' = 'unknown'
 
+  /** In-flight bash/pwsh executions (insertion order = start order), for proxy-block attribution. */
+  private readonly inFlight = new Map<string, InFlightShell>()
+
+  /** The network proxy, when the policy is enabled and mounted. */
+  private networkProxy: NetworkProxy | undefined
+
+  /** Restores the injected proxy environment (set after a successful bind). */
+  private envRestore: (() => void) | undefined
+
+  /** The authoritative config source: the composition entry, replaced by the settings scope while attached. */
+  private configSource: () => ResolvedConfig
+
   constructor(
     private readonly ctx: Context,
-    readonly config: ResolvedConfig,
-  ) {}
+    config: ResolvedConfig,
+  ) {
+    this.configSource = () => config
+  }
+
+  /** The currently authoritative config (settings scope or composition entry). */
+  get config(): ResolvedConfig {
+    return this.configSource()
+  }
+
+  /** Rebind the config source (the settings section hooks call this on attach/detach/change). */
+  setConfigSource(source: () => ResolvedConfig): void {
+    this.configSource = source
+  }
 
   /** The shared compile options derived from config. */
   private compileOptions(): CompileOptions {
+    const config = this.configSource()
     return {
-      patternMode: this.config.patternMode,
-      maxRules: this.config.maxRules,
-      maxGlobStars: this.config.maxGlobStars,
-      caseInsensitivePaths: this.config.caseInsensitivePaths,
+      patternMode: config.patternMode,
+      maxRules: config.maxRules,
+      maxGlobStars: config.maxGlobStars,
+      caseInsensitivePaths: config.caseInsensitivePaths,
     }
   }
 
@@ -236,11 +282,16 @@ export class PermissionRulesRuntime {
    * The `tools/pre-execute` listener. A deny/ask hit returns the decision
    * (first match wins, short-circuiting downstream listeners); an allow hit
    * and a passthrough MUST delegate via `next()` so later listeners keep
-   * their say. Under `enforce: false` (dry-run) a deny/ask hit also
-   * delegates — the record keeps the would-be action with `dryRun: true`
-   * and the actual downstream outcome. Audit is appended once the final
-   * outcome is known, so the recorded `outcome` matches what the waterfall
-   * settled on.
+   * their say. Network-scoped rule hits on tool calls carry the structured
+   * `[network: …]` marker; when NO rule matches a web tool
+   * (`web_fetch`/`web_search`) the network mode default applies (deny-all
+   * denies, whitelist asks/denies, allow-all passes) — shell tools are
+   * NOT gated here, the proxy enforces their traffic per connection.
+   * Under `enforce: false` (dry-run) a deny/ask hit also delegates — the
+   * record keeps the would-be action with `dryRun: true` and the actual
+   * downstream outcome. Audit is appended once the final outcome is
+   * known, so the recorded `outcome` matches what the waterfall settled
+   * on.
    * @param exec - the pending call (name, parsed arguments, caller agent).
    * @param next - the downstream chain.
    * @returns the pre-execute decision.
@@ -249,21 +300,49 @@ export class PermissionRulesRuntime {
     const cwd = exec.agent?.session.header.cwd ?? process.cwd()
     const loaded = this.rulesFor(cwd)
     const hit = matchRules(loaded.compiled, exec.name, exec.arguments, cwd, this.matchContext(exec))
-    if (hit === undefined || hit.rule.action === 'allow') {
-      const decision = await next()
-      this.audit(exec, loaded, hit, decision.kind)
-      return decision
+    if (hit !== undefined && hit.rule.action !== 'allow') {
+      const structured = hit.rule.network !== undefined
+      const reason = structured ? `${hit.rule.action === 'deny' ? '[network: denied]' : '[network: approval required]'} ${hit.rule.reason}` : hit.rule.reason
+      if (!this.config.enforce) {
+        // Dry-run: match the rule, log what it WOULD do, and delegate.
+        const decision = await next()
+        this.audit(exec, loaded, hit, decision.kind, true)
+        return decision
+      }
+      const outcome: DecisionOutcome = hit.rule.action
+      this.audit(exec, loaded, hit, outcome)
+      return { kind: outcome, reason }
     }
-    if (!this.config.enforce) {
-      // Dry-run: match the rule, log what it WOULD do, and delegate.
-      const decision = await next()
-      this.audit(exec, loaded, hit, decision.kind, true)
-      return decision
+    if (hit === undefined) {
+      const fallback = this.webToolFallback(exec)
+      if (fallback !== undefined) {
+        if (!this.config.enforce) {
+          const decision = await next()
+          this.audit(exec, loaded, undefined, decision.kind, true, fallback)
+          return decision
+        }
+        this.audit(exec, loaded, undefined, fallback, false, fallback)
+        return { kind: fallback, reason: blockMessage(defaultDecision(this.resolveNetworkMode(exec.agent?.session).mode, this.config.network.unlisted)) }
+      }
     }
-    const outcome: DecisionOutcome = hit.rule.action
-    this.audit(exec, loaded, hit, outcome)
-    if (outcome === 'deny') return { kind: 'deny', reason: hit.rule.reason }
-    return { kind: 'ask', reason: hit.rule.reason }
+    if (isShellTool(exec.name)) this.markShell(exec)
+    const decision = await next()
+    this.audit(exec, loaded, hit, decision.kind)
+    return decision
+  }
+
+  /**
+   * The mode-default decision for an unlisted web-tool call, or undefined
+   * when the policy is disabled, the tool is not a web tool, or the mode
+   * allows. Shell tools always yield undefined here (the proxy decides
+   * their traffic per connection).
+   */
+  private webToolFallback(exec: ToolExecution): 'deny' | 'ask' | undefined {
+    const network = this.config.network
+    if (!network.enabled || isShellTool(exec.name) || !WEB_TOOLS.includes(exec.name)) return undefined
+    const { mode } = this.resolveNetworkMode(exec.agent?.session)
+    const fallback = defaultDecision(mode, network.unlisted)
+    return fallback.action === 'allow' ? undefined : fallback.action
   }
 
   /**
@@ -278,17 +357,19 @@ export class PermissionRulesRuntime {
    * `allowUnmarkedAudit: true` opts back in. `source` names the matched
    * rule's file, or the nearest effective file on a passthrough; `cwd`
    * names the workspace the rules were resolved for; `dryRun` marks
-   * would-be deny/ask hits under `enforce: false`. Agentless calls have no
-   * session to audit; append failures are contained so an audit hiccup can
-   * never change a permission decision.
+   * would-be deny/ask hits under `enforce: false`; `modeDefault` records a
+   * network mode-default decision on a web tool (no rule fired).
+   * Agentless calls have no session to audit; append failures are
+   * contained so an audit hiccup can never change a permission decision.
    * @param exec - the pending call.
    * @param loaded - the rules in effect.
    * @param hit - the first matching rule, or undefined for passthrough.
    * @param outcome - the final pre-execute decision.
    * @param dryRun - mark the record as a would-be decision (dry-run mode).
+   * @param modeDefault - the network mode-default action when no rule fired.
    */
-  audit(exec: ToolExecution, loaded: LoadedRules, hit: RuleHit | undefined, outcome: DecisionOutcome, dryRun = false): void {
-    if (this.config.audit === 'hits' && hit === undefined) return
+  audit(exec: ToolExecution, loaded: LoadedRules, hit: RuleHit | undefined, outcome: DecisionOutcome, dryRun = false, modeDefault?: 'deny' | 'ask'): void {
+    if (this.config.audit === 'hits' && hit === undefined && modeDefault === undefined) return
     const agent = exec.agent
     if (agent === undefined) return
     if (this.auditSupport === 'unsupported') return
@@ -301,32 +382,319 @@ export class PermissionRulesRuntime {
       }
     }
     try {
+      const action = hit === undefined ? (modeDefault ?? 'passthrough') : hit.rule.action
       const result = this.appendAudit(agent, {
         toolName: exec.name,
         callId: exec.callId,
         source: hit === undefined ? (loaded.sources[0] ?? '') : (loaded.sources[hit.rule.sourceIndex] ?? ''),
-        action: hit === undefined ? 'passthrough' : hit.rule.action,
+        action,
         outcome,
         cwd: loaded.cwd,
         ...hit !== undefined ? { ruleIndex: hit.ruleIndex, reason: hit.rule.reason } : {},
+        ...modeDefault !== undefined ? { reason: `${modeDefault === 'deny' ? '[network: denied]' : '[network: approval required]'} network mode default (no rule matched)` } : {},
         ...dryRun ? { dryRun: true as const } : {},
       })
-      if (this.auditSupport === 'unknown' && !this.config.allowUnmarkedAudit) {
-        if (isMarkedAuditEvent(result)) {
-          this.auditSupport = 'supported'
-        } else {
-          this.auditSupport = 'unsupported'
-          this.warnUnmarkedAuditHost()
-        }
-      }
+      this.probeAuditResult(result)
     } catch (error: unknown) {
       this.ctx.logger.warn(`permission-rules: audit append failed: ${String(error)}`)
+    }
+  }
+
+  /** After the first append, probe the returned envelope for the ignorable marker (host capability detection). */
+  private probeAuditResult(result: unknown): void {
+    if (this.auditSupport === 'unknown' && !this.config.allowUnmarkedAudit) {
+      if (isMarkedAuditEvent(result)) {
+        this.auditSupport = 'supported'
+      } else {
+        this.auditSupport = 'unsupported'
+        this.warnUnmarkedAuditHost()
+      }
     }
   }
 
   /** Append one audit event through the session surface; the probe seam for host-capability detection. */
   private appendAudit(agent: NonNullable<ToolExecution['agent']>, data: AuditDecision): unknown {
     return (agent.session.append as unknown as AuditAppend)('permissionRules/decision', data, { ignorable: true })
+  }
+
+  // --- Network policy ------------------------------------------------------
+
+  /**
+   * Resolve the network policy mode. An explicit config mode wins; `auto`
+   * maps the official sandbox preset (`read-only` → deny-all,
+   * `workspace-write` → whitelist, `danger-full-access` → allow-all) with
+   * `network.autoFallback` covering hosts without the sandbox-policy
+   * service (rc.6 and friends stay permissive until configured). For web
+   * tools the SESSION's resolved mode is used; the proxy resolves without
+   * a session (its connections carry no session context).
+   * @param session - optional session whose override outranks the default.
+   * @returns the resolved mode plus the sandbox preset it came from.
+   */
+  resolveNetworkMode(session?: { events?: unknown }): { mode: NetworkMode; sandboxMode: string | undefined } {
+    const cfg = this.config.network
+    if (cfg.mode !== 'auto') return { mode: cfg.mode, sandboxMode: undefined }
+    const policy = this.ctx.get('sandboxPolicy') as { defaultMode?: string; resolve?: (request?: { session?: unknown }) => { mode?: string } } | undefined
+    if (policy === undefined) return { mode: cfg.autoFallback, sandboxMode: undefined }
+    const sandboxMode = session === undefined ? policy.defaultMode : policy.resolve?.({ session })?.mode ?? policy.defaultMode
+    return { mode: networkModeForSandbox(sandboxMode, cfg.autoFallback), sandboxMode }
+  }
+
+  /**
+   * The proxy-layer decision for one connection target: first-match
+   * network rules across every loaded workspace chain (insertion order),
+   * then the mode default. Shell subprocess traffic counts as `bash`/
+   * `pwsh` tool candidates; loopback handling follows config.
+   */
+  private decideProxyTarget(target: NetworkTarget): NetworkDecision {
+    const { mode } = this.resolveNetworkMode()
+    return decideNetworkTarget(this.proxyChains(), target, {
+      mode,
+      unlisted: this.config.network.unlisted,
+      loopback: this.config.network.loopback,
+    })
+  }
+
+  /** The loaded rule chains in cache order, nearest workspace first. */
+  private proxyChains(): NetworkChain[] {
+    const chains: NetworkChain[] = []
+    for (const loaded of this.byCwd.values()) {
+      chains.push({ ruleset: loaded.compiled, sources: loaded.sources })
+    }
+    return chains
+  }
+
+  /** Mark one delegated shell execution as in-flight (newest attribution wins). */
+  private markShell(exec: ToolExecution): void {
+    this.inFlight.set(String(exec.callId), { tool: exec.name, callId: exec.callId, startedAt: Date.now(), agent: exec.agent })
+  }
+
+  /** Drop one shell execution when it settles. */
+  unmarkShell(exec: ToolExecution): void {
+    this.inFlight.delete(String(exec.callId))
+  }
+
+  /** The newest in-flight shell execution within the TTL, or undefined (best-effort attribution). */
+  private proxyAttribution(): ProxyAttribution | undefined {
+    const cutoff = Date.now() - IN_FLIGHT_TTL_MS
+    let newest: InFlightShell | undefined
+    for (const entry of this.inFlight.values()) {
+      if (entry.startedAt < cutoff) {
+        this.inFlight.delete(String(entry.callId))
+        continue
+      }
+      if (newest === undefined || entry.startedAt > newest.startedAt) newest = entry
+    }
+    if (newest === undefined) return undefined
+    return {
+      tool: newest.tool,
+      ...(newest.callId !== undefined ? { callId: newest.callId as CallId } : {}),
+      ...(newest.agent !== undefined ? { agent: newest.agent } : {}),
+    }
+  }
+
+  /**
+   * Audit one proxy-layer block: the in-memory record is always kept
+   * (settings page), the logger always warns, and when the block can be
+   * attributed to an agent the `permissionRules/network` event is appended
+   * with the same ignorable-marker discipline as the decision audit.
+   */
+  private auditNetworkBlock(record: NetworkBlockRecord, attribution: ProxyAttribution | undefined): void {
+    const agent = attribution?.agent
+    if (agent === undefined || this.auditSupport === 'unsupported') return
+    if (this.auditSupport === 'unknown' && !this.config.allowUnmarkedAudit) {
+      const version = this.peerVersion()
+      if (version !== null && isUnmarkedHostVersion(version)) {
+        this.auditSupport = 'unsupported'
+        this.warnUnmarkedAuditHost()
+        return
+      }
+    }
+    const data: AuditNetworkBlock = {
+      kind: 'block',
+      tool: record.tool,
+      attributed: record.attributed,
+      ...(record.callId !== undefined ? { callId: record.callId } : {}),
+      domain: record.domain,
+      ...(record.scheme !== undefined ? { scheme: record.scheme } : {}),
+      ...(record.port !== undefined ? { port: record.port } : {}),
+      action: record.action,
+      mode: record.mode,
+      matched: record.matched,
+      source: record.source,
+      ...(record.ruleIndex !== undefined ? { ruleIndex: record.ruleIndex } : {}),
+      ...(record.reason !== undefined ? { reason: record.reason } : {}),
+      time: record.time,
+    }
+    try {
+      const result = (agent.session.append as unknown as (type: 'permissionRules/network', data: AuditNetworkBlock, options?: { ignorable?: true }) => unknown)('permissionRules/network', data, { ignorable: true })
+      this.probeAuditResult(result)
+    } catch (error: unknown) {
+      this.ctx.logger.warn(`permission-rules: network audit append failed: ${String(error)}`)
+    }
+  }
+
+  /**
+   * Mount the network proxy and the subprocess environment injection.
+   * Called from {@link apply}; the proxy binds an ephemeral (or
+   * configured) loopback port, the env injection only happens after a
+   * successful bind, and every side effect is owned by an effect
+   * disposer. A bind failure degrades loudly (file rules stay active,
+   * the settings page and `/rules network` show the inactive proxy)
+   * instead of taking the permission plugin down.
+   */
+  async attachNetworkProxy(): Promise<void> {
+    const cfg = this.config.network
+    const proxy = new NetworkProxy({
+      bind: cfg.proxyBind,
+      port: cfg.proxyPort,
+      maxRecent: cfg.proxyMaxRecent,
+      decide: target => this.decideProxyTarget(target),
+      attribution: () => this.proxyAttribution(),
+      onBlock: (record, attribution) => this.auditNetworkBlock(record, attribution),
+      logger: this.ctx.logger,
+    })
+    this.networkProxy = proxy
+    this.ctx.effect(() => () => {
+      void proxy.close()
+      this.networkProxy = undefined
+    })
+    try {
+      const port = await proxy.start()
+      if (cfg.injectEnv) {
+        this.envRestore = injectProxyEnv(port, cfg.noProxy)
+        this.ctx.effect(() => {
+          const restore = this.envRestore
+          this.envRestore = undefined
+          return () => restore?.()
+        })
+      }
+      const { mode, sandboxMode } = this.resolveNetworkMode()
+      this.ctx.logger.info(`permission-rules: network proxy listening on ${cfg.proxyBind}:${port} (mode ${mode}${sandboxMode !== undefined ? `, sandbox ${sandboxMode}` : ''})`)
+    } catch (error: unknown) {
+      this.ctx.logger.warn(`permission-rules: network proxy failed to bind on ${cfg.proxyBind}:${cfg.proxyPort} (${String(error)}) — shell network policy is INACTIVE; file/command rules stay active`)
+    }
+  }
+
+  /**
+   * Apply a live settings change to the network policy: rebind the proxy
+   * when a bind/env-relevant knob changed (old proxy closed, old env
+   * restored, new proxy + env installed). Web-tool gating and the decision
+   * path read the config per call, so they need no rebind.
+   */
+  async onNetworkConfigChanged(): Promise<void> {
+    if (!this.config.network.enabled) return
+    await this.networkProxy?.close()
+    this.envRestore?.()
+    this.envRestore = undefined
+    await this.attachNetworkProxy()
+  }
+
+  /** The network snapshot the settings page and `/rules network` render. */
+  networkSnapshot(): {
+    readonly enabled: boolean
+    readonly mode: NetworkMode
+    readonly configuredMode: 'auto' | NetworkMode
+    readonly sandboxMode: string | undefined
+    readonly proxyPort: number
+    readonly proxyActive: boolean
+    readonly denied: number
+    readonly askBlocked: number
+    readonly recent: readonly NetworkBlockRecord[]
+  } {
+    const cfg = this.config.network
+    const { mode, sandboxMode } = this.resolveNetworkMode()
+    const proxy = this.networkProxy
+    const stats = proxy?.blockStats() ?? { denied: 0, askBlocked: 0 }
+    return {
+      enabled: cfg.enabled,
+      mode,
+      configuredMode: cfg.mode,
+      sandboxMode,
+      proxyPort: proxy?.port ?? 0,
+      proxyActive: proxy !== undefined && proxy.port > 0,
+      denied: stats.denied,
+      askBlocked: stats.askBlocked,
+      recent: proxy?.recentBlocks() ?? [],
+    }
+  }
+
+  /**
+   * The rule-file paths the settings-page editor may read or write: every
+   * currently loaded source plus the per-workspace project files and the
+   * configured fallback (so a not-yet-existing project file can be
+   * created). The editor never touches arbitrary paths.
+   */
+  knownRuleSources(): readonly string[] {
+    const cfg = this.config
+    const set = new Set<string>()
+    for (const loaded of this.byCwd.values()) {
+      for (const source of loaded.sources) set.add(source)
+      if (!isAbsolute(cfg.rulesFile)) set.add(join(loaded.cwd, cfg.rulesFile))
+    }
+    if (cfg.fallbackPath !== undefined) set.add(isAbsolute(cfg.fallbackPath) ? cfg.fallbackPath : resolve(cfg.fallbackPath))
+    if (isAbsolute(cfg.rulesFile)) set.add(cfg.rulesFile)
+    return [...set]
+  }
+
+  /** Read one known rule file for the editor: `{ exists, text, error }`. */
+  readRuleFile(path: string): { path: string; exists: boolean; text: string; error?: string } {
+    if (!this.knownRuleSources().includes(path)) {
+      return { path, exists: false, text: '', error: `refusing to read ${path}: not a known rule source` }
+    }
+    if (!existsSync(path)) return { path, exists: false, text: '' }
+    try {
+      return { path, exists: true, text: readFileSync(path, 'utf8') }
+    } catch (error: unknown) {
+      return { path, exists: true, text: '', error: error instanceof Error ? error.message : String(error) }
+    }
+  }
+
+  /** The workspace a rule source belongs to (for the editor's file list), or undefined for the fallback. */
+  sourceOwner(path: string): string | undefined {
+    for (const loaded of this.byCwd.values()) {
+      if (loaded.sources.includes(path) || (!isAbsolute(this.config.rulesFile) && join(loaded.cwd, this.config.rulesFile) === path)) return loaded.cwd
+    }
+    return undefined
+  }
+
+  /** Re-read every cached workspace chain (the settings-page reload action). */
+  reloadAll(): void {
+    for (const cwd of [...this.byCwd.keys()]) this.reload(cwd)
+  }
+
+  /**
+   * Validate and write one known rule file. The document must parse and
+   * compile (same checks as a load) BEFORE anything is written — an
+   * invalid edit is rejected with its error and the file stays untouched.
+   * After a successful write every cached workspace reloads so the edit
+   * is in effect immediately.
+   */
+  saveRuleFile(path: string, text: string): { ok: boolean; error?: string; reloaded?: number } {
+    if (!this.knownRuleSources().includes(path)) {
+      return { ok: false, error: `refusing to write ${path}: not a known rule source` }
+    }
+    try {
+      const doc = parseRulesDocument(text)
+      compileRules(doc, this.compileOptions())
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error)
+      return { ok: false, error: message }
+    }
+    try {
+      // A not-yet-existing project file lives in a possibly missing parent
+      // directory (a fresh workspace has no `.dsh/`); create it so the first
+      // save from the settings editor succeeds.
+      mkdirSync(dirname(path), { recursive: true })
+      writeFileSync(path, text, 'utf8')
+    } catch (error: unknown) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) }
+    }
+    let reloaded = 0
+    for (const cwd of [...this.byCwd.keys()]) {
+      this.reload(cwd)
+      reloaded += 1
+    }
+    return { ok: true, reloaded }
   }
 
   /** The installed `@deepseek-ai/dsh-session` version, or `null` when unresolvable (falls back to the append probe). */
@@ -372,6 +740,10 @@ export class PermissionRulesRuntime {
       return { kind: 'success', text: prose.reloaded(rules.length, source) }
     }
     if (verb === 'list' && rest.length > 0) return { kind: 'error', text: prose.unknownArg(invocation.rawInput.trim()) }
+    if (verb === 'network') {
+      if (rest.length > 0) return { kind: 'error', text: prose.unknownArg(invocation.rawInput.trim()) }
+      return this.networkCommand(prose)
+    }
     if (verb === 'decisions') {
       if (rest.length > 1) return { kind: 'error', text: prose.unknownArg(invocation.rawInput.trim()) }
       let count = 10
@@ -508,6 +880,26 @@ export class PermissionRulesRuntime {
       }
     }
     if (this.auditSupport === 'unsupported') lines.push(prose.auditDisabledNotice)
+    return { kind: 'success', text: lines.join('\n') }
+  }
+
+  /** Render the network policy state: mode mapping, proxy liveness, counters, recent blocks. */
+  private networkCommand(prose: UiProse): CommandResult {
+    const snapshot = this.networkSnapshot()
+    const lines: string[] = []
+    if (!snapshot.enabled) {
+      lines.push(prose.networkDisabled)
+      return { kind: 'success', text: lines.join('\n') }
+    }
+    lines.push(prose.networkHeader(snapshot.mode, snapshot.sandboxMode, snapshot.configuredMode, snapshot.proxyActive, snapshot.proxyPort))
+    lines.push(prose.networkCounters(snapshot.denied, snapshot.askBlocked))
+    if (snapshot.recent.length === 0) {
+      lines.push(prose.noNetworkBlocks)
+    } else {
+      for (const block of snapshot.recent.slice(0, 10)) {
+        lines.push(prose.networkBlockLine(block.time, block.tool, block.attributed, block.domain, block.scheme, block.port, block.action, block.matched, block.ruleIndex, block.reason))
+      }
+    }
     return { kind: 'success', text: lines.join('\n') }
   }
 
@@ -749,16 +1141,32 @@ export class PermissionRulesRuntime {
  * @param ctx - the host context.
  * @param config - raw plugin config.
  */
-export function apply(ctx: Context, config: Config): void {
+export async function apply(ctx: Context, config: Config): Promise<void> {
   const resolved = resolveConfig(config)
   const runtime = new PermissionRulesRuntime(ctx, resolved)
   runtime.validateDeploymentFiles()
   ctx.provide('permissionRulesRuntime', runtime)
   ctx.on('tools/pre-execute', (exec, next) => runtime.preExecute(exec, next))
+  ctx.on('tools/post-execute', (exec, _result, next) => {
+    runtime.unmarkShell(exec)
+    return next()
+  })
+  attachSettingsSection(ctx, runtime, config)
+  if (resolved.network.enabled) await runtime.attachNetworkProxy()
+  ctx.inject(['systemPrompt'], (scope) => {
+    const systemPrompt = scope.get('systemPrompt') as { context?: (entry: { name: string; order?: number; text: string }) => void } | undefined
+    if (systemPrompt?.context === undefined) return
+    systemPrompt.context({
+      name: 'network:policy',
+      order: 115,
+      text: 'Network policy (permission-rules): shell commands reach the network only through a local policy proxy, and web tools are gated the same way — every target is allowed or blocked per the active rules and sandbox mode, and a blocked connection fails with a [network: …] message. Follow the denial messages and do not attempt to bypass the proxy.',
+    })
+  })
+  await ctx.plugin(PermissionRulesRemoteService, { runtime })
   ctx.commands.register({
     name: 'rules',
-    description: 'list, reload, audit, or dry-test the active permission rules for this workspace',
-    input: { hint: '[list | reload | decisions [n] | test [--cwd <dir>] [--env K=V] [--agent <sel>] [--platform <name>] <tool> <json-args>]' },
+    description: 'list, reload, audit, dry-test, or inspect the network policy of the active permission rules for this workspace',
+    input: { hint: '[list | reload | network | decisions [n] | test [--cwd <dir>] [--env K=V] [--agent <sel>] [--platform <name>] <tool> <json-args>]' },
     handler: invocation => runtime.command(invocation),
   })
 }
