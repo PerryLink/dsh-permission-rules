@@ -20,63 +20,32 @@
 
 ---
 
-## What it does
+## Compatibility
+
+| Surface | Status |
+|---|---|
+| Harness | DeepSeek Harness `0.1.0-rc.5`–`0.1.0-rc.6` |
+| Node | `^22.19.0 || >=24.0.0` |
+| Platforms | All (host + web settings client) |
+| Model | Any (deny/ask reasons surface through tool results) |
+
+## What you get
 
 `dsh-permission-rules` puts an ordered **`allow` / `deny` / `ask`** rule list in front of every tool call on the `tools/pre-execute` waterfall — deterministic, instant, auditable, and written by you in plain YAML:
 
-- **`deny`** blocks the call. The rule's `reason` becomes the model-visible error, so the agent learns *why* instead of retrying blindly.
-- **`ask`** rides the official approval seam. Mount `dsh-auto-review` alongside and the question is settled by a second model; otherwise a human answers; with neither, the harness fails closed.
+- **`deny`** blocks the call; the rule's `reason` becomes the model-visible error.
+- **`ask`** rides the official approval seam (mount `dsh-auto-review` for a second-model answerer, or a human answers; with neither, the harness fails closed).
 - **`allow`** (and no-match) strictly delegates via `next()` — downstream listeners are never short-circuited.
 
 Every hit **and** every passthrough is audit-logged as a `permissionRules/decision` session event (log-only — nothing extra is injected into the model context).
 
-```text
-tools/pre-execute waterfall                     approval/request waterfall (answerer chain)
-        │                                                   │
-  dsh-permission-rules                                dsh-auto-review answerer
-   · first-match rules in file order       ┌───────────────┴──────────────┐
-   · deny/ask claim the call               │ AI verdict (second model)     │ no ── next() ──▶ human UI
-   · allow/passthrough → next()            └───────────────┬──────────────┘
-        │ deny ──▶ denied tool result                     │ allowed-once / rejected
-        │ ask  ──▶ ctx.approval ──────────────────────────┘
-        │
-   audit: permissionRules/decision → approval/asked → autoReview/verdict → approval/decided
-```
+- **Rich matching** — tool-name globs (including `mcp__*`), agent-identity selectors (`main` / `subagent` / `preset:*`), argument key/value globs **or** regexes (with `!pattern` negation and an `absent` key dimension), workspace-relative path globs at **any nesting depth**, and `when` host conditions (env vars, platform).
+- **Hierarchical rule files** — optional `searchUp` merges every `.dsh/rules.yaml` from the session cwd to the filesystem root, nearest first.
+- **Dry-run rollout** — `enforce: false` audits what the policy *would* do while passing every call through.
+- **Hot reload** — Chokidar watch with debounce; a broken edit keeps the previous rules, never crashes.
+- **Fail loud** — invalid YAML, unknown actions/fields, bad globs/regexes, backtracking-prone patterns, or more than `maxRules` rules fail the load.
 
-## Why rules *and* a reviewer?
-
-A second model answers *"is THIS call okay?"* with judgment, but costs a round-trip and can be wrong. Declarative rules answer deterministically, instantly, and without a model — but only cover what an admin wrote down. Combined, you get the **"rules first, AI backstop"** loop: rules decide the known, the reviewer decides the unknown.
-
-## Features
-
-- ✅ **Three-state semantics** — `allow`, `deny`, `ask`, evaluated in file order, first match wins
-- ✅ **Rich matching** — tool-name globs (including `mcp__*`), agent-identity selectors (`main` / `subagent` / `preset:*`), argument key/value globs **or** regexes (with `!pattern` negation and an `absent` key dimension), workspace-relative path globs extracted from documented argument keys at **any nesting depth**, and `when` host conditions (env vars, platform)
-- ✅ **Hierarchical rule files** — optional `searchUp` merges every `.dsh/rules.yaml` from the session cwd to the filesystem root, nearest first, so a child project can override parent rules
-- ✅ **Rule metadata** — `enabled: false`, `description`, `tags`; `/rules` warns about rules shadowed by an earlier catch-all
-- ✅ **Waterfall-safe** — `allow`/passthrough always call `next()`; only `deny`/`ask` short-circuit
-- ✅ **Official approval seam** — `ask` flows through `ctx.approval`; never re-implemented, never bypassed
-- ✅ **Full audit** — `permissionRules/decision` events carry the rule action, the workspace cwd, AND the final outcome for every call; `/rules decisions` replays the trail in-session; hosts that predate the audit envelope marker degrade to audit-off with a one-time warning instead of writing unresumable logs (`allowUnmarkedAudit` opts back in)
-- ✅ **Dry-run rollout** — `enforce: false` audits what the policy *would* do (would-be action + real downstream outcome, `dryRun`-marked) while passing every call through; safe policy trialing in production
-- ✅ **Dry-run testing** — `/rules test <tool> <json-args>` evaluates the active rules without executing anything, with `--cwd`, `--env`, `--agent`, and `--platform` overrides for every match dimension
-- ✅ **Hot reload** — Chokidar watch with debounce; a broken edit keeps the previous rules, never crashes; a rule file created mid-session (the project file or the fallback) is adopted automatically, no manual reload
-- ✅ **Fail loud** — invalid YAML, unknown actions/fields, bad globs/regexes, backtracking-prone patterns, or > `maxRules` fail the load
-- ✅ **Bounded hot path** — precompiled matchers, O(rules × patterns), capped by `maxRules`; glob backtracking degree capped by `maxGlobStars`
-
-## Quick start
-
-```sh
-# 1. install the bundle into your profile
-dsh plugin --profile web add "github:PerryLink/dsh-permission-rules#main"
-
-# or from a packed tarball (built artifacts, no build permission needed)
-pnpm pack
-dsh plugin --profile web add ./dsh-permission-rules-0.4.1.tgz
-
-# 2. restart
-dsh --profile web
-```
-
-Then create the rules file for your project and start a session in it:
+## Rule syntax
 
 ```yaml
 # <project>/.dsh/rules.yaml
@@ -90,11 +59,42 @@ rules:
     reason: "File writes need confirmation"
 ```
 
+- **Match dimensions** — `tools` (globs, incl. `mcp__*`), `agents` (`main` / `subagent` / `preset:<name>`; unknown identity never matches — fail closed), `params` (key/value globs or regexes, `!pattern` negation, `absent` key dimension), `paths` (workspace-relative globs extracted at any nesting depth), `when` (`env` var globs/regexes + a closed `platform` list), and `network` (`domains` / `ips` / `ports` / `schemes` — globs, wildcards, CIDRs, port ranges).
+- **Actions** — `allow` / `deny` / `ask`, evaluated in file order, first match wins.
+- **Rule metadata** — `enabled: false` (visible but inert), `description`, `tags`; unknown fields fail the load.
+- **Schema** — a JSON Schema ships at [docs/rules-format.schema.json](docs/rules-format.schema.json) (editor completion via `# yaml-language-server: $schema=...`); the full vocabulary and a 5-rule security baseline live in [docs/rules-format.en.md](docs/rules-format.en.md).
+
+## Network policy
+
+A Codex-style **process-level network policy**: shell subprocess traffic flows through a built-in local **HTTP/CONNECT proxy**, and every connection is decided by ordered network rules or by three modes mapped onto the official sandbox presets:
+
+- **`deny-all`** — the read-only sandbox preset: block all outbound.
+- **`whitelist`** — the workspace-write preset: allow listed targets, `unlisted: ask` (or `deny`) for the rest.
+- **`allow-all`** — the danger-full-access preset: allow everything.
+- **`auto`** (default) — follows the sandbox preset; on hosts without the sandbox-policy service it resolves to `autoFallback` (`allow-all`).
+
+- **Matching** — `match.network` with `domains` / `ips` / `ports` / `schemes` (globs, wildcards, CIDRs, port ranges; numeric YAML ports are accepted). URL-candidate extraction on the `tools/pre-execute` hot path fires on web-tool arguments and URLs embedded in bash/pwsh command text; loopback targets can short-circuit rules per `loopback` policy.
+- **Audit** — denied connections append `permissionRules/network` to the owning session (same adaptive `ignorable` gate), with block counters and recent interceptions in `/rules network` and the settings page.
+
+## Quick start
+
 ```sh
-dsh --profile web --dump-config | grep -A4 'id: permission-rules'   # verify the row
+# 1. install the bundle into your profile
+dsh plugin --profile web add "github:PerryLink/dsh-permission-rules#main"
+
+# or from npm (published releases)
+dsh plugin --profile web add dsh-permission-rules
+
+# 2. restart and verify the row
+dsh --profile web --dump-config | grep -A4 'id: permission-rules'
 ```
 
-A complete 5-rule security baseline and the full schema live in [docs/rules-format.en.md](docs/rules-format.en.md).
+## Install & uninstall
+
+- **git channel** (latest `main`): `dsh plugin --profile web add "github:PerryLink/dsh-permission-rules#main"` — the `prepare` script builds with production dependencies only.
+- **npm channel** (published releases): `dsh plugin --profile web add dsh-permission-rules`.
+- **tarball channel**: `pnpm pack` in this repo, then `dsh plugin --profile web add ./dsh-permission-rules-<version>.tgz`.
+- **uninstall**: `dsh plugin --profile web remove dsh-permission-rules`.
 
 ## Configuration
 
@@ -104,65 +104,77 @@ All tunables are Schemastery `Config` fields (changeable from cordis.yml). An id
 |---|---|---|
 | `rulesFile` | `.dsh/rules.yaml` | Rule file location; relative = resolved against the calling session's cwd, absolute = global and validated at mount |
 | `fallbackPath` | *(none)* | Rule file used when per-cwd discovery finds nothing; validated at mount |
-| `badFilePolicy` | `fail` | Bad rule file: `fail` errors the pending tool call loudly (reloads keep the previous rules); `ignore-with-warning` warns and continues empty |
-| `maxRules` | `256` | Hard cap on rule count across the effective source chain; larger files fail the load |
-| `maxCachedWorkspaces` | `512` | Hard cap on cached per-workspace rule loads; the least-recently-used workspace (and its watcher) is evicted beyond it |
+| `badFilePolicy` | `fail` | Bad rule file: `fail` errors the pending tool call loudly; `ignore-with-warning` warns and continues empty |
+| `maxRules` | `256` | Hard cap on rule count across the effective source chain |
+| `maxCachedWorkspaces` | `512` | Hard cap on cached per-workspace rule loads (LRU eviction) |
 | `patternMode` | `glob` | `params`/`paths`/`when.env` pattern flavor: `glob` or `regex` (tool names are always globs) |
 | `watch` | `true` | Chokidar watch + reload on change |
 | `watchStabilityThresholdMs` | `200` | Reload debounce window (ms) |
-| `language` | `en` | `/rules` output language: `en`, `zh`, `es`, `pt`, `hi` (`en`/`zh` are the reference translations) |
-| `caseInsensitivePaths` | *(win32)* | `paths` patterns and workspace-root comparison ignore ASCII case; defaults to `true` on Windows, `false` elsewhere |
+| `language` | `en` | `/rules` output language: `en`, `zh`, `es`, `pt`, `hi` |
+| `caseInsensitivePaths` | *(win32)* | `paths` patterns and workspace-root comparison ignore ASCII case; `true` on Windows |
 | `audit` | `all` | Audit granularity: `all` logs every hit AND passthrough; `hits` skips passthrough events |
 | `searchUp` | `false` | Walk parent directories from the session cwd and merge every found rule file, nearest first |
-| `maxGlobStars` | `2` | Hard cap on unbounded `*`/`**` quantifiers per glob pattern (backtracking-degree bound) |
-| `enforce` | `true` | `false` = dry-run mode: deny/ask hits are audit-logged with a `dryRun` marker (would-be action + real downstream outcome) and every call passes through — trial a policy before enforcing it |
-| `allowUnmarkedAudit` | `false` | Hosts whose `Session.append` predates the `ignorable` marker (the `0.1.0-rc.6` line) write audit events unmarked, making sessions unresumable on stricter builds: the plugin detects them and disables session-log audit with a one-time warning. Set `true` to opt back into the in-session trail (repair existing logs with `scripts/repair-session-logs.mjs`) |
+| `maxGlobStars` | `2` | Hard cap on unbounded `*`/`**` quantifiers per glob pattern |
+| `enforce` | `true` | `false` = dry-run mode: deny/ask hits are audit-logged with a `dryRun` marker and every call passes through |
+| `allowUnmarkedAudit` | `false` | Pre-marker hosts drop the `ignorable` marker; the plugin disables session-log audit with a warning. Set `true` to opt back in |
+| `network.enabled` | `true` | Master switch for the proxy, env injection, and web-tool mode defaults |
+| `network.mode` | `auto` | Policy mode: `auto` follows the sandbox preset, or `deny-all` / `whitelist` / `allow-all` |
+| `network.autoFallback` | `allow-all` | Mode used when `auto` has no sandbox-policy service |
+| `network.unlisted` | `ask` | Whitelist-mode handling of targets no rule matched: `ask` or `deny` |
+| `network.proxyBind` | `127.0.0.1` | Local proxy bind address (loopback only) |
+| `network.proxyPort` | `0` | Local proxy port; `0` picks a free ephemeral port |
+| `network.proxyMaxRecent` | `100` | Cap on recent-block records kept for the settings page |
+| `network.loopback` | `allow` | Loopback targets: `allow` (Codex parity) or `policy` |
+| `network.injectEnv` | `true` | Whether proxy environment variables are injected for subprocesses |
+| `network.noProxy` | `clear` | Subprocess NO_PROXY handling: `clear` enforces the policy or `preserve` |
 
-### Session commands
+## Tools & surfaces
+
+| Surface | Kind | Notes |
+|---|---|---|
+| `tools/pre-execute` | listener | First-match allow/deny/ask rules + network URL-candidate extraction |
+| `/rules` | command | `list` · `reload` · `decisions [n]` · `test <tool> <json>` |
+| `permissionRules/decision` | event | Log-only audit for every hit and passthrough |
+| `permissionRules/network` | event | Proxy-layer audit for blocked connections |
+| HTTP/CONNECT proxy | service | Built-in local proxy governing shell subprocess traffic |
+| settings page | client | Network-mode editor, rule editor, block counters, recent interceptions |
 
 ```
 /rules                        list the active rules, their source files, and any last-reload error
 /rules list                   explicit alias for the bare listing
 /rules reload                 re-read the rule-file chain for this workspace
 /rules decisions [n]          show the last n permission decisions of this session (default 10)
-/rules test <tool> <json>     dry-evaluate the rules against a hypothetical call, e.g. /rules test bash {"command":"git push origin main"}
+/rules test <tool> <json>     dry-evaluate the rules against a hypothetical call
 ```
 
-`/rules test` also accepts leading flags: `--cwd <dir>` evaluates against another workspace, `--env KEY=VALUE` (repeatable) overrides host env for `when.env`, `--agent <selector>` (repeatable) supplies identity candidates for the `agents` dimension, and `--platform <name>` overrides the host platform for `when.platform`. In multi-file chains (e.g. `searchUp`), every listed rule line is attributed to its own source file.
+`/rules test` also accepts leading flags: `--cwd <dir>`, `--env KEY=VALUE` (repeatable), `--agent <selector>` (repeatable), and `--platform <name>`. In multi-file chains (e.g. `searchUp`), every listed rule line is attributed to its own source file.
 
-Command output is UI-only — the model learns the rules only through the tool results they produce. `language` picks the output language. A JSON Schema for the rule file ships at [docs/rules-format.schema.json](docs/rules-format.schema.json) (wire it up with `# yaml-language-server: $schema=...` for editor completion).
+## Permissions & data
 
-## Collaborating with dsh-auto-review
-
-- `dsh-permission-rules` produces `ask`; `dsh-auto-review` answers on the `approval/request` waterfall with a read-only second-model verdict (or delegates to humans). Mount both for the full closed loop.
-- Integration-tested (`test/integration.spec.ts`): `permissionRules/decision` → `approval/asked` → `autoReview/verdict` → `approval/decided`, with the reviewer replaced by a scripted mock.
-- The `never` approval policy and every fail-closed guarantee of the [official harness](https://github.com/deepseek-ai/deepseek-harness) stay untouched.
+- **Permissions**: declares `files:read`, `files:watch`, `files:write`, `session:append`, and `network:outbound` in its workshop manifest. `ask` decisions ride the official approval seam — nothing is re-implemented or bypassed.
+- **Data**: rule files are read from disk; no rule data is written. No model calls, no reviewer subagents.
+- **Session log**: `permissionRules/decision` is never injected into the model context and is appended with the envelope's `ignorable: true` marker so any harness build loads the log.
 
 ## Security boundaries
 
 - **Policy, not a kernel.** `paths` candidates come only from a documented set of argument keys (at any nesting depth, depth-capped), and only workspace-relative paths match.
 - **No reviewer here.** The plugin never spawns subagents or calls models — producing an `ask` decision is the end of its work.
 - **No sandbox changes.** OS-level sandbox policy belongs to the sandbox seam, not this plugin.
-- **Loud misconfiguration.** Unknown YAML fields, unknown actions, and bad patterns are rejected at load, never silently ignored.
-- **Backtracking bounds.** Glob patterns are capped at `maxGlobStars` unbounded star expansions; regex-mode patterns reject nested unbounded quantifiers and quantified overlapping literal alternations. (Regex chains like `\d+\.\d+\.\d+` stay allowed — regex mode is the escape hatch, glob mode is the guarded default.)
-
-## Related work
-
-- [Andy8647/dsh-auto-approval](https://github.com/Andy8647/dsh-auto-approval) — two-state allow/deny classifier with its own file-log audit; this plugin adds the full three-state semantics, declarative YAML rules, session-log audit, and `next()`-safe delegation.
-- `Drifter-yh/dsh-tool-policy` — deny-by-default tool policy; documented here to avoid duplicate implementation.
-- `dsh-auto-review` — the AI-backstop half of the loop this plugin fronts.
-
-## Design discussions
-
-- [Capability profiles](https://github.com/PerryLink/dsh-permission-rules/issues/6) — named, switchable permission sets per task/session (tracking issue).
-- [Task-scoped capabilities: combining Harness permissions with external enforcement](https://github.com/deepseek-ai/deepseek-harness/discussions/2506) — the upstream discussion on the external-enforcement boundary that motivated the profiles idea.
+- **Loud misconfiguration.** Unknown YAML fields, unknown actions, and bad patterns are rejected at load.
+- **Backtracking bounds.** Glob patterns are capped at `maxGlobStars` unbounded star expansions; regex-mode patterns reject nested unbounded quantifiers and quantified overlapping literal alternations.
 
 ## Known limitations
 
-- `permissionRules/decision` is appended with the envelope's `ignorable: true` marker, so any harness build loads the log — readers that do not know the out-of-repo type simply skip the audit record instead of refusing the session. Hosts whose `Session.append` predates the marker (the `0.1.0-rc.6` line) silently DROP it: the plugin detects them at runtime (peer-version pre-check + a probe of the appended envelope) and disables session-log audit with a one-time warning, so session logs stay loadable everywhere. Set `allowUnmarkedAudit: true` to opt back into the in-session trail; logs already written without the marker can be repaired with `scripts/repair-session-logs.mjs` before loading on hosts with required-on-read semantics.
-- `paths` candidates are heuristic: only the documented argument keys feed path matching, and workspace-relative matching is ASCII-case-insensitive only when `caseInsensitivePaths` is on.
-- Globs are a conservative subset (no brace expansion) — write two patterns, or use regex mode.
-- The regex backtracking guard is structural, not exhaustive: alternation-ambiguity cases without literal prefixes (e.g. crafted lookarounds) are the author's responsibility; prefer glob mode for untrusted files.
+- **Audit marker on pre-marker hosts.** `permissionRules/decision` is appended with `ignorable: true`; hosts whose `Session.append` predates the marker (the `0.1.0-rc.6` line) silently drop it, so the runtime disables session-log audit with a one-time warning. Set `allowUnmarkedAudit: true` to opt back in; repair already-written logs with `scripts/repair-session-logs.mjs`.
+- **Path candidates are heuristic.** Only the documented argument keys feed path matching, and workspace-relative matching is ASCII-case-insensitive only when `caseInsensitivePaths` is on.
+- **Globs are a conservative subset.** No brace expansion — write two patterns, or use regex mode.
+- **The regex backtracking guard is structural, not exhaustive.** Prefer glob mode for untrusted files.
+
+## Collaborating with dsh-auto-review
+
+- `dsh-permission-rules` produces `ask`; `dsh-auto-review` answers on the `approval/request` waterfall with a read-only second-model verdict (or delegates to humans). Mount both for the full closed loop.
+- Integration-tested: `permissionRules/decision` → `approval/asked` → `autoReview/verdict` → `approval/decided`, with the reviewer replaced by a scripted mock.
+- The `never` approval policy and every fail-closed guarantee of the official harness stay untouched.
 
 ## Session log repair
 
@@ -173,26 +185,30 @@ node scripts/repair-session-logs.mjs scan [--home DIR]      # report foreign row
 node scripts/repair-session-logs.mjs repair [--home DIR] [--dry-run]
 ```
 
-`--home` defaults to `$DSH_HOME/sessions` (or `~/.dsh/sessions`). See the script header for the full contract.
+`--home` defaults to `$DSH_HOME/sessions` (or `~/.dsh/sessions`).
 
 ## Development
 
 ```sh
-pnpm install        # node ^22.19 || >=24
-pnpm run typecheck  # tsc, src + tests
-pnpm run lint       # eslint, src + tests + scripts
-pnpm test           # vitest: 139 tests, 9 suites
+pnpm install            # node ^22.19 || >=24
+pnpm run typecheck      # tsc, src + tests
+pnpm run lint           # eslint, src + tests + scripts
+pnpm test               # vitest: 139 tests, 9 suites
 pnpm run test:coverage  # coverage gate (90/80/90/90)
-pnpm run build      # tsc declarations + tsdown bundles (lib/)
-pnpm run pack:check # build + pack (the published artifact)
-node scripts/check-readme-sync.mjs  # five-language README sync gate (also in CI)
+pnpm run build          # tsc declarations + tsdown bundles (lib/)
+pnpm run pack:check     # build + pack (the published artifact)
+node scripts/check-readme-sync.mjs   # five-language README sync gate (also in CI)
 ```
 
-See [VERIFICATION.md](VERIFICATION.md) for the headless end-to-end verification record (deny blocking a shell tool, ask routing through the approval seam, `--dump-config`).
+See [VERIFICATION.md](VERIFICATION.md) for the headless end-to-end verification record.
+
+## Topics
+
+`dsh`, `dsh-plugin`, `deepseek-harness`, `permission`, `policy`, `allow-deny-ask`, `approval`, `safety`, `network`, `network-policy`, `proxy`
 
 ## Contributors
 
-- [@PerryLink](https://github.com/PerryLink) — creator and maintainer: rule vocabulary and evaluation, runtime, HMR watch, session-log audit, and the five-language docs.
+- [@PerryLink](https://github.com/PerryLink) — creator and maintainer: rule vocabulary and evaluation, runtime, HMR watch, session-log audit, network policy + proxy, and the five-language docs.
 - [@22xuan](https://github.com/22xuan) — the detailed report on rc.6 hosts silently dropping the audit event's `ignorable` marker ([#2](https://github.com/PerryLink/dsh-permission-rules/issues/2)) and the upstream harness discussion; the v0.4.1 runtime host-capability detection and the documentation correction drew directly from that analysis.
 
 ## PerryLink DSH Plugin Family
