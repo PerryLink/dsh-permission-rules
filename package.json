@@ -171,6 +171,7 @@
     "lint": "eslint src test scripts",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
+    "verify:self-contained": "node scripts/verify-self-contained.mjs",
     "pack:check": "node scripts/prepare.mjs && pnpm pack",
     "prepare": "node scripts/prepare.mjs"
   },

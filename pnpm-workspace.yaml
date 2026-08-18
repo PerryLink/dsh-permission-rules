@@ -2,8 +2,11 @@ packages:
   - .
 
 nodeLinker: hoisted
-onlyBuiltDependencies:
-  - esbuild
+allowBuilds:
+  esbuild: true
+  '@deepseek-ai/dsh-subprocess-local': true
+  koffi: true
+  node-pty: true
 # The 0.1.0-rc.6 peer family was published inside the registry's
 # minimum-release-age window; pin it explicitly so installs resolve.
 minimumReleaseAgeExclude:
@@ -120,8 +123,4 @@ minimumReleaseAgeExclude:
   - '@deepseek-ai/dsh-tool-goal@0.1.0-rc.7'
   - '@deepseek-ai/dsh-tool-jobs@0.1.0-rc.7'
   - '@deepseek-ai/dsh-tool-skill@0.1.0-rc.7'
-allowBuilds:
-  '@deepseek-ai/dsh-subprocess-local': set this to true or false
-  esbuild: true
-  koffi: set this to true or false
-  node-pty: set this to true or false
+
