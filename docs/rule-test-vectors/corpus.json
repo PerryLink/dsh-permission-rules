@@ -1,0 +1,109 @@
+{
+  "schema": "dsh-rule-test-vectors/v1",
+  "description": "Shared, implementation-neutral conformance vectors for DSH permission gates that consume the dsh-permission-rules rule syntax. Every vector carries its own rule text and the expected first-match decision for each case; gates that claim this syntax evaluate the same inputs to the same outputs. The reference implementation is dsh-permission-rules (see docs/rule-test-vectors/README.md).",
+  "workspace": "/workspace",
+  "vectors": [
+    {
+      "id": "exact-tool-deny",
+      "purpose": "an exact tool-name match denies; other tools pass through",
+      "rules": "rules:\n  - match: { tools: [bash] }\n    action: deny\n    reason: shell is denied\n",
+      "cases": [
+        { "tool": "bash", "arguments": { "command": "ls" }, "expect": "deny" },
+        { "tool": "write", "arguments": { "path": "a.txt" }, "expect": null }
+      ]
+    },
+    {
+      "id": "glob-tools-ask",
+      "purpose": "tool-name globs match whole names (mcp__*); non-matching tools pass through",
+      "rules": "rules:\n  - match: { tools: [\"mcp__*\"] }\n    action: ask\n    reason: mcp tools need approval\n",
+      "cases": [
+        { "tool": "mcp__github__search", "arguments": {}, "expect": "ask" },
+        { "tool": "read", "arguments": {}, "expect": null }
+      ]
+    },
+    {
+      "id": "params-command-glob",
+      "purpose": "a params pattern matched against the command string denies the destructive call only",
+      "rules": "rules:\n  - match:\n      tools: [bash, pwsh]\n      params:\n        command: [\"rm -rf*\", \"git push*--force*\"]\n    action: deny\n    reason: destructive command\n",
+      "cases": [
+        { "tool": "bash", "arguments": { "command": "rm -rf /tmp/cache" }, "expect": "deny" },
+        { "tool": "pwsh", "arguments": { "command": "git push origin --force" }, "expect": "deny" },
+        { "tool": "bash", "arguments": { "command": "ls -la" }, "expect": null }
+      ]
+    },
+    {
+      "id": "params-negation",
+      "purpose": "a negation-only pattern matches a present value that hits no negation",
+      "rules": "rules:\n  - match:\n      tools: [bash]\n      params:\n        command: [\"!*test*\"]\n    action: deny\n    reason: test commands are blocked\n",
+      "cases": [
+        { "tool": "bash", "arguments": { "command": "pnpm build" }, "expect": "deny" },
+        { "tool": "bash", "arguments": { "command": "pnpm test" }, "expect": null }
+      ]
+    },
+    {
+      "id": "paths-protected",
+      "purpose": "workspace-relative path patterns deny secret files; unrelated paths pass",
+      "rules": "rules:\n  - match:\n      paths: [\"**/.env\", \"**/secrets/**\", \"**/*.pem\"]\n    action: deny\n    reason: protected secrets and credential paths are off-limits\n",
+      "cases": [
+        { "tool": "read", "arguments": { "path": ".env" }, "expect": "deny" },
+        { "tool": "edit", "arguments": { "file_path": "src/secrets/api.key" }, "expect": "deny" },
+        { "tool": "read", "arguments": { "path": "src/index.ts" }, "expect": null }
+      ]
+    },
+    {
+      "id": "when-platform",
+      "purpose": "a when.platform condition matches only the named platform",
+      "rules": "rules:\n  - match:\n      tools: [bash]\n      when: { platform: [win32] }\n    action: deny\n    reason: shell denied on windows\n",
+      "cases": [
+        { "tool": "bash", "arguments": {}, "context": { "platform": "win32" }, "expect": "deny" },
+        { "tool": "bash", "arguments": {}, "context": { "platform": "linux" }, "expect": null }
+      ]
+    },
+    {
+      "id": "when-env",
+      "purpose": "a when.env condition matches only when the variable is present with a matching value",
+      "rules": "rules:\n  - match:\n      tools: [bash]\n      when:\n        env: { CI: \"true\" }\n    action: deny\n    reason: no shell inside CI\n",
+      "cases": [
+        { "tool": "bash", "arguments": {}, "context": { "env": { "CI": "true" } }, "expect": "deny" },
+        { "tool": "bash", "arguments": {}, "context": { "env": { "CI": "false" } }, "expect": null },
+        { "tool": "bash", "arguments": {}, "context": { "env": {} }, "expect": null }
+      ]
+    },
+    {
+      "id": "agents-subagent",
+      "purpose": "an agents-scoped rule fires only for the matching identity candidate and fails closed for unknown identity",
+      "rules": "rules:\n  - match:\n      tools: [bash]\n      agents: [subagent]\n    action: deny\n    reason: subagents cannot run the shell\n",
+      "cases": [
+        { "tool": "bash", "arguments": {}, "context": { "agents": ["subagent"] }, "expect": "deny" },
+        { "tool": "bash", "arguments": {}, "context": { "agents": ["main"] }, "expect": null },
+        { "tool": "bash", "arguments": {}, "context": {}, "expect": null }
+      ]
+    },
+    {
+      "id": "absent-dimension",
+      "purpose": "an absent dimension fires when the listed keys are missing",
+      "rules": "rules:\n  - match:\n      tools: [write]\n      absent: [dryRun]\n    action: deny\n    reason: write requires an explicit dryRun guard\n",
+      "cases": [
+        { "tool": "write", "arguments": { "path": "a.txt" }, "expect": "deny" },
+        { "tool": "write", "arguments": { "path": "a.txt", "dryRun": true }, "expect": null }
+      ]
+    },
+    {
+      "id": "first-match-wins",
+      "purpose": "rules evaluate in written order; the first match settles the decision",
+      "rules": "rules:\n  - match: { tools: [bash] }\n    action: allow\n    reason: shell is allowed first\n  - match: { tools: [bash] }\n    action: deny\n    reason: unreachable for bash\n",
+      "cases": [
+        { "tool": "bash", "arguments": {}, "expect": "allow" },
+        { "tool": "read", "arguments": {}, "expect": null }
+      ]
+    },
+    {
+      "id": "disabled-rule",
+      "purpose": "an enabled:false rule stays inert",
+      "rules": "rules:\n  - match: { tools: [bash] }\n    action: deny\n    reason: currently disabled\n    enabled: false\n",
+      "cases": [
+        { "tool": "bash", "arguments": {}, "expect": null }
+      ]
+    }
+  ]
+}

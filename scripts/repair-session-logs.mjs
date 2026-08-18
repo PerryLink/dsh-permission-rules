@@ -24,8 +24,10 @@
  *
  * `--home` defaults to `$env:DSH_HOME/sessions` or `~/.dsh/sessions`.
  * The default target set is the log-only audit vocabulary owned by the
- * dsh-permission-rules / dsh-auto-review plugins; only types you understand
- * to be reconstruction-safe may be added via `--types`.
+ * dsh-permission-rules / dsh-auto-review plugins (all five `autoReview/*`
+ * event types — `state`, `verdict`, `circuit`, `override`, `rejection`);
+ * only types you understand to be reconstruction-safe may be added via
+ * `--types`.
  */
 
 import { constants, zstdCompressSync, zstdDecompressSync } from 'node:zlib'
@@ -40,6 +42,9 @@ const DEFAULT_TARGET_TYPES = [
   'permissionRules/decision',
   'autoReview/verdict',
   'autoReview/state',
+  'autoReview/circuit',
+  'autoReview/override',
+  'autoReview/rejection',
 ]
 
 /** Row types that are storage records, never session events (leave untouched). */

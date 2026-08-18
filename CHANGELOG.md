@@ -2,6 +2,17 @@
 
 All notable changes to dsh-permission-rules are recorded here, newest first.
 
+## v0.5.1 — 2026-08-17
+
+### Added
+
+- **Shared rule-syntax test vectors** (`docs/rule-test-vectors/`): an implementation-neutral conformance corpus (schema `dsh-rule-test-vectors/v1`) covering exact/glob tool matches, params globs and negation, path patterns, `when.platform`/`when.env`, the `agents` identity dimension, `absent`, first-match ordering, and disabled rules. `test/test-vectors.spec.ts` proves every case through the real parser/matcher — the reference implementation for the cross-gate corpus agreed with sjh9714 (issues #4/#5).
+
+### Changed
+
+- `scripts/repair-session-logs.mjs` default target set now covers all five `autoReview/*` event types (`state`, `verdict`, `circuit`, `override`, `rejection`) in addition to `permissionRules/decision`, so sessions polluted by `dsh-auto-review` ≤ 0.5.0 on rc.6 hosts repair in one pass.
+- The dsh-auto-review integration dependency moves to `vendor/dsh-auto-review-0.5.1.tgz` (its rc.6 audit-gating fix); the integration specs mount it with `allowUnmarkedAudit: true` so the asserted audit chain stays testable against the rc.6 peers.
+
 ## v0.5.0 — 2026-08-16
 
 ### Added

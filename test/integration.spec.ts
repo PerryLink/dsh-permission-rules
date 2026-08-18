@@ -42,6 +42,9 @@ describe('dsh-permission-rules × dsh-auto-review integration', () => {
     await harness.ctx.plugin(autoReview as unknown as import('@deepseek-ai/cordis').Plugin, {
       reviewerProvider: 'mock',
       toolsPolicy: { overrides: { bash: 'ai' } },
+      // The rc.6 test peers drop the ignorable marker, so the full audit
+      // chain this spec asserts requires the documented opt-in.
+      allowUnmarkedAudit: true,
     })
 
     try {
@@ -104,6 +107,9 @@ describe('dsh-permission-rules × dsh-auto-review integration', () => {
     await harness.ctx.plugin(autoReview as unknown as import('@deepseek-ai/cordis').Plugin, {
       reviewerProvider: 'mock',
       toolsPolicy: { overrides: { bash: 'ai' } },
+      // The rc.6 test peers drop the ignorable marker, so the full audit
+      // chain this spec asserts requires the documented opt-in.
+      allowUnmarkedAudit: true,
     })
 
     try {
