@@ -9,6 +9,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
+import { resolve as resolvePath } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
 import Commands from '@deepseek-ai/dsh-commands'
@@ -83,6 +84,8 @@ describe('resolveConfig fail-loud', () => {
   })
 
   it('rejects searchUp combined with an absolute rulesFile', () => {
-    expect(() => resolveConfig({ searchUp: true, rulesFile: 'C:/abs/rules.yaml' })).toThrow(/searchUp cannot be combined with an absolute rulesFile/u)
+    // A real platform-absolute path: a Windows-style literal would read as
+    // relative on POSIX runners and never reach the rejection.
+    expect(() => resolveConfig({ searchUp: true, rulesFile: resolvePath('abs', 'rules.yaml') })).toThrow(/searchUp cannot be combined with an absolute rulesFile/u)
   })
 })

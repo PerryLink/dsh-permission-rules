@@ -10,6 +10,10 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    # Job-level mapping so the step-level `if: ${{ env.NPM_TOKEN != '' }}`
+    # actually evaluates (step env is invisible to its own `if`).
+    env:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
     steps:
       - uses: actions/checkout@v5
 
