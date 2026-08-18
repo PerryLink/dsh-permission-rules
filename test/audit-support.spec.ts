@@ -1,11 +1,11 @@
 /**
  * Host-capability degradation for the audit envelope's `ignorable` marker:
- * hosts whose `Session.append` predates the marker (the rc.6 peer line)
- * write audit events UNMARKED, which makes sessions unresumable on
- * stricter harness builds. The runtime must detect such hosts BEFORE the
- * first append (peer version) and re-check the first append's returned
- * envelope, then disable session-log audit with a one-time warning unless
- * `allowUnmarkedAudit: true` opts back in.
+ * hosts whose `Session.append` predates the marker (every released rc
+ * line through rc.7) write audit events UNMARKED, which makes sessions
+ * unresumable on stricter harness builds. The runtime must detect such
+ * hosts BEFORE the first append (peer version) and re-check the first
+ * append's returned envelope, then disable session-log audit with a
+ * one-time warning unless `allowUnmarkedAudit: true` opts back in.
  * @module dsh-permission-rules/test/audit-support.spec
  */
 
@@ -15,11 +15,11 @@ import { isUnmarkedHostVersion } from '../src/runtime.ts'
 import type { PermissionRulesRuntime } from '../src/runtime.ts'
 import { dispatchPreExecute, makeExec, mountHarness, removeWorkspace, tempWorkspace } from './harness.ts'
 
-/** Version-line classification for the known-unmarked rc.1–rc.6 peers. */
+/** Version-line classification for the known-unmarked rc.1–rc.7 peers. */
 describe('isUnmarkedHostVersion', () => {
-  it('flags the rc.1–rc.6 lines and nothing else', () => {
-    for (const version of ['0.1.0-rc.1', '0.1.0-rc.6']) expect(isUnmarkedHostVersion(version)).toBe(true)
-    for (const version of ['0.1.0-rc.7', '0.1.0-rc.10', '0.1.0', '0.2.0', '0.1.0-rc.6-pre', 'garbage']) expect(isUnmarkedHostVersion(version)).toBe(false)
+  it('flags the rc.1–rc.7 lines and nothing else', () => {
+    for (const version of ['0.1.0-rc.1', '0.1.0-rc.6', '0.1.0-rc.7']) expect(isUnmarkedHostVersion(version)).toBe(true)
+    for (const version of ['0.1.0-rc.8', '0.1.0-rc.10', '0.1.0', '0.2.0', '0.1.0-rc.6-pre', 'garbage']) expect(isUnmarkedHostVersion(version)).toBe(false)
   })
 })
 
@@ -36,10 +36,10 @@ describe('isMarkedAuditEvent', () => {
 })
 
 describe('audit host-capability degradation', () => {
-  it('rc.6 peers (known-unmarked) disable session-log audit BEFORE the first append, warning once', async () => {
+  it('the released rc peers (known-unmarked) disable session-log audit BEFORE the first append, warning once', async () => {
     const cwd = tempWorkspace()
     // The production default (allowUnmarkedAudit: false — the harness
-    // otherwise opts tests in). The real rc.6 SessionStore is a
+    // otherwise opts tests in). The real released-rc SessionStore is a
     // known-unmarked host.
     const harness = await mountHarness({ allowUnmarkedAudit: false }, { cwd })
     const warn = vi.spyOn(harness.ctx.logger, 'warn').mockImplementation(() => undefined)
@@ -77,8 +77,8 @@ describe('audit host-capability degradation', () => {
     const harness = await mountHarness({ allowUnmarkedAudit: false }, { cwd })
     const runtime = harness.ctx.get('permissionRulesRuntime') as PermissionRulesRuntime
     const warn = vi.spyOn(harness.ctx.logger, 'warn').mockImplementation(() => undefined)
-    // Simulate a post-rc.6 peer so the version pre-check lets the probe run…
-    const versionSpy = vi.spyOn(runtime as unknown as { peerVersion(): string | null }, 'peerVersion').mockReturnValue('0.1.0-rc.7')
+    // Simulate a future marker-aware line so the version pre-check lets the probe run…
+    const versionSpy = vi.spyOn(runtime as unknown as { peerVersion(): string | null }, 'peerVersion').mockReturnValue('0.2.0')
     // …and make the append return a marker-stamped envelope.
     const realAppend = (runtime as unknown as { appendAudit(agent: never, data: unknown): unknown }).appendAudit.bind(runtime) as (agent: never, data: unknown) => unknown
     const appendSpy = vi.spyOn(runtime as unknown as { appendAudit(agent: never, data: unknown): unknown }, 'appendAudit').mockImplementation((agent: never, data: unknown) => ({
