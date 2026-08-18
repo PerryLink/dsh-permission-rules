@@ -35,6 +35,9 @@ jobs:
       - name: Lint
         run: pnpm run lint
 
+      - name: Verify self-contained dependency specs
+        run: pnpm run verify:self-contained
+
       - name: README sync (five languages)
         run: node scripts/check-readme-sync.mjs
 
