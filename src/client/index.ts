@@ -32,7 +32,7 @@ export const inject = ['slots', 'locale', 'remote']
 
 /** The locale registry face (structural; the real `ctx.locale` satisfies it). */
 interface LocaleLike {
-  register(namespace: string, dictionaries: { en: Record<string, string>; zh: Record<string, string> }): void
+  register(namespace: string, dictionaries: { en: Record<string, string>; zh: Record<string, string> }): () => void
   bind(namespace: string): (key: PermissionRulesLocaleKey, vars?: Record<string, string | number>) => string
 }
 
@@ -58,10 +58,10 @@ export async function apply(ctx: Context): Promise<void> {
   const slots = ctx.get('slots') as SlotsLike | undefined
   if (locale === undefined || remote === undefined || slots === undefined) return
 
-  ctx.effect(() => {
-    locale.register(NS, { zh, en })
-    return () => {}
-  })
+  // locale.register returns the only unregister disposer and throws on a
+  // duplicate namespace: ride this fiber's effect so unload/reload cycles
+  // can re-register the dictionaries.
+  ctx.effect(() => locale.register(NS, { zh, en }), 'dsh-permission-rules: dictionaries')
 
   // $mount registers the 'remote.permissionRules' namespace service and owns
   // its removal for this fiber's lifetime.
