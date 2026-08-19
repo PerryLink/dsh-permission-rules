@@ -2,6 +2,12 @@
 
 All notable changes to dsh-permission-rules are recorded here, newest first.
 
+## v0.5.2 — 2026-08-19
+
+### Fixed
+
+- **Client dictionaries survive hot-reload**: the browser half now holds the `locale.register` disposer through the plugin fiber's `ctx.effect` (the locale registry throws on a duplicate namespace). Disposing the client fiber unregisters the `settings.permissionRules` dictionaries; remounting re-registers cleanly instead of failing the mount until the next page refresh. Regression covered by a dispose-and-remount client test against a duplicate-strict locale registry.
+
 ## v0.5.1 — 2026-08-17
 
 ### Added

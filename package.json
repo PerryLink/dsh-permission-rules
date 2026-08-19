@@ -1,6 +1,6 @@
 {
   "name": "dsh-permission-rules",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "Declarative Claude Code-style permission rules plus a Codex-style process-level network policy for DeepSeek Harness: ordered allow/deny/ask rules with tool-name, argument (glob/regex), workspace-path, and network-target (domain/ip/port/scheme) matching on the tools/pre-execute waterfall, a built-in local HTTP/CONNECT proxy governing shell subprocess traffic, three network modes mapped onto the official sandbox presets, full session-log audit, HMR rule reload, and a settings page with a rule editor, block counters, and recent interception lists.",
   "private": false,
   "type": "module",
