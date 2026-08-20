@@ -24,7 +24,7 @@
 
 | Surface | Status |
 |---|---|
-| Harness | DeepSeek Harness `0.1.0-rc.5`–`0.1.0-rc.6` |
+| Harness | DeepSeek Harness `0.1.0-rc.5`–`0.1.0-rc.7` |
 | Node | `^22.19.0 || >=24.0.0` |
 | Platforms | 全部（host + Web 设置客户端） |
 | Model | 任意（deny/ask 原因经工具结果呈现） |
