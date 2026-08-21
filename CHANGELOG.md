@@ -2,6 +2,13 @@
 
 All notable changes to dsh-permission-rules are recorded here, newest first.
 
+## v0.5.3 — 2026-08-21
+
+### DeepSeek Harness rc.8 compatibility
+
+- The dsh peer family moves to `0.1.0-rc.8`: devDependencies pin the exact rc.8 line, peerDependencies widen to `>=0.1.0-rc.8 <0.2.0`, the workshop compatibility manifest adds rc.8, and the five-language Harness compatibility row declares it. The rc.8 `commands.execute` signature gained the `images` parameter, so the `/rules` specs and the Loader composition runner pass an empty attachment array; the composition suite proves the built entry loads and serves `/rules` on the rc.8 peers.
+- The rc.8 `dsh-session` stamps the envelope's `ignorable` marker, so the audit-capability degradation tests now simulate the pre-marker line through the runtime's `peerVersion` seam instead of claiming the released peers are unmarked; `isUnmarkedHostVersion`'s contract and the test-harness notes document the marker-aware rc.8 line.
+
 ## v0.5.2 — 2026-08-19
 
 ### Fixed
