@@ -33,7 +33,7 @@ describe('/rules command', () => {
     const cwd = workspaceWithRules()
     const harness = await mountHarness({}, { cwd })
     try {
-      const execution = await harness.ctx.commands.execute(harness.agent, '/rules', new AbortController().signal)
+      const execution = await harness.ctx.commands.execute(harness.agent, '/rules', [], new AbortController().signal)
       expect(execution?.result.kind).toBe('success')
       const text = execution?.result.kind === 'success' ? execution.result.text ?? '' : ''
       expect(text).toContain('2 rule(s)')
@@ -50,7 +50,7 @@ describe('/rules command', () => {
     const cwd = tempWorkspace()
     const harness = await mountHarness({}, { cwd })
     try {
-      const execution = await harness.ctx.commands.execute(harness.agent, '/rules', new AbortController().signal)
+      const execution = await harness.ctx.commands.execute(harness.agent, '/rules', [], new AbortController().signal)
       const text = execution?.result.kind === 'success' ? execution.result.text ?? '' : ''
       expect(text).toContain('No permission rules active')
       expect(text).toContain(cwd)
@@ -64,7 +64,7 @@ describe('/rules command', () => {
     const harness = await mountHarness({}, { cwd })
     try {
       writeFileSync(join(cwd, '.dsh', 'rules.yaml'), GOOD_2, 'utf8')
-      const execution = await harness.ctx.commands.execute(harness.agent, '/rules reload', new AbortController().signal)
+      const execution = await harness.ctx.commands.execute(harness.agent, '/rules reload', [], new AbortController().signal)
       expect(execution?.result.kind).toBe('success')
       const text = execution?.result.kind === 'success' ? execution.result.text ?? '' : ''
       expect(text).toContain('Reloaded 1 rule(s)')
@@ -78,15 +78,15 @@ describe('/rules command', () => {
     const harness = await mountHarness({}, { cwd })
     try {
       // Load the good file first so there IS a previous rule set to keep.
-      await harness.ctx.commands.execute(harness.agent, '/rules', new AbortController().signal)
+      await harness.ctx.commands.execute(harness.agent, '/rules', [], new AbortController().signal)
       writeFileSync(join(cwd, '.dsh', 'rules.yaml'), 'rules: {', 'utf8')
-      const execution = await harness.ctx.commands.execute(harness.agent, '/rules reload', new AbortController().signal)
+      const execution = await harness.ctx.commands.execute(harness.agent, '/rules reload', [], new AbortController().signal)
       expect(execution?.result.kind).toBe('error')
       const text = execution?.result.kind === 'error' ? execution.result.text : ''
       expect(text).toContain('Reload failed')
       expect(text).toContain('previous rules are still active')
       // The old rules still decide.
-      const status = await harness.ctx.commands.execute(harness.agent, '/rules', new AbortController().signal)
+      const status = await harness.ctx.commands.execute(harness.agent, '/rules', [], new AbortController().signal)
       const statusText = status?.result.kind === 'success' ? status.result.text ?? '' : ''
       expect(statusText).toContain('2 rule(s)')
       expect(statusText).toContain('last reload failed')
@@ -99,7 +99,7 @@ describe('/rules command', () => {
     const cwd = workspaceWithRules()
     const harness = await mountHarness({}, { cwd })
     try {
-      const execution = await harness.ctx.commands.execute(harness.agent, '/rules nuke', new AbortController().signal)
+      const execution = await harness.ctx.commands.execute(harness.agent, '/rules nuke', [], new AbortController().signal)
       expect(execution?.result.kind).toBe('error')
       const text = execution?.result.kind === 'error' ? execution.result.text : ''
       expect(text).toContain('Unknown /rules argument "nuke"')
@@ -112,13 +112,13 @@ describe('/rules command', () => {
     const cwd = workspaceWithRules()
     const harness = await mountHarness({}, { cwd })
     try {
-      const execution = await harness.ctx.commands.execute(harness.agent, '/rules list', new AbortController().signal)
+      const execution = await harness.ctx.commands.execute(harness.agent, '/rules list', [], new AbortController().signal)
       expect(execution?.result.kind).toBe('success')
       const text = execution?.result.kind === 'success' ? execution.result.text ?? '' : ''
       expect(text).toContain('2 rule(s)')
       expect(text).toContain('1. deny')
       // The alias takes no further arguments.
-      const extra = await harness.ctx.commands.execute(harness.agent, '/rules list extra', new AbortController().signal)
+      const extra = await harness.ctx.commands.execute(harness.agent, '/rules list extra', [], new AbortController().signal)
       expect(extra?.result.kind).toBe('error')
       const extraText = extra?.result.kind === 'error' ? extra.result.text : ''
       expect(extraText).toContain('Unknown /rules argument "list extra"')
@@ -138,7 +138,7 @@ describe('/rules command', () => {
     writeFileSync(join(child, '.dsh', 'rules.yaml'), 'rules:\n  - match: { tools: [bash] }\n    action: deny\n    reason: child denies bash\n', 'utf8')
     const harness = await mountHarness({ watch: false, searchUp: true }, { cwd: child })
     try {
-      const execution = await harness.ctx.commands.execute(harness.agent, '/rules', new AbortController().signal)
+      const execution = await harness.ctx.commands.execute(harness.agent, '/rules', [], new AbortController().signal)
       expect(execution?.result.kind).toBe('success')
       const text = execution?.result.kind === 'success' ? execution.result.text ?? '' : ''
       expect(text).toContain('2 rule(s)')
@@ -157,7 +157,7 @@ describe('/rules command', () => {
     writeFileSync(join(cwd, '.dsh', 'rules.yaml'), 'rules:\n  - match: {}\n    action: maybe\n    reason: x\n', 'utf8')
     const harness = await mountHarness({}, { cwd })
     try {
-      const execution = await harness.ctx.commands.execute(harness.agent, '/rules', new AbortController().signal)
+      const execution = await harness.ctx.commands.execute(harness.agent, '/rules', [], new AbortController().signal)
       expect(execution?.result.kind).toBe('error')
       const text = execution?.result.kind === 'error' ? execution.result.text : ''
       expect(text).toContain('action must be one of')
@@ -174,7 +174,7 @@ describe('/rules decisions', () => {
     try {
       await dispatchPreExecute(harness.ctx, makeExec({ name: 'bash', arguments: { command: 'git push origin main', cwd: 'src/secrets/app' }, agent: harness.agent }))
       await dispatchPreExecute(harness.ctx, makeExec({ name: 'glob', arguments: { pattern: '*' }, agent: harness.agent }))
-      const execution = await harness.ctx.commands.execute(harness.agent, '/rules decisions', new AbortController().signal)
+      const execution = await harness.ctx.commands.execute(harness.agent, '/rules decisions', [], new AbortController().signal)
       expect(execution?.result.kind).toBe('success')
       const text = execution?.result.kind === 'success' ? execution.result.text ?? '' : ''
       expect(text).toContain('Last 2 of 2 permission decision(s)')
@@ -189,9 +189,9 @@ describe('/rules decisions', () => {
     const cwd = workspaceWithRules()
     const harness = await mountHarness({}, { cwd })
     try {
-      const empty = await harness.ctx.commands.execute(harness.agent, '/rules decisions 5', new AbortController().signal)
+      const empty = await harness.ctx.commands.execute(harness.agent, '/rules decisions 5', [], new AbortController().signal)
       expect(empty?.result.kind === 'success' && empty.result.text?.includes('No permission decisions recorded')).toBe(true)
-      const bad = await harness.ctx.commands.execute(harness.agent, '/rules decisions zero', new AbortController().signal)
+      const bad = await harness.ctx.commands.execute(harness.agent, '/rules decisions zero', [], new AbortController().signal)
       expect(bad?.result.kind).toBe('error')
       const badText = bad?.result.kind === 'error' ? bad.result.text : ''
       expect(badText).toContain('Invalid decisions count')
@@ -206,12 +206,12 @@ describe('/rules test', () => {
     const cwd = workspaceWithRules()
     const harness = await mountHarness({}, { cwd })
     try {
-      const hit = await harness.ctx.commands.execute(harness.agent, '/rules test bash {"command":"git push origin main","cwd":"src/secrets/app"}', new AbortController().signal)
+      const hit = await harness.ctx.commands.execute(harness.agent, '/rules test bash {"command":"git push origin main","cwd":"src/secrets/app"}', [], new AbortController().signal)
       expect(hit?.result.kind).toBe('success')
       const hitText = hit?.result.kind === 'success' ? hit.result.text ?? '' : ''
       expect(hitText).toContain('matches rule 1 (deny)')
       expect(hitText).toContain('禁止 push 到受保护路径')
-      const miss = await harness.ctx.commands.execute(harness.agent, '/rules test glob {}', new AbortController().signal)
+      const miss = await harness.ctx.commands.execute(harness.agent, '/rules test glob {}', [], new AbortController().signal)
       expect(miss?.result.kind === 'success' && miss.result.text?.includes('matches no rule')).toBe(true)
     } finally {
       removeWorkspace(cwd)
@@ -222,11 +222,11 @@ describe('/rules test', () => {
     const cwd = workspaceWithRules()
     const harness = await mountHarness({}, { cwd })
     try {
-      const bad = await harness.ctx.commands.execute(harness.agent, '/rules test bash {not json', new AbortController().signal)
+      const bad = await harness.ctx.commands.execute(harness.agent, '/rules test bash {not json', [], new AbortController().signal)
       expect(bad?.result.kind).toBe('error')
       const badText = bad?.result.kind === 'error' ? bad.result.text : ''
       expect(badText).toContain('Invalid JSON arguments')
-      const missing = await harness.ctx.commands.execute(harness.agent, '/rules test', new AbortController().signal)
+      const missing = await harness.ctx.commands.execute(harness.agent, '/rules test', [], new AbortController().signal)
       expect(missing?.result.kind === 'error' && missing.result.text?.includes('Usage: /rules test')).toBe(true)
     } finally {
       removeWorkspace(cwd)
@@ -238,10 +238,10 @@ describe('/rules test', () => {
     const sessionCwd = tempWorkspace()
     const harness = await mountHarness({}, { cwd: sessionCwd })
     try {
-      const hit = await harness.ctx.commands.execute(harness.agent, `/rules test --cwd ${other} read {}`, new AbortController().signal)
+      const hit = await harness.ctx.commands.execute(harness.agent, `/rules test --cwd ${other} read {}`, [], new AbortController().signal)
       expect(hit?.result.kind === 'success' && hit.result.text?.includes('matches rule 1 (deny)')).toBe(true)
       // The session\u2019s own (empty) workspace still passes the same call.
-      const miss = await harness.ctx.commands.execute(harness.agent, '/rules test read {}', new AbortController().signal)
+      const miss = await harness.ctx.commands.execute(harness.agent, '/rules test read {}', [], new AbortController().signal)
       expect(miss?.result.kind === 'success' && miss.result.text?.includes('matches no rule')).toBe(true)
     } finally {
       removeWorkspace(other)
@@ -253,9 +253,9 @@ describe('/rules test', () => {
     const cwd = workspaceWithRules('rules:\n  - match: { tools: [bash], when: { env: { DSH_TEST_RULE_MARKER: "1" } } }\n    action: deny\n    reason: no shells in CI\n')
     const harness = await mountHarness({}, { cwd })
     try {
-      const plain = await harness.ctx.commands.execute(harness.agent, '/rules test bash {}', new AbortController().signal)
+      const plain = await harness.ctx.commands.execute(harness.agent, '/rules test bash {}', [], new AbortController().signal)
       expect(plain?.result.kind === 'success' && plain.result.text?.includes('matches no rule')).toBe(true)
-      const hit = await harness.ctx.commands.execute(harness.agent, '/rules test --env DSH_TEST_RULE_MARKER=1 bash {}', new AbortController().signal)
+      const hit = await harness.ctx.commands.execute(harness.agent, '/rules test --env DSH_TEST_RULE_MARKER=1 bash {}', [], new AbortController().signal)
       expect(hit?.result.kind === 'success' && hit.result.text?.includes('matches rule 1 (deny)')).toBe(true)
     } finally {
       removeWorkspace(cwd)
@@ -267,9 +267,9 @@ describe('/rules test', () => {
     const harness = await mountHarness({}, { cwd })
     try {
       // The session agent is top-level (main): no match without the flag.
-      const plain = await harness.ctx.commands.execute(harness.agent, '/rules test bash {}', new AbortController().signal)
+      const plain = await harness.ctx.commands.execute(harness.agent, '/rules test bash {}', [], new AbortController().signal)
       expect(plain?.result.kind === 'success' && plain.result.text?.includes('matches no rule')).toBe(true)
-      const hit = await harness.ctx.commands.execute(harness.agent, '/rules test --agent subagent bash {}', new AbortController().signal)
+      const hit = await harness.ctx.commands.execute(harness.agent, '/rules test --agent subagent bash {}', [], new AbortController().signal)
       expect(hit?.result.kind === 'success' && hit.result.text?.includes('matches rule 1 (deny)')).toBe(true)
     } finally {
       removeWorkspace(cwd)
@@ -283,11 +283,11 @@ describe('/rules test', () => {
     const cwd = workspaceWithRules(`rules:\n  - match: { tools: [bash], when: { platform: [${foreign}] } }\n    action: deny\n    reason: ${foreign} shells are gated\n`)
     const harness = await mountHarness({}, { cwd })
     try {
-      const plain = await harness.ctx.commands.execute(harness.agent, '/rules test bash {}', new AbortController().signal)
+      const plain = await harness.ctx.commands.execute(harness.agent, '/rules test bash {}', [], new AbortController().signal)
       expect(plain?.result.kind === 'success' && plain.result.text?.includes('matches no rule')).toBe(true)
-      const hit = await harness.ctx.commands.execute(harness.agent, `/rules test --platform ${foreign} bash {}`, new AbortController().signal)
+      const hit = await harness.ctx.commands.execute(harness.agent, `/rules test --platform ${foreign} bash {}`, [], new AbortController().signal)
       expect(hit?.result.kind === 'success' && hit.result.text?.includes('matches rule 1 (deny)')).toBe(true)
-      const bad = await harness.ctx.commands.execute(harness.agent, '/rules test --platform beos bash {}', new AbortController().signal)
+      const bad = await harness.ctx.commands.execute(harness.agent, '/rules test --platform beos bash {}', [], new AbortController().signal)
       expect(bad?.result.kind).toBe('error')
       const badText = bad?.result.kind === 'error' ? bad.result.text : ''
       expect(badText).toContain('Unknown platform "beos"')
@@ -300,11 +300,11 @@ describe('/rules test', () => {
     const cwd = workspaceWithRules()
     const harness = await mountHarness({}, { cwd })
     try {
-      const unknown = await harness.ctx.commands.execute(harness.agent, '/rules test --nope bash {}', new AbortController().signal)
+      const unknown = await harness.ctx.commands.execute(harness.agent, '/rules test --nope bash {}', [], new AbortController().signal)
       expect(unknown?.result.kind === 'error' && unknown.result.text?.includes('--nope')).toBe(true)
-      const missing = await harness.ctx.commands.execute(harness.agent, '/rules test --cwd', new AbortController().signal)
+      const missing = await harness.ctx.commands.execute(harness.agent, '/rules test --cwd', [], new AbortController().signal)
       expect(missing?.result.kind === 'error' && missing.result.text?.includes('--cwd')).toBe(true)
-      const badEnv = await harness.ctx.commands.execute(harness.agent, '/rules test --env NOEQUALS bash {}', new AbortController().signal)
+      const badEnv = await harness.ctx.commands.execute(harness.agent, '/rules test --env NOEQUALS bash {}', [], new AbortController().signal)
       expect(badEnv?.result.kind === 'error' && badEnv.result.text?.includes('--env NOEQUALS')).toBe(true)
     } finally {
       removeWorkspace(cwd)
@@ -317,7 +317,7 @@ describe('/rules — dry-run mode', () => {
     const cwd = workspaceWithRules()
     const harness = await mountHarness({ enforce: false }, { cwd })
     try {
-      const execution = await harness.ctx.commands.execute(harness.agent, '/rules', new AbortController().signal)
+      const execution = await harness.ctx.commands.execute(harness.agent, '/rules', [], new AbortController().signal)
       const text = execution?.result.kind === 'success' ? execution.result.text ?? '' : ''
       expect(text).toContain('Dry-run mode')
     } finally {
@@ -334,7 +334,7 @@ describe('/rules — dry-run mode', () => {
         makeExec({ name: 'bash', arguments: { command: 'git push origin main', cwd: 'src/secrets/app' }, agent: harness.agent }),
         async () => ({ kind: 'allow' }),
       )
-      const execution = await harness.ctx.commands.execute(harness.agent, '/rules decisions', new AbortController().signal)
+      const execution = await harness.ctx.commands.execute(harness.agent, '/rules decisions', [], new AbortController().signal)
       const text = execution?.result.kind === 'success' ? execution.result.text ?? '' : ''
       expect(text).toContain('deny bash (rule 1) (dry-run → allow)')
     } finally {
@@ -348,7 +348,7 @@ describe('/rules localization and shadow warnings', () => {
     const cwd = workspaceWithRules()
     const harness = await mountHarness({ language: 'zh' }, { cwd })
     try {
-      const execution = await harness.ctx.commands.execute(harness.agent, '/rules', new AbortController().signal)
+      const execution = await harness.ctx.commands.execute(harness.agent, '/rules', [], new AbortController().signal)
       const text = execution?.result.kind === 'success' ? execution.result.text ?? '' : ''
       expect(text).toContain('权限规则：共 2 条')
       expect(text).toContain('用法：/rules')
@@ -363,7 +363,7 @@ describe('/rules localization and shadow warnings', () => {
     writeFileSync(join(cwd, '.dsh', 'rules.yaml'), 'rules:\n  - match: {}\n    action: allow\n    reason: catch-all\n  - match: { tools: [bash] }\n    action: deny\n    reason: never reached\n', 'utf8')
     const harness = await mountHarness({}, { cwd })
     try {
-      const execution = await harness.ctx.commands.execute(harness.agent, '/rules', new AbortController().signal)
+      const execution = await harness.ctx.commands.execute(harness.agent, '/rules', [], new AbortController().signal)
       const text = execution?.result.kind === 'success' ? execution.result.text ?? '' : ''
       expect(text).toContain('rule 2 is unreachable')
     } finally {

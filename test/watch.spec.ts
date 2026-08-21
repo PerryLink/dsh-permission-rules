@@ -359,7 +359,7 @@ describe('rule-file watching', () => {
       rmSync(join(cwd, '.dsh', 'rules.yaml'))
       workspaceWatcher?.emit('change', join(cwd, '.dsh', 'rules.yaml'))
       expect(runtime.pendingReloadCount()).toBe(1)
-      await harness.ctx.commands.execute(harness.agent, '/rules reload', new AbortController().signal)
+      await harness.ctx.commands.execute(harness.agent, '/rules reload', [], new AbortController().signal)
       expect(runtime.pendingReloadCount()).toBe(0)
       expect(closed.includes(workspaceWatcher as FakeWatcher)).toBe(true)
       const decision = await dispatchPreExecute(harness.ctx, makeExec({ name: 'bash', arguments: {}, agent: harness.agent }))

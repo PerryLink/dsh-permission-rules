@@ -1,11 +1,13 @@
 /**
  * Host-capability degradation for the audit envelope's `ignorable` marker:
- * hosts whose `Session.append` predates the marker (every released rc
- * line through rc.7) write audit events UNMARKED, which makes sessions
- * unresumable on stricter harness builds. The runtime must detect such
- * hosts BEFORE the first append (peer version) and re-check the first
- * append's returned envelope, then disable session-log audit with a
- * one-time warning unless `allowUnmarkedAudit: true` opts back in.
+ * hosts whose `Session.append` predates the marker (the released rc.1–rc.7
+ * lines) write audit events UNMARKED, which makes sessions unresumable on
+ * stricter harness builds. The runtime must detect such hosts BEFORE the
+ * first append (peer version) and re-check the first append's returned
+ * envelope, then disable session-log audit with a one-time warning unless
+ * `allowUnmarkedAudit: true` opts back in. The rc.8 peers ARE
+ * marker-aware, so the degradation tests simulate the pre-marker line
+ * through the runtime's `peerVersion` seam instead of mounting them.
  * @module dsh-permission-rules/test/audit-support.spec
  */
 
@@ -36,13 +38,15 @@ describe('isMarkedAuditEvent', () => {
 })
 
 describe('audit host-capability degradation', () => {
-  it('the released rc peers (known-unmarked) disable session-log audit BEFORE the first append, warning once', async () => {
+  it('a simulated pre-marker host (rc.6 line) disables session-log audit BEFORE the first append, warning once', async () => {
     const cwd = tempWorkspace()
     // The production default (allowUnmarkedAudit: false — the harness
-    // otherwise opts tests in). The real released-rc SessionStore is a
-    // known-unmarked host.
+    // otherwise opts tests in). The rc.8 peers are marker-aware, so the
+    // unmarked line is simulated through the peer-version pre-check.
     const harness = await mountHarness({ allowUnmarkedAudit: false }, { cwd })
+    const runtime = harness.ctx.get('permissionRulesRuntime') as PermissionRulesRuntime
     const warn = vi.spyOn(harness.ctx.logger, 'warn').mockImplementation(() => undefined)
+    const versionSpy = vi.spyOn(runtime as unknown as { peerVersion(): string | null }, 'peerVersion').mockReturnValue('0.1.0-rc.6')
     try {
       await dispatchPreExecute(harness.ctx, makeExec({ name: 'bash', arguments: {}, agent: harness.agent }))
       await dispatchPreExecute(harness.ctx, makeExec({ name: 'glob', arguments: {}, agent: harness.agent }))
@@ -53,6 +57,7 @@ describe('audit host-capability degradation', () => {
       expect(unmarkedWarnings).toHaveLength(1)
       expect(String(unmarkedWarnings[0]?.[0])).toContain('allowUnmarkedAudit')
     } finally {
+      versionSpy.mockRestore()
       warn.mockRestore()
       removeWorkspace(cwd)
     }
@@ -99,17 +104,22 @@ describe('audit host-capability degradation', () => {
     }
   })
 
-  it('/rules decisions explains the disabled audit on degraded hosts', async () => {
+  it('/rules decisions explains the disabled audit on a degraded (simulated pre-marker) host', async () => {
     const cwd = tempWorkspace()
     const harness = await mountHarness({ allowUnmarkedAudit: false }, { cwd })
+    const runtime = harness.ctx.get('permissionRulesRuntime') as PermissionRulesRuntime
     const warn = vi.spyOn(harness.ctx.logger, 'warn').mockImplementation(() => undefined)
+    // rc.8 peers are marker-aware; simulate the pre-marker rc.6 line so the
+    // version pre-check disables session-log audit before any append.
+    const versionSpy = vi.spyOn(runtime as unknown as { peerVersion(): string | null }, 'peerVersion').mockReturnValue('0.1.0-rc.6')
     try {
       await dispatchPreExecute(harness.ctx, makeExec({ name: 'bash', arguments: {}, agent: harness.agent }))
-      const execution = await harness.ctx.commands.execute(harness.agent, '/rules decisions', new AbortController().signal)
+      const execution = await harness.ctx.commands.execute(harness.agent, '/rules decisions', [], new AbortController().signal)
       const text = execution?.result.kind === 'success' ? execution.result.text ?? '' : ''
       expect(text).toContain('No permission decisions recorded')
       expect(text).toContain('Session-log audit is disabled on this host')
     } finally {
+      versionSpy.mockRestore()
       warn.mockRestore()
       removeWorkspace(cwd)
     }

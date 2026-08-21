@@ -1173,14 +1173,13 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
 
 /**
  * Whether a `@deepseek-ai/dsh-session` version line predates the
- * `ignorable` envelope-marker surface: every released rc line through
- * `0.1.0-rc.7` silently drops the marker from `Session.append` options
- * (the stamping fix exists on harness master only — no release carries it
- * yet), so audit events written by those builds land unmarked and break
- * resume on stricter hosts. Extend the bound when a new rc line ships that
- * still drops the marker. Non-matching (later rc, stable, or unresolvable)
- * versions are treated as possibly-marker-aware and verified by the
- * append probe.
+ * `ignorable` envelope-marker surface: the released `0.1.0-rc.1`–`0.1.0-rc.7`
+ * lines silently drop the marker from `Session.append` options, so audit
+ * events written by those builds land unmarked and break resume on
+ * stricter hosts. `0.1.0-rc.8` and later stamp the marker. Extend the
+ * bound if a future rc line regresses. Non-matching (later rc, stable, or
+ * unresolvable) versions are treated as possibly-marker-aware and verified
+ * by the append probe.
  * @param version - the installed peer version string.
  * @returns true for the known-unmarked rc.1–rc.7 lines.
  */

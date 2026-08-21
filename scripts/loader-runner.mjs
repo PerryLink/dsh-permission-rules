@@ -78,7 +78,7 @@ try {
   }
 
   // Real behavior: /rules lists the (empty) rule set.
-  const execution = await ctx.commands.execute(agent, '/rules', new AbortController().signal)
+  const execution = await ctx.commands.execute(agent, '/rules', [], new AbortController().signal)
   const text = execution?.result?.text ?? ''
   if (execution?.result?.kind !== 'success' || !text.includes('No permission rules active')) {
     throw new Error(`Loader composition: /rules returned ${JSON.stringify(execution?.result)}`)

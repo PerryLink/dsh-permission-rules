@@ -143,7 +143,7 @@ describe('proxy-layer blocks with attribution audit', () => {
 describe('/rules network command', () => {
   it('renders the mode, counters, and recent blocks', async () => {
     const harness = await mountNetwork({ mode: 'deny-all' })
-    const execution = await harness.ctx.commands.execute(harness.agent, '/rules network', new AbortController().signal)
+    const execution = await harness.ctx.commands.execute(harness.agent, '/rules network', [], new AbortController().signal)
     expect(execution?.result.kind).toBe('success')
     const text = execution?.result.kind === 'success' ? execution.result.text ?? '' : ''
     expect(text).toContain('mode deny-all')
