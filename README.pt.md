@@ -24,7 +24,7 @@
 
 | Surface | Status |
 |---|---|
-| Harness | DeepSeek Harness `0.1.0-rc.5`–`0.1.0-rc.6` |
+| Harness | DeepSeek Harness `0.1.0-rc.8` |
 | Node | `^22.19.0 || >=24.0.0` |
 | Platforms | Todas (host + cliente web de settings) |
 | Model | Qualquer (razões deny/ask aparecem pelos resultados de ferramenta) |
