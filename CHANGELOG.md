@@ -2,6 +2,15 @@
 
 All notable changes to dsh-permission-rules are recorded here, newest first.
 
+## v0.5.4 — 2026-08-22
+
+### DeepSeek Harness rc.2 compatibility
+
+- The dsh peer family moves to `0.1.1-rc.2`: devDependencies pin the exact rc.2 line, peerDependencies keep the `>=0.1.0-rc.8 <0.2.0` range (which already covers `0.1.1-rc.2`), and the workshop compatibility manifest lists `0.1.1-rc.2`. The five-language Harness compatibility row declares the rc.2 line.
+- The sibling `dsh-auto-review` integration tarball is repacked to `vendor/dsh-auto-review-0.5.4.tgz` and the `file:` devDependency updated to match.
+- `pnpm-workspace.yaml` now excludes the whole `@deepseek-ai/*` scope from `minimumReleaseAge`; the compat workflow pins the rc.2 CLI and `dsh-base`/`dsh-headless` bundles.
+- The rc.2 `@deepseek-ai/dsh-*` prereleases resolve from `next` (their `latest` tags are stale), so the fresh transitive peers cannot be hoisted. The workspace drops `nodeLinker: hoisted` (the default isolated linker skips unresolvable peers, as the sibling repo does), and the load-bearing peers are pinned explicitly as devDependencies: `dsh-brand`, `dsh-invariants`, `dsh-session-projection` (sibling tarball peers) and `cordis-plugin-include` (the Loader composition runner).
+
 ## v0.5.3 — 2026-08-21
 
 ### DeepSeek Harness rc.8 compatibility
