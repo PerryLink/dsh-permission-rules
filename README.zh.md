@@ -210,6 +210,10 @@ node scripts/check-readme-sync.mjs   # five-language README sync gate (also in C
 
 - [@PerryLink](https://github.com/PerryLink) —— 创建者与维护者：规则词汇与求值、运行时、HMR 监听、会话日志审计、网络策略 + 代理，以及五语文档。
 - [@22xuan](https://github.com/22xuan) —— 关于 rc.6 宿主静默丢弃审计事件 `ignorable` 标记的详细报告（[#2](https://github.com/PerryLink/dsh-permission-rules/issues/2)）与上游 harness 讨论；v0.4.1 的运行时宿主能力检测与文档更正直接源自该分析。
+- [@sjh9714](https://github.com/sjh9714) —— 提出共享规则语法测试向量语料（[#4](https://github.com/PerryLink/dsh-permission-rules/issues/4)、[#5](https://github.com/PerryLink/dsh-permission-rules/issues/5)），已于 v0.5.1 以 `docs/rule-test-vectors/` 落地，并在[方案讨论](https://github.com/PerryLink/dsh-permission-rules/discussions/10)中补充了 AST 分解的边界用例。
+- [@weipeng1999](https://github.com/weipeng1999) —— 提出基于 AST 的命令分解功能（[#8](https://github.com/PerryLink/dsh-permission-rules/issues/8)），促成该方案讨论。
+- [@alexchenzl](https://github.com/alexchenzl) —— DSH 目录收录请求（[#7](https://github.com/PerryLink/dsh-permission-rules/issues/7)）。
+- [@zl190](https://github.com/zl190) —— 报告并验证了 `0.1.0-rc.7` harness 兼容性缺口（[PR #9](https://github.com/PerryLink/dsh-permission-rules/pulls/9)）。
 
 ## PerryLink DSH Plugin Family
 

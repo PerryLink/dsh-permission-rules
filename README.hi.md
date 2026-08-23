@@ -210,6 +210,10 @@ node scripts/check-readme-sync.mjs   # five-language README sync gate (also in C
 
 - [@PerryLink](https://github.com/PerryLink) — निर्माता और अनुरक्षक: नियम शब्दावली व मूल्यांकन, runtime, HMR निगरानी, सत्र-लॉग ऑडिट, नेटवर्क नीति + प्रॉक्सी, और पाँच-भाषा दस्तावेज़।
 - [@22xuan](https://github.com/22xuan) — rc.6 hosts द्वारा ऑडिट घटना के `ignorable` मार्कर को चुपचाप छोड़ने की विस्तृत रिपोर्ट ([#2](https://github.com/PerryLink/dsh-permission-rules/issues/2)) और अपस्ट्रीम harness चर्चा; v0.4.1 runtime host-क्षमता पहचान और दस्तावेज़ सुधार सीधे उसी विश्लेषण से निकले।
+- [@sjh9714](https://github.com/sjh9714) — साझा नियम-सिंटैक्स टेस्ट-वेक्टर कॉर्पस प्रस्तावित किया ([#4](https://github.com/PerryLink/dsh-permission-rules/issues/4), [#5](https://github.com/PerryLink/dsh-permission-rules/issues/5)), जो v0.5.1 में `docs/rule-test-vectors/` के रूप में शामिल हुआ, और [डिज़ाइन चर्चा](https://github.com/PerryLink/dsh-permission-rules/discussions/10) में AST-विघटन के सीमा-मामले दिए।
+- [@weipeng1999](https://github.com/weipeng1999) — AST-आधारित कमांड-विघटन फ़ीचर प्रस्ताव ([#8](https://github.com/PerryLink/dsh-permission-rules/issues/8)), जिससे डिज़ाइन चर्चा शुरू हुई।
+- [@alexchenzl](https://github.com/alexchenzl) — DSH Directory में सूचीबद्ध करने का अनुरोध ([#7](https://github.com/PerryLink/dsh-permission-rules/issues/7))।
+- [@zl190](https://github.com/zl190) — `0.1.0-rc.7` harness संगतता अंतर की सूचना दी और उसे सत्यापित किया ([PR #9](https://github.com/PerryLink/dsh-permission-rules/pulls/9))।
 
 ## PerryLink DSH Plugin Family
 

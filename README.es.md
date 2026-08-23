@@ -210,6 +210,10 @@ Consulta [VERIFICATION.md](VERIFICATION.md) para el registro de verificación en
 
 - [@PerryLink](https://github.com/PerryLink) — creador y mantenedor: vocabulario y evaluación de reglas, runtime, vigilancia HMR, auditoría de registro de sesión, política de red + proxy, y la documentación en cinco idiomas.
 - [@22xuan](https://github.com/22xuan) — el informe detallado sobre hosts rc.6 que descartan silenciosamente el marcador `ignorable` del evento de auditoría ([#2](https://github.com/PerryLink/dsh-permission-rules/issues/2)) y la discusión del harness upstream; la detección de capacidad de host en runtime v0.4.1 y la corrección de documentación se derivaron directamente de ese análisis.
+- [@sjh9714](https://github.com/sjh9714) — propuso el corpus compartido de vectores de prueba de sintaxis de reglas ([#4](https://github.com/PerryLink/dsh-permission-rules/issues/4), [#5](https://github.com/PerryLink/dsh-permission-rules/issues/5)), incluido en v0.5.1 como `docs/rule-test-vectors/`, y aportó los casos límite de descomposición AST en la [discusión de diseño](https://github.com/PerryLink/dsh-permission-rules/discussions/10).
+- [@weipeng1999](https://github.com/weipeng1999) — la propuesta de descomposición de comandos basada en AST ([#8](https://github.com/PerryLink/dsh-permission-rules/issues/8)) detrás de la discusión de diseño.
+- [@alexchenzl](https://github.com/alexchenzl) — la solicitud de inclusión en el DSH Directory ([#7](https://github.com/PerryLink/dsh-permission-rules/issues/7)).
+- [@zl190](https://github.com/zl190) — informó y verificó la brecha de compatibilidad del harness `0.1.0-rc.7` ([PR #9](https://github.com/PerryLink/dsh-permission-rules/pulls/9)).
 
 ## PerryLink DSH Plugin Family
 

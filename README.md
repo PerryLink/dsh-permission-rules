@@ -211,6 +211,10 @@ See [VERIFICATION.md](VERIFICATION.md) for the headless end-to-end verification 
 
 - [@PerryLink](https://github.com/PerryLink) — creator and maintainer: rule vocabulary and evaluation, runtime, HMR watch, session-log audit, network policy + proxy, and the five-language docs.
 - [@22xuan](https://github.com/22xuan) — the detailed report on rc.6 hosts silently dropping the audit event's `ignorable` marker ([#2](https://github.com/PerryLink/dsh-permission-rules/issues/2)) and the upstream harness discussion; the v0.4.1 runtime host-capability detection and the documentation correction drew directly from that analysis.
+- [@sjh9714](https://github.com/sjh9714) — proposed the shared rule-syntax test-vector corpus ([#4](https://github.com/PerryLink/dsh-permission-rules/issues/4), [#5](https://github.com/PerryLink/dsh-permission-rules/issues/5)), shipped in v0.5.1 as `docs/rule-test-vectors/`, and supplied the AST-decomposition boundary cases on the [design discussion](https://github.com/PerryLink/dsh-permission-rules/discussions/10).
+- [@weipeng1999](https://github.com/weipeng1999) — the AST-based command-decomposition feature proposal ([#8](https://github.com/PerryLink/dsh-permission-rules/issues/8)) behind the design discussion.
+- [@alexchenzl](https://github.com/alexchenzl) — the DSH Directory listing request ([#7](https://github.com/PerryLink/dsh-permission-rules/issues/7)).
+- [@zl190](https://github.com/zl190) — reported and verified the `0.1.0-rc.7` harness compatibility gap ([PR #9](https://github.com/PerryLink/dsh-permission-rules/pulls/9)).
 
 ## PerryLink DSH Plugin Family
 
