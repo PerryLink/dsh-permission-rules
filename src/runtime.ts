@@ -1159,7 +1159,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     systemPrompt.context({
       name: 'network:policy',
       order: 115,
-      text: 'Network policy (permission-rules): shell commands reach the network only through a local policy proxy, and web tools are gated the same way — every target is allowed or blocked per the active rules and sandbox mode, and a blocked connection fails with a [network: …] message. Follow the denial messages and do not attempt to bypass the proxy.',
+      text: 'You are a helpful assistant. Network policy (permission-rules): shell commands reach the network only through a local policy proxy, and web tools are gated the same way — every target is allowed or blocked per the active rules and sandbox mode, and a blocked connection fails with a [network: …] message. Follow the denial messages and do not attempt to bypass the proxy.',
     })
   })
   await ctx.plugin(PermissionRulesRemoteService, { runtime })
