@@ -35,7 +35,7 @@ Standalone DeepSeek Harness plugin repository (`dsh-permission-rules`). Developm
 - `docs/rules-format.md` is the Chinese reference for the rule vocabulary; `docs/rules-format.en.md` is its English twin — update both together, plus `docs/rules-format.schema.json` whenever the vocabulary changes.
 - When the repo is published on GitHub, set topics `dsh`, `dsh-plugin`, `deepseek-harness`, `deepseek`, `cordis`, `permission`, `approval`, `ai-safety` (the ecosystem's visibility channel is the `dsh-plugin` topic; see dsh-plugin-guide §9).
 - License is Apache-2.0 (`LICENSE` + the package.json `license` field).
-- Community engineering: GitHub Discussions enabled (welcome post in Announcements); `main` branch protection requires the `gates` CI status (strict off), allows force pushes, and does NOT require PR reviews — maintainer direct pushes stay available, PRs with a red CI cannot merge. The About homepage points at the npm package page and topics mirror `package.json` keywords.
+- Community engineering: GitHub Discussions enabled (welcome post in Announcements); `main` branch protection requires all six `gates` matrix check statuses (os `ubuntu-latest`/`macos-latest`/`windows-latest` × node `22`/`24`, strict off), allows force pushes, and does NOT require PR reviews — maintainer direct pushes stay available, PRs with a red CI cannot merge. The About homepage points at the npm package page and topics mirror `package.json` keywords.
 
 ## Build
 
