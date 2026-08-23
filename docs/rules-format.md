@@ -17,7 +17,7 @@ rules:        # 规则列表，按书写顺序求值；可以省略或为空
     reason: ...
 ```
 
-顶层只允许 `rules` 一个键；每条规则只允许 `match`、`action`、`reason`、`enabled`、`description`、`tags` 六个键；`match` 只允许 `tools`、`agents`、`params`、`paths`、`absent`、`when` 六个键。出现任何未知键都在加载期报错（响亮失败），绝不静默忽略。
+顶层只允许 `rules` 一个键；每条规则只允许 `match`、`action`、`reason`、`enabled`、`description`、`tags` 六个键；`match` 只允许 `tools`、`agents`、`params`、`paths`、`absent`、`when`、`network` 七个键。出现任何未知键都在加载期报错（响亮失败），绝不静默忽略。
 
 ## match 维度（全部 AND）
 
@@ -29,8 +29,35 @@ rules:        # 规则列表，按书写顺序求值；可以省略或为空
 | `paths` | `string[]` | 工作区相对路径模式，任一候选命中任一模式即可。候选来自参数中下列键的值（**任意嵌套深度**、深度上限）：`path` `paths` `file` `files` `file_path` `dir` `directory` `directories` `cwd` `workspace` `root` `target` `targets` `output`。工作区外的绝对候选被丢弃；相对 `../` 形式保留，可显式匹配工作区外。路径模式中 `*` 不跨 `/`，`**` 跨任意深度（含零层）。`caseInsensitivePaths` 开启时（Windows 默认）根比较与模式匹配忽略 ASCII 大小写。 |
 | `absent` | `string[]` | 必须**缺席**的参数键；**每个列出的键都必须缺失**（非对象参数天然满足）。 |
 | `when` | `{ env, platform }` | 宿主条件：`env` 为环境变量名 → 模式（**每个列出的变量都必须存在且命中**）；`platform` 为任一命中即可的封闭列表（`aix` `android` `darwin` `freebsd` `linux` `openbsd` `sunos` `win32`）。 |
+| `network` | `{ domains, ips, ports, schemes }` | 网络作用域（网络规则）：调用必须携带命中每个列出维度的 URL 候选。`domains`（无通配符时包含子域）、`ips`（字面量/glob/CIDR）、`ports`（`*`、单端口或区间）、`schemes`（`http`/`https`）。详见下一节。 |
 
 所有维度为 AND：一条规则只有在它的**每个非空维度都命中**时才命中。规则按顺序求值，**首条命中生效**；无命中 = 透传。
+
+## network 维度
+
+`match` 带 `network` 块的规则是**网络规则**。它只有在调用携带命中每个列出维度（AND）的 URL 候选时才命中——候选来自 web 工具的 URL 参数（`url`、`endpoint`、`webhook` 等）或 `bash`/`pwsh` 命令文本中嵌入的 URL；在代理层则直接对 shell 子进程的连接目标求值。不带 `network` 的规则保持原有文件/命令行为不变。
+
+| 字段 | 语义 |
+|---|---|
+| `domains` | 域名模式，小写化并去掉末尾点。无通配符的模式包含子域——`example.com` 同时命中 `api.example.com`；`*.example.com` 只匹配子域；`*`/`**` 按普通 glob 编译。任一模式命中目标主机即满足该维度。 |
+| `ips` | 精确 IPv4/IPv6 字面量、glob（`10.0.*.*`）或 IPv4 CIDR（`10.0.0.0/8`）。URL 中的字面量 IP 始终是候选；代理额外解析主机名并测试其地址，而 `tools/pre-execute` 只匹配字面量 IP（热路径不做 DNS）。任一命中即满足。 |
+| `ports` | `*`、单端口（`443`）或闭区间（`8000-9000`）；接受数值型 YAML 端口。按有效端口求值（URL 端口，否则按 scheme 取 80/443）。任一命中即满足。 |
+| `schemes` | `http` 和/或 `https`；目标 scheme 必须是其中之一。 |
+
+网络块必须至少命名四个字段之一。用工具作用域限定网络规则：`tools: [bash, pwsh]`（shell 流量）、`tools: [web_fetch, web_search]`（web 工具），或留空 `tools` 同时覆盖两者。决定未列出目标的三档策略模式（`deny-all` / `whitelist` / `allow-all`，以及映射到沙箱预设的 `auto` 模式）是插件配置而非规则语法——见 README「Network policy」一节。
+
+```yaml
+rules:
+  # 对 web 工具封锁一个主机；shell 代理对 curl 同样生效
+  - match: { tools: [web_fetch, web_search], network: { domains: [blocked.example] } }
+    action: deny
+    reason: "blocked.example 禁止访问"
+
+  # 仅放行固定的包镜像（https，白名单友好规则）
+  - match: { tools: [bash, pwsh], network: { domains: ["registry.npmjs.org", "proxy.golang.org"], schemes: [https] } }
+    action: allow
+    reason: "固定包镜像"
+```
 
 ## action、reason 与元数据
 

@@ -17,7 +17,7 @@ rules:        # rule list, evaluated in written order; may be omitted or empty
     reason: ...
 ```
 
-Only `rules` is allowed at the top level; each rule allows only `match`, `action`, `reason`, `enabled`, `description`, `tags`; each `match` allows only `tools`, `agents`, `params`, `paths`, `absent`, `when`. Any unknown field fails the load loudly — never silently ignored.
+Only `rules` is allowed at the top level; each rule allows only `match`, `action`, `reason`, `enabled`, `description`, `tags`; each `match` allows only `tools`, `agents`, `params`, `paths`, `absent`, `when`, `network`. Any unknown field fails the load loudly — never silently ignored.
 
 ## match dimensions (AND)
 
@@ -29,8 +29,35 @@ Only `rules` is allowed at the top level; each rule allows only `match`, `action
 | `paths` | `string[]` | Workspace-relative path patterns; any candidate matching any pattern satisfies the dimension. Candidates come from argument values under these keys at ANY nesting depth (depth-capped): `path` `paths` `file` `files` `file_path` `dir` `directory` `directories` `cwd` `workspace` `root` `target` `targets` `output`. Absolute candidates outside the workspace are dropped; relative `../` forms are kept so explicit out-of-root globs still work. In path patterns `*` does not cross `/`; `**` crosses any depth (including zero). With `caseInsensitivePaths` on (Windows default) the root comparison and the patterns ignore ASCII case. |
 | `absent` | `string[]` | Argument keys that must be ABSENT; **every listed key must be missing** (non-object arguments satisfy this trivially). |
 | `when` | `{ env, platform }` | Host conditions: `env` is env-var name → pattern(s), **every listed var must be present AND match**; `platform` is any-of a closed list (`aix` `android` `darwin` `freebsd` `linux` `openbsd` `sunos` `win32`). |
+| `network` | `{ domains, ips, ports, schemes }` | Network scope (a network rule): the call must carry a URL candidate satisfying every listed dimension. `domains` (subdomain-inclusive unless wildcarded), `ips` (literals/globs/CIDRs), `ports` (`*`, one port, or a range), `schemes` (`http`/`https`). See the next section. |
 
 All dimensions are ANDed: a rule matches only when **every non-empty dimension matches**. Rules evaluate in order — **the first match wins**; no match = passthrough.
+
+## network dimension
+
+A rule whose `match` carries a `network` block is a **network rule**. It matches a tool call only when the call carries a URL candidate — a web-tool URL argument (`url`, `endpoint`, `webhook`, …) or a URL embedded in `bash`/`pwsh` command text — that satisfies every listed dimension (AND); at the proxy layer it matches the shell subprocess connection target directly. A rule WITHOUT `network` keeps its file/command behavior exactly as before.
+
+| Field | Semantics |
+|---|---|
+| `domains` | Domain patterns, lowercased with a trailing dot stripped. A pattern without wildcards is subdomain-inclusive — `example.com` also matches `api.example.com`; `*.example.com` matches subdomains only; `*`/`**` compile as ordinary globs. ANY pattern matching the target host satisfies the dimension. |
+| `ips` | Exact IPv4/IPv6 literal, a glob (`10.0.*.*`), or an IPv4 CIDR (`10.0.0.0/8`). A literal IP in the URL is always a candidate; the proxy additionally resolves hostnames and tests their addresses, while `tools/pre-execute` matches literal IPs only (no DNS in the hot path). ANY match satisfies the dimension. |
+| `ports` | `*`, one port (`443`), or an inclusive range (`8000-9000`); numeric YAML ports are accepted. Evaluated against the effective port (URL port, else 80/443 by scheme). ANY match satisfies the dimension. |
+| `schemes` | `http` and/or `https`; the target scheme must be one of them. |
+
+A network block must name at least one of the four fields. Scope a network rule by tool with `tools: [bash, pwsh]` (shell traffic), `tools: [web_fetch, web_search]` (web tools), or leave `tools` empty to cover both. The three policy modes that decide unlisted targets (`deny-all` / `whitelist` / `allow-all`, with an `auto` mode mapped onto the sandbox presets) are plugin config, not rule syntax — see the README "Network policy" section.
+
+```yaml
+rules:
+  # block one host for web tools; the shell proxy enforces the same for curl
+  - match: { tools: [web_fetch, web_search], network: { domains: [blocked.example] } }
+    action: deny
+    reason: "blocked.example is off-limits"
+
+  # allow only pinned package registries over https (whitelist-friendly rule)
+  - match: { tools: [bash, pwsh], network: { domains: ["registry.npmjs.org", "proxy.golang.org"], schemes: [https] } }
+    action: allow
+    reason: "pinned package registries"
+```
 
 ## action, reason, and metadata
 

@@ -108,6 +108,38 @@
               }
             }
           }
+        },
+        "network": {
+          "description": "Network scope (a network rule): the call must carry a URL candidate (a web-tool URL argument, or a URL embedded in bash/pwsh command text) — or, at the proxy layer, a connection target — satisfying every listed dimension. domains are subdomain-inclusive unless wildcarded; ips accept IPv4/IPv6 literals, globs, and IPv4 CIDRs; ports accept \"*\", one port, or an inclusive low-high range (numeric YAML ports accepted); schemes are http/https. A network block must name at least one dimension.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "domains": {
+              "description": "Domain patterns; ANY matching the target host satisfies the dimension.",
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 }
+            },
+            "ips": {
+              "description": "IP literals, globs, or IPv4 CIDRs; ANY matching the target address satisfies the dimension.",
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 }
+            },
+            "ports": {
+              "description": "\"*\", one port, or an inclusive low-high range; ANY matching the effective port satisfies the dimension.",
+              "type": "array",
+              "items": {
+                "oneOf": [
+                  { "type": "string", "minLength": 1 },
+                  { "type": "integer", "minimum": 0, "maximum": 65535 }
+                ]
+              }
+            },
+            "schemes": {
+              "description": "Target scheme must be one of these.",
+              "type": "array",
+              "items": { "enum": ["http", "https"] }
+            }
+          }
         }
       }
     },
