@@ -8,6 +8,7 @@ All notable changes to dsh-permission-rules are recorded here, newest first.
 
 - Document the `network` match dimension in the rule-format references: `docs/rules-format.en.md` and `docs/rules-format.md` now list `network` among the allowed `match` fields, add a `network` dimension row plus a dedicated section (domains / ips / ports / schemes semantics, tool scoping, the mode/boundary cross-reference), and `docs/rules-format.schema.json` gains the `network` property so editor completion covers it. This closes the v0.5.0 gap where the implementation shipped but the vocabulary docs still listed only six `match` fields.
 - The injected network-policy system-prompt paragraph now opens with a short role sentence (Minimal persona style), as the engineering standard requires.
+- Refresh the five-language README Development section test count to the current `236 tests, 20 files` (was `139 tests, 9 suites`).
 
 ## v0.5.4 — 2026-08-22
 

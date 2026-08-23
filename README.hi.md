@@ -193,7 +193,7 @@ node scripts/repair-session-logs.mjs repair [--home DIR] [--dry-run]
 pnpm install            # node ^22.19 || >=24
 pnpm run typecheck      # tsc, src + tests
 pnpm run lint           # eslint, src + tests + scripts
-pnpm test               # vitest: 139 tests, 9 suites
+pnpm test               # vitest: 236 tests, 20 files
 pnpm run test:coverage  # coverage gate (90/80/90/90)
 pnpm run build          # tsc declarations + tsdown bundles (lib/)
 pnpm run pack:check     # build + pack (the published artifact)
