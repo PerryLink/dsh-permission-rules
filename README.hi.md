@@ -165,7 +165,7 @@ dsh --profile web --dump-config | grep -A4 'id: permission-rules'
 
 ## Known limitations
 
-- **पूर्व-मार्कर hosts पर ऑडिट मार्कर।** `permissionRules/decision` `ignorable: true` से जोड़ा जाता है; जिन hosts का `Session.append` मार्कर से पहले का है (`0.1.0-rc.6` पंक्ति) वे इसे चुपचाप छोड़ देते हैं, इसलिए runtime एक बार की चेतावनी से सत्र-लॉग ऑडिट अक्षम कर देता है। पुनः सक्षम के लिए `allowUnmarkedAudit: true`; पहले से लिखे लॉग `scripts/repair-session-logs.mjs` से मरम्मत करें।
+- **पूर्व-मार्कर hosts पर ऑडिट मार्कर।** `permissionRules/decision` `ignorable: true` से जोड़ा जाता है; जिन hosts का `Session.append` मार्कर से पहले का है (`0.1.0-rc.1`–`rc.7` और `0.1.1-rc.1`–`rc.7` पंक्तियाँ) वे इसे चुपचाप छोड़ देते हैं, इसलिए runtime एक बार की चेतावनी से सत्र-लॉग ऑडिट अक्षम कर देता है। पुनः सक्षम के लिए `allowUnmarkedAudit: true`; पहले से लिखे लॉग `scripts/repair-session-logs.mjs` से मरम्मत करें।
 - **पथ उम्मीदवार अनुमानी हैं।** केवल दस्तावेज़ित तर्क कुंजियाँ पथ मिलान को खिलाती हैं, और कार्यक्षेत्र-सापेक्ष मिलान केवल `caseInsensitivePaths` चालू होने पर ASCII-केस-असंवेदी है।
 - **globs एक रूढ़िवादी उपसमुच्चय हैं।** कोई ब्रेस विस्तार नहीं — दो पैटर्न लिखें, या regex मोड उपयोग करें।
 - **regex बैकट्रैकिंग गार्ड संरचनात्मक है, संपूर्ण नहीं।** अविश्वसनीय फ़ाइलों के लिए glob मोड पसंद करें।
@@ -214,6 +214,7 @@ node scripts/check-readme-sync.mjs   # five-language README sync gate (also in C
 - [@weipeng1999](https://github.com/weipeng1999) — AST-आधारित कमांड-विघटन फ़ीचर प्रस्ताव ([#8](https://github.com/PerryLink/dsh-permission-rules/issues/8)), जिससे डिज़ाइन चर्चा शुरू हुई।
 - [@alexchenzl](https://github.com/alexchenzl) — DSH Directory में सूचीबद्ध करने का अनुरोध ([#7](https://github.com/PerryLink/dsh-permission-rules/issues/7))।
 - [@zl190](https://github.com/zl190) — `0.1.0-rc.7` harness संगतता अंतर की सूचना दी और उसे सत्यापित किया ([PR #9](https://github.com/PerryLink/dsh-permission-rules/pulls/9))।
+- [@cuohua](https://github.com/cuohua) — बताया कि संस्करण-जाँच केवल `0.1.0` को कवर करने के बावजूद `0.1.1-rc` पंक्ति अब भी `ignorable` मार्कर को चुपचाप छोड़ देती है ([#11](https://github.com/PerryLink/dsh-permission-rules/issues/11)); विस्तारित जाँच सीधे उसी विश्लेषण से बनी।
 
 ## PerryLink DSH Plugin Family
 

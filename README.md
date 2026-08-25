@@ -166,7 +166,7 @@ All tunables are Schemastery `Config` fields (changeable from cordis.yml). An id
 
 ## Known limitations
 
-- **Audit marker on pre-marker hosts.** `permissionRules/decision` is appended with `ignorable: true`; hosts whose `Session.append` predates the marker (the `0.1.0-rc.6` line) silently drop it, so the runtime disables session-log audit with a one-time warning. Set `allowUnmarkedAudit: true` to opt back in; repair already-written logs with `scripts/repair-session-logs.mjs`.
+- **Audit marker on pre-marker hosts.** `permissionRules/decision` is appended with `ignorable: true`; hosts whose `Session.append` predates the marker (the `0.1.0-rc.1`–`rc.7` and `0.1.1-rc.1`–`rc.7` lines) silently drop it, so the runtime disables session-log audit with a one-time warning. Set `allowUnmarkedAudit: true` to opt back in; repair already-written logs with `scripts/repair-session-logs.mjs`.
 - **Path candidates are heuristic.** Only the documented argument keys feed path matching, and workspace-relative matching is ASCII-case-insensitive only when `caseInsensitivePaths` is on.
 - **Globs are a conservative subset.** No brace expansion — write two patterns, or use regex mode.
 - **The regex backtracking guard is structural, not exhaustive.** Prefer glob mode for untrusted files.
@@ -215,6 +215,7 @@ See [VERIFICATION.md](VERIFICATION.md) for the headless end-to-end verification 
 - [@weipeng1999](https://github.com/weipeng1999) — the AST-based command-decomposition feature proposal ([#8](https://github.com/PerryLink/dsh-permission-rules/issues/8)) behind the design discussion.
 - [@alexchenzl](https://github.com/alexchenzl) — the DSH Directory listing request ([#7](https://github.com/PerryLink/dsh-permission-rules/issues/7)).
 - [@zl190](https://github.com/zl190) — reported and verified the `0.1.0-rc.7` harness compatibility gap ([PR #9](https://github.com/PerryLink/dsh-permission-rules/pulls/9)).
+- [@cuohua](https://github.com/cuohua) — reported that the `0.1.1-rc` line still drops the `ignorable` marker even though the version gate covered only `0.1.0` ([#11](https://github.com/PerryLink/dsh-permission-rules/issues/11)); the widened gate drew directly from that analysis.
 
 ## PerryLink DSH Plugin Family
 

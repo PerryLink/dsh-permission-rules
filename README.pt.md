@@ -165,7 +165,7 @@ Todos os parâmetros são campos Schemastery `Config` (alteráveis pelo cordis.y
 
 ## Known limitations
 
-- **Marcador de auditoria em hosts anteriores ao marcador.** `permissionRules/decision` é anexado com `ignorable: true`; hosts cujo `Session.append` é anterior ao marcador (a linha `0.1.0-rc.6`) o descartam silenciosamente, então o runtime desativa a auditoria de log com um aviso único. Ponha `allowUnmarkedAudit: true` para reativar; repare logs já escritos com `scripts/repair-session-logs.mjs`.
+- **Marcador de auditoria em hosts anteriores ao marcador.** `permissionRules/decision` é anexado com `ignorable: true`; hosts cujo `Session.append` é anterior ao marcador (as linhas `0.1.0-rc.1`–`rc.7` e `0.1.1-rc.1`–`rc.7`) o descartam silenciosamente, então o runtime desativa a auditoria de log com um aviso único. Ponha `allowUnmarkedAudit: true` para reativar; repare logs já escritos com `scripts/repair-session-logs.mjs`.
 - **Candidatos de caminho são heurísticos.** Somente as chaves de argumento documentadas alimentam a correspondência de caminho, e a correspondência relativa ao workspace é insensível a maiúsculas ASCII apenas com `caseInsensitivePaths` ativado.
 - **Globs são um subconjunto conservador.** Sem expansão de chaves — escreva dois padrões, ou use o modo regex.
 - **A guarda de backtracking de regex é estrutural, não exaustiva.** Prefira o modo glob para arquivos não confiáveis.
@@ -214,6 +214,7 @@ Consulte [VERIFICATION.md](VERIFICATION.md) para o registro de verificação end
 - [@weipeng1999](https://github.com/weipeng1999) — a proposta de decomposição de comandos baseada em AST ([#8](https://github.com/PerryLink/dsh-permission-rules/issues/8)) por trás da discussão de design.
 - [@alexchenzl](https://github.com/alexchenzl) — a solicitação de inclusão no DSH Directory ([#7](https://github.com/PerryLink/dsh-permission-rules/issues/7)).
 - [@zl190](https://github.com/zl190) — relatou e verificou a lacuna de compatibilidade do harness `0.1.0-rc.7` ([PR #9](https://github.com/PerryLink/dsh-permission-rules/pulls/9)).
+- [@cuohua](https://github.com/cuohua) — relatou que a linha `0.1.1-rc` ainda descarta o marcador `ignorable` embora a verificação de versão cobrisse apenas `0.1.0` ([#11](https://github.com/PerryLink/dsh-permission-rules/issues/11)); a verificação ampliada veio diretamente dessa análise.
 
 ## PerryLink DSH Plugin Family
 

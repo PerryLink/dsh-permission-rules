@@ -1176,15 +1176,19 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
  * `ignorable` envelope-marker surface: the released `0.1.0-rc.1`–`0.1.0-rc.7`
  * lines silently drop the marker from `Session.append` options, so audit
  * events written by those builds land unmarked and break resume on
- * stricter hosts. `0.1.0-rc.8` and later stamp the marker. Extend the
- * bound if a future rc line regresses. Non-matching (later rc, stable, or
- * unresolvable) versions are treated as possibly-marker-aware and verified
- * by the append probe.
+ * stricter hosts. `0.1.0-rc.8` and later stamp the marker. The `0.1.1-rc`
+ * line regressed the same way (verified on `0.1.1-rc.2` — the stamping
+ * fix exists only on harness master), so `0.1.1-rc.1`–`0.1.1-rc.7` are
+ * treated as unmarked too; over-refusal is harmless because
+ * `allowUnmarkedAudit: true` opts back in. Extend the bound if a future
+ * rc line regresses. Non-matching (later rc, stable, or unresolvable)
+ * versions are treated as possibly-marker-aware and verified by the
+ * append probe.
  * @param version - the installed peer version string.
- * @returns true for the known-unmarked rc.1–rc.7 lines.
+ * @returns true for the known-unmarked rc.1–rc.7 lines of `0.1.0` and `0.1.1`.
  */
 export function isUnmarkedHostVersion(version: string): boolean {
-  const match = /^0\.1\.0-rc\.(\d+)$/.exec(version.trim())
+  const match = /^0\.1\.[01]-rc\.(\d+)$/.exec(version.trim())
   if (match === null) return false
   return Number(match[1]) <= 7
 }

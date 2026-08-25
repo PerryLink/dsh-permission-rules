@@ -2,6 +2,12 @@
 
 All notable changes to dsh-permission-rules are recorded here, newest first.
 
+## [Unreleased]
+
+### Fixed
+
+- `isUnmarkedHostVersion` only matched the `0.1.0-rc` line, so hosts on the `0.1.1-rc` line passed the pre-check and wrote the first `permissionRules/decision` event unmarked — that polluted event makes the session unresumable on stricter harness builds. The gate now covers `0.1.1-rc.1`–`rc.7` as known-unmarked (verified on `0.1.1-rc.2`, where the harness still drops the `ignorable` marker); over-refusal is opt-out via `allowUnmarkedAudit: true`. Reported by [@cuohua](https://github.com/PerryLink/dsh-permission-rules/issues/11).
+
 ## v0.5.5 — 2026-08-23
 
 ### Docs

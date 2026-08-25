@@ -165,7 +165,7 @@ dsh --profile web --dump-config | grep -A4 'id: permission-rules'
 
 ## Known limitations
 
-- **前标记宿主上的审计标记。** `permissionRules/decision` 以 `ignorable: true` 追加；`Session.append` 早于该标记的宿主（`0.1.0-rc.6` 线）静默丢弃它，因此运行时以一次性警告禁用会话日志审计。设 `allowUnmarkedAudit: true` 重新启用；用 `scripts/repair-session-logs.mjs` 修复已写日志。
+- **前标记宿主上的审计标记。** `permissionRules/decision` 以 `ignorable: true` 追加；`Session.append` 早于该标记的宿主（`0.1.0-rc.1`–`rc.7` 与 `0.1.1-rc.1`–`rc.7` 线）静默丢弃它，因此运行时以一次性警告禁用会话日志审计。设 `allowUnmarkedAudit: true` 重新启用；用 `scripts/repair-session-logs.mjs` 修复已写日志。
 - **路径候选是启发式的。** 只有文档化的参数键参与路径匹配，且工作区相对匹配仅在 `caseInsensitivePaths` 开启时忽略 ASCII 大小写。
 - **glob 是保守子集。** 无花括号展开——写两个模式，或用正则模式。
 - **正则回溯守卫是结构性的、非穷尽的。** 对不可信文件优先用 glob 模式。
@@ -214,6 +214,7 @@ node scripts/check-readme-sync.mjs   # five-language README sync gate (also in C
 - [@weipeng1999](https://github.com/weipeng1999) —— 提出基于 AST 的命令分解功能（[#8](https://github.com/PerryLink/dsh-permission-rules/issues/8)），促成该方案讨论。
 - [@alexchenzl](https://github.com/alexchenzl) —— DSH 目录收录请求（[#7](https://github.com/PerryLink/dsh-permission-rules/issues/7)）。
 - [@zl190](https://github.com/zl190) —— 报告并验证了 `0.1.0-rc.7` harness 兼容性缺口（[PR #9](https://github.com/PerryLink/dsh-permission-rules/pulls/9)）。
+- [@cuohua](https://github.com/cuohua) —— 报告版本门仅覆盖 `0.1.0` 线后，`0.1.1-rc` 线仍静默丢弃 `ignorable` 标记（[#11](https://github.com/PerryLink/dsh-permission-rules/issues/11)）；加宽后的版本门直接源自该分析。
 
 ## PerryLink DSH Plugin Family
 

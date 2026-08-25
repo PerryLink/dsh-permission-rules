@@ -17,11 +17,11 @@ import { isUnmarkedHostVersion } from '../src/runtime.ts'
 import type { PermissionRulesRuntime } from '../src/runtime.ts'
 import { dispatchPreExecute, makeExec, mountHarness, removeWorkspace, tempWorkspace } from './harness.ts'
 
-/** Version-line classification for the known-unmarked rc.1–rc.7 peers. */
+/** Version-line classification for the known-unmarked rc.1–rc.7 peers of the 0.1.0 and 0.1.1 lines. */
 describe('isUnmarkedHostVersion', () => {
-  it('flags the rc.1–rc.7 lines and nothing else', () => {
-    for (const version of ['0.1.0-rc.1', '0.1.0-rc.6', '0.1.0-rc.7']) expect(isUnmarkedHostVersion(version)).toBe(true)
-    for (const version of ['0.1.0-rc.8', '0.1.0-rc.10', '0.1.0', '0.2.0', '0.1.0-rc.6-pre', 'garbage']) expect(isUnmarkedHostVersion(version)).toBe(false)
+  it('flags the 0.1.0/0.1.1 rc.1–rc.7 lines and nothing else', () => {
+    for (const version of ['0.1.0-rc.1', '0.1.0-rc.6', '0.1.0-rc.7', '0.1.1-rc.1', '0.1.1-rc.2', '0.1.1-rc.7']) expect(isUnmarkedHostVersion(version)).toBe(true)
+    for (const version of ['0.1.0-rc.8', '0.1.0-rc.10', '0.1.1-rc.8', '0.1.1-rc.10', '0.1.0', '0.2.0', '0.1.0-rc.6-pre', 'garbage']) expect(isUnmarkedHostVersion(version)).toBe(false)
   })
 })
 
