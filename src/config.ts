@@ -11,6 +11,7 @@ import z from '@deepseek-ai/schemastery'
 import type { PatternMode } from './rules.ts'
 import type { NetworkMode, UnlistedAction } from './network.ts'
 import { NETWORK_MODES } from './network.ts'
+import { resolveBuiltinRulesPath } from './builtin-rules.ts'
 import type { UiLanguage } from './prose.ts'
 
 /** What happens when a discovered rule file exists but cannot be parsed or compiled. */
@@ -24,6 +25,14 @@ export type LoopbackPolicy = 'allow' | 'policy'
 
 /** NO_PROXY handling for policy-injected subprocess environment. */
 export type NoProxyPolicy = 'clear' | 'preserve'
+
+/** The built-in high-risk baseline block. */
+export interface BuiltinConfig {
+  /** Master switch: `false` disables the shipped high-risk baseline entirely. */
+  enabled?: boolean
+  /** Absolute (or process.cwd()-relative) path to a replacement baseline; unset uses the shipped file. */
+  path?: string
+}
 
 /**
  * The process-level network policy block. Every field is optional —
@@ -117,6 +126,8 @@ export interface Config {
   allowUnmarkedAudit?: boolean
   /** Process-level network policy (all optional; defaults inside). */
   network?: NetworkConfig
+  /** Built-in high-risk baseline (all optional; defaults inside). */
+  builtin?: BuiltinConfig
 }
 
 /** Network config after {@link resolveConfig}: every optional field has its explicit default. */
@@ -131,6 +142,13 @@ export interface ResolvedNetworkConfig {
   readonly loopback: LoopbackPolicy
   readonly injectEnv: boolean
   readonly noProxy: NoProxyPolicy
+}
+
+/** Builtin baseline after {@link resolveConfig}: the switch plus the resolved absolute path. */
+export interface ResolvedBuiltinConfig {
+  readonly enabled: boolean
+  /** Absolute path of the baseline file (shipped or the resolved `builtin.path`). */
+  readonly path: string
 }
 
 /** Config after {@link resolveConfig}: every optional field has its explicit default. */
@@ -151,6 +169,7 @@ export interface ResolvedConfig {
   readonly enforce: boolean
   readonly allowUnmarkedAudit: boolean
   readonly network: ResolvedNetworkConfig
+  readonly builtin: ResolvedBuiltinConfig
 }
 
 /** Schemastery schema: the loader validates and fills defaults before `apply`. */
@@ -181,6 +200,10 @@ export const Config: z<Config> = z.object({
     loopback: z.union(['allow', 'policy'] as const).default('allow'),
     injectEnv: z.boolean().default(true),
     noProxy: z.union(['clear', 'preserve'] as const).default('clear'),
+  }),
+  builtin: z.object({
+    enabled: z.boolean().default(true),
+    path: z.string(),
   }),
 })
 
@@ -226,6 +249,7 @@ export function resolveConfig(config: Config = {}): ResolvedConfig {
   assertBoolean('enforce', config.enforce ?? true)
   assertBoolean('allowUnmarkedAudit', config.allowUnmarkedAudit ?? false)
   const network = resolveNetworkConfig(config.network)
+  const builtin = resolveBuiltinConfig(config.builtin)
   return {
     rulesFile,
     fallbackPath: config.fallbackPath,
@@ -243,7 +267,15 @@ export function resolveConfig(config: Config = {}): ResolvedConfig {
     enforce: config.enforce ?? true,
     allowUnmarkedAudit: config.allowUnmarkedAudit ?? false,
     network,
+    builtin,
   }
+}
+
+/** Validate and default the optional `builtin` block; bad values fail the mount loudly. */
+function resolveBuiltinConfig(raw: BuiltinConfig | undefined): ResolvedBuiltinConfig {
+  assertBoolean('builtin.enabled', raw?.enabled ?? true)
+  const path = resolveBuiltinRulesPath(raw?.path)
+  return { enabled: raw?.enabled ?? true, path }
 }
 
 /** Validate and default the optional `network` block; bad values fail the mount loudly. */

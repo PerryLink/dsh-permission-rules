@@ -1,0 +1,155 @@
+# Built-in high-risk permission baseline for DeepSeek Harness.
+#
+# Shipped with dsh-permission-rules. Enabled by default and APPENDED AFTER
+# every user rule file (project chain / searchUp / fallback), so first-match
+# semantics let a nearer user rule override any rule below; with no user
+# rules these apply alone. Disable with `builtin.enabled: false`, or swap
+# the file with `builtin.path`. Vocabulary documented in
+# docs/rules-format.en.md (see the `argv` match dimension).
+#
+# `argv` decomposes the shell `command` argument into its command word,
+# argument tokens, and pipeline signature (quotes/escapes/pipes/redirects
+# aware), so these rules match tokens precisely instead of substring globs.
+# Literal string signatures (the fork bomb) stay on `params.command` globs.
+rules:
+  # --- Destructive filesystem commands -----------------------------------
+
+  # rm -rf / (and -fr) — recursive + force wipe of the filesystem root.
+  - match:
+      tools: [bash, pwsh]
+      argv: { command: "rm", args: ["-rf", "/"] }
+    action: deny
+    reason: "rm -rf / wipes the filesystem root and is blocked"
+    tags: [builtin, destructive, root]
+
+  - match:
+      tools: [bash, pwsh]
+      argv: { command: "rm", args: ["-fr", "/"] }
+    action: deny
+    reason: "rm -fr / wipes the filesystem root and is blocked"
+    tags: [builtin, destructive, root]
+
+  - match:
+      tools: [bash, pwsh]
+      argv: { command: "rm", args: ["-rf", '/\*'] }
+    action: deny
+    reason: "rm -rf /* wipes everything under the filesystem root and is blocked"
+    tags: [builtin, destructive, root]
+
+  - match:
+      tools: [bash, pwsh]
+      argv: { command: "rm", args: ["-fr", '/\*'] }
+    action: deny
+    reason: "rm -fr /* wipes everything under the filesystem root and is blocked"
+    tags: [builtin, destructive, root]
+
+  # mkfs* — creating a filesystem formats a device.
+  - match:
+      tools: [bash, pwsh]
+      argv: { command: "mkfs*" }
+    action: ask
+    reason: "Creating a filesystem (mkfs) formats a device — confirm before proceeding"
+    tags: [builtin, destructive]
+
+  # dd of=/dev/... — writing raw storage (safe pseudo-devices excluded).
+  - match:
+      tools: [bash, pwsh]
+      argv:
+        command: "dd"
+        anyArg: ["of=/dev/*", "!of=/dev/null", "!of=/dev/zero", "!of=/dev/random", "!of=/dev/urandom", "!of=/dev/stdout", "!of=/dev/stderr", "!of=/dev/tty"]
+    action: ask
+    reason: "dd writing to a block device overwrites raw storage — confirm before proceeding"
+    tags: [builtin, destructive]
+
+  # chmod -R 777 — world-writable recursive.
+  - match:
+      tools: [bash, pwsh]
+      argv: { command: "chmod", args: ["-R", "777"] }
+    action: deny
+    reason: "chmod -R 777 makes a whole tree world-writable and is blocked"
+    tags: [builtin, destructive]
+
+  # chown -R — recursive ownership change.
+  - match:
+      tools: [bash, pwsh]
+      argv: { command: "chown", args: ["-R"] }
+    action: ask
+    reason: "Recursive ownership changes (chown -R) need confirmation"
+    tags: [builtin, destructive]
+
+  # --- Privilege escalation / host control -------------------------------
+
+  # setuid / setgid bits (symbolic u+s/g+s/+s or octal 4xxx/2xxx/6xxx/7xxx).
+  - match:
+      tools: [bash, pwsh]
+      argv: { command: "chmod", anyArg: ["u+s", "g+s", "+s", "4???", "2???", "6???", "7???"] }
+    action: ask
+    reason: "Setting the setuid/setgid bits is a privilege-escalation surface — confirm before proceeding"
+    tags: [builtin, privilege]
+
+  # shutdown / reboot / halt / poweroff.
+  - match:
+      tools: [bash, pwsh]
+      argv: { command: [shutdown, reboot, halt, poweroff] }
+    action: ask
+    reason: "Shutting down or rebooting the host needs confirmation"
+    tags: [builtin, host-control]
+
+  # --- Repository history rewrites ----------------------------------------
+
+  # git push --force / -f / --force-with-lease.
+  - match:
+      tools: [bash, pwsh]
+      argv:
+        command: "git"
+        args: ["push"]
+        anyArg: ["--force", "-f", "--force-with-lease"]
+    action: ask
+    reason: "Force-pushing rewrites remote history — confirm before proceeding"
+    tags: [builtin, git]
+
+  # git reset --hard.
+  - match:
+      tools: [bash, pwsh]
+      argv: { command: "git", args: ["reset", "--hard"] }
+    action: ask
+    reason: "git reset --hard discards uncommitted work — confirm before proceeding"
+    tags: [builtin, git]
+
+  # --- Remote-code-execution patterns (raw string signatures) -------------
+
+  # curl|sh / curl|bash / wget|sh / wget|bash — download-and-execute.
+  - match:
+      tools: [bash, pwsh]
+      argv:
+        pipeline: ["curl*|*sh", "curl*|*bash", "wget*|*sh", "wget*|*bash"]
+    action: deny
+    reason: "Piping a remote fetch (curl/wget) directly into a shell executes remote code and is blocked"
+    tags: [builtin, remote-code-execution]
+
+  # Fork bomb :(){ :|:& };: (literal signature).
+  - match:
+      tools: [bash, pwsh]
+      params:
+        command: ["*:(){ :|:& };:*", "*:() { :|:& };:*"]
+    action: deny
+    reason: "A shell fork bomb can exhaust the host's process table and is blocked"
+    tags: [builtin, fork-bomb]
+
+  # --- Sensitive paths -----------------------------------------------------
+
+  # Workspace-relative credential/secret paths (any tool with path args).
+  - match:
+      paths: ["**/.ssh/**", "**/.env", "**/.aws/**", "**/.gnupg/**", "**/.kube/**", "**/*.pem", "**/*.key", "**/credentials", "**/kubeconfig", "**/id_rsa*", "**/id_ed25519*"]
+    action: ask
+    reason: "This path holds credentials, keys, or secrets — confirm before accessing"
+    tags: [builtin, sensitive-path]
+
+  # Sensitive system/absolute paths referenced in shell commands.
+  - match:
+      tools: [bash, pwsh]
+      argv:
+        anyArg: ["/etc/shadow", "/etc/sudoers", "~/.ssh/**", "/root/.ssh/**", "~/.aws/**", "~/.gnupg/**", "**/.env", "**/*.pem", "**/*.key", "**/id_rsa*", "**/id_ed25519*"]
+    action: ask
+    reason: "This shell command references a sensitive credential or system path — confirm before running"
+    tags: [builtin, sensitive-path]

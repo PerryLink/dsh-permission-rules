@@ -11,6 +11,7 @@
  * @module dsh-permission-rules/runtime
  */
 
+import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
@@ -21,8 +22,8 @@ import type { CallId } from '@deepseek-ai/dsh-llm'
 import type { PreToolDecision, ToolExecution } from '@deepseek-ai/dsh-tools'
 import { resolveConfig } from './config.ts'
 import type { Config, ResolvedConfig } from './config.ts'
-import { compileRules, compileRulesChain, describeRule, findUnreachableRules, isShellTool, matchRules, normalizeWorkspacePath, parseRulesDocument, PLATFORMS, RuleError } from './rules.ts'
-import type { CompileOptions, CompiledRuleset, MatchContext, NetworkTarget, RuleHit } from './rules.ts'
+import { compileRules, compileSourceRules, describeRule, findUnreachableRules, isShellTool, matchRules, mergeCompiledRules, normalizeWorkspacePath, parseRulesDocument, PLATFORMS, RuleError } from './rules.ts'
+import type { CompileOptions, CompiledRule, CompiledRuleset, MatchContext, NetworkTarget, RuleHit } from './rules.ts'
 import { DESCRIBE_TOKENS, UI_PROSE } from './prose.ts'
 import type { UiProse } from './prose.ts'
 import { blockMessage, decideNetworkTarget, defaultDecision, networkModeForSandbox } from './network.ts'
@@ -81,6 +82,9 @@ export class PermissionRulesRuntime {
   /** Loaded (or failed) rules per workspace cwd, least-recently-used first for eviction. */
   private readonly byCwd = new Map<string, LoadedRules>()
 
+  /** Compiled per-source rules keyed by absolute path, with the content hash they were compiled from (LRU-refreshed). */
+  private readonly compileCache = new Map<string, { hash: string; rules: CompiledRule[] }>()
+
   /** Live watchers per watched path (rule file or candidate ancestor directory), with the cwds each serves. */
   private readonly watchers = new Map<string, WatcherEntry>()
 
@@ -131,15 +135,30 @@ export class PermissionRulesRuntime {
   }
 
   /**
-   * Resolve which files serve a workspace, nearest first: the project file
-   * under the session cwd (or an absolute `rulesFile`), with `searchUp`
-   * also merging every parent directory's file on the way to the root,
-   * else the configured fallback, else `[]` (empty rule set). Nearer files
-   * evaluate first, so a child can override a parent rule.
+   * Resolve which files serve a workspace, nearest first: the USER rule
+   * files (project file under the session cwd — or an absolute `rulesFile`
+   * — with `searchUp` also merging every parent directory's file on the
+   * way to the root, else the configured fallback, else `[]`), followed by
+   * the built-in high-risk baseline when enabled. The baseline sits LAST so
+   * first-match semantics let any nearer user rule override it; with no
+   * user files it applies alone. Nearer files evaluate first, so a child
+   * can override a parent rule.
    * @param cwd - the session's absolute workspace root.
    * @returns the absolute rule-file paths in effect, nearest first.
    */
   resolveSources(cwd: string): string[] {
+    const user = this.resolveUserSources(cwd)
+    const builtin = this.builtinSource()
+    return builtin === undefined ? user : [...user, builtin]
+  }
+
+  /** The built-in baseline path when enabled, else `undefined`. */
+  private builtinSource(): string | undefined {
+    return this.config.builtin.enabled ? this.config.builtin.path : undefined
+  }
+
+  /** The user rule files serving a workspace (project chain → fallback → empty), nearest first. */
+  private resolveUserSources(cwd: string): string[] {
     if (this.config.searchUp) {
       const sources: string[] = []
       let dir = cwd
@@ -179,8 +198,8 @@ export class PermissionRulesRuntime {
     const sources = this.resolveSources(cwd)
     if (sources.length === 0) return { cwd, sources: [], compiled: { rules: [], caseInsensitivePaths: this.config.caseInsensitivePaths } }
     try {
-      const entries = sources.map(path => ({ path, text: readFileSync(path, 'utf8') }))
-      const { ruleset } = compileRulesChain(entries, this.compileOptions())
+      const compiledSources = sources.map(path => this.compileSourceFile(path))
+      const ruleset = mergeCompiledRules(compiledSources, this.compileOptions())
       return { cwd, sources, compiled: ruleset }
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error)
@@ -189,6 +208,40 @@ export class PermissionRulesRuntime {
         return { cwd, sources, compiled: { rules: [], caseInsensitivePaths: this.config.caseInsensitivePaths }, lastError: message }
       }
       throw error instanceof RuleError ? error : new RuleError(`cannot load ${sources.join(', ')}: ${message}`)
+    }
+  }
+
+  /**
+   * Compile one source file, reusing the cached compiled rules when the
+   * file's content hash is unchanged. The cache key is the source path plus
+   * the content hash, so the same file read by many workspaces (the
+   * built-in baseline and any shared fallback/absolute `rulesFile`) is
+   * parsed and compiled ONCE, not once per cwd.
+   * @param path - the absolute source path.
+   * @returns that source's compiled rules (source-local index, sourceIndex 0).
+   */
+  private compileSourceFile(path: string): CompiledRule[] {
+    const text = readFileSync(path, 'utf8')
+    const hash = createHash('sha256').update(text).digest('hex')
+    const cached = this.compileCache.get(path)
+    if (cached !== undefined && cached.hash === hash) {
+      this.compileCache.delete(path)
+      this.compileCache.set(path, cached)
+      return cached.rules
+    }
+    const rules = compileSourceRules(parseRulesDocument(text), this.compileOptions())
+    this.compileCache.set(path, { hash, rules })
+    this.evictCompileCache()
+    return rules
+  }
+
+  /** Bound the compile cache: drop the least-recently-used source beyond the workspace cap (compile results are cheap to rebuild). */
+  private evictCompileCache(): void {
+    const cap = this.config.maxCachedWorkspaces
+    while (this.compileCache.size > cap) {
+      const oldest = this.compileCache.keys().next().value
+      if (oldest === undefined) return
+      this.compileCache.delete(oldest)
     }
   }
 
@@ -622,13 +675,19 @@ export class PermissionRulesRuntime {
    * The rule-file paths the settings-page editor may read or write: every
    * currently loaded source plus the per-workspace project files and the
    * configured fallback (so a not-yet-existing project file can be
-   * created). The editor never touches arbitrary paths.
+   * created). The editor never touches arbitrary paths — and the built-in
+   * baseline is excluded entirely (it is a shipped, read-only baseline,
+   * shown via `/rules` attribution instead).
    */
   knownRuleSources(): readonly string[] {
     const cfg = this.config
+    const builtin = cfg.builtin.enabled ? cfg.builtin.path : undefined
     const set = new Set<string>()
     for (const loaded of this.byCwd.values()) {
-      for (const source of loaded.sources) set.add(source)
+      for (const source of loaded.sources) {
+        if (source === builtin) continue
+        set.add(source)
+      }
       if (!isAbsolute(cfg.rulesFile)) set.add(join(loaded.cwd, cfg.rulesFile))
     }
     if (cfg.fallbackPath !== undefined) set.add(isAbsolute(cfg.fallbackPath) ? cfg.fallbackPath : resolve(cfg.fallbackPath))
@@ -670,6 +729,9 @@ export class PermissionRulesRuntime {
    * is in effect immediately.
    */
   saveRuleFile(path: string, text: string): { ok: boolean; error?: string; reloaded?: number } {
+    if (this.config.builtin.enabled && path === this.config.builtin.path) {
+      return { ok: false, error: `refusing to write ${path}: the built-in ruleset is read-only` }
+    }
     if (!this.knownRuleSources().includes(path)) {
       return { ok: false, error: `refusing to write ${path}: not a known rule source` }
     }
@@ -921,6 +983,12 @@ export class PermissionRulesRuntime {
       }
       this.loadForValidation(fallbackPath)
     }
+    if (this.config.builtin.enabled) {
+      if (!existsSync(this.config.builtin.path)) {
+        throw new RuleError(`permission-rules: builtin ruleset ${JSON.stringify(this.config.builtin.path)} does not exist`)
+      }
+      this.loadForValidation(this.config.builtin.path)
+    }
   }
 
   /** Parse and compile one mandated file, rethrowing as a mount failure. */
@@ -936,7 +1004,7 @@ export class PermissionRulesRuntime {
 
   /** Attach (once per file path) the Chokidar watcher feeding {@link reload}. */
   private attachWatch(cwd: string, source: string): void {
-    if (!this.config.watch || source === '') return
+    if (!this.config.watch || source === '' || (this.config.builtin.enabled && source === this.config.builtin.path)) return
     const existing = this.watchers.get(source)
     if (existing !== undefined) {
       existing.cwds.add(cwd)
@@ -1105,6 +1173,11 @@ export class PermissionRulesRuntime {
   /** Number of live watchers, for observability and tests. */
   activeWatcherCount(): number {
     return this.watchers.size
+  }
+
+  /** Number of cached compiled source files, for observability and tests. */
+  compiledSourceCount(): number {
+    return this.compileCache.size
   }
 
   /** Number of pending debounce timers, for observability and tests. */

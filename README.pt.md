@@ -39,7 +39,8 @@ O `dsh-permission-rules` antepõe uma lista ordenada de regras **`allow` / `deny
 
 Cada acerto **e** cada passagem direta é registrada como um evento de sessão `permissionRules/decision` (somente log — nada extra é injetado no contexto do modelo).
 
-- **Correspondência rica** — globs de nome de ferramenta (incl. `mcp__*`), seletores de identidade de agente (`main` / `subagent` / `preset:*`), globs **ou** regexes de chave/valor de argumentos (com negação `!pattern` e dimensão de chave `absent`), globs de caminho relativos ao workspace em **qualquer profundidade de aninhamento**, e condições de host `when` (variáveis de ambiente, plataforma).
+- **Correspondência rica** — globs de nome de ferramenta (incl. `mcp__*`), seletores de identidade de agente (`main` / `subagent` / `preset:*`), globs **ou** regexes de chave/valor de argumentos (com negação `!pattern` e dimensão de chave `absent`), globs de caminho relativos ao workspace em **qualquer profundidade de aninhamento**, condições de host `when` (variáveis de ambiente, plataforma), e **decomposição de comandos de shell** (`argv`: palavra de comando, tokens de argumento, assinatura de pipeline) para correspondência precisa por token.
+- **Linha de base de alto risco integrada** — um conjunto deny/ask embarcado (comandos destrutivos, escalada de privilégios, baixar-e-executar, caminhos sensíveis) habilitado por padrão e anexado após as regras de usuário (uma regra de usuário mais próxima pode sobrescrevê-lo); alterna com `builtin.enabled`.
 - **Arquivos de regras hierárquicos** — `searchUp` opcional mescla cada `.dsh/rules.yaml` do cwd da sessão até a raiz do sistema de arquivos, o mais próximo primeiro.
 - **Implantação em dry-run** — `enforce: false` audita o que a política *faria* enquanto deixa cada chamada passar.
 - **Recarga a quente** — vigilância Chokidar com debounce; uma edição quebrada mantém as regras anteriores, nunca falha.
@@ -127,6 +128,8 @@ Todos os parâmetros são campos Schemastery `Config` (alteráveis pelo cordis.y
 | `network.loopback` | `allow` | Destinos de loopback: `allow` (paridade Codex) ou `policy` |
 | `network.injectEnv` | `true` | Se variáveis de ambiente do proxy são injetadas para subprocessos |
 | `network.noProxy` | `clear` | Manejo de NO_PROXY em subprocessos: `clear` aplica a política ou `preserve` |
+| `builtin.enabled` | `true` | Linha de base de alto risco integrada: `false` desabilita por completo o conjunto deny/ask embarcado |
+| `builtin.path` | *(embarcado)* | Arquivo de linha de base de substituição (absoluto, ou relativo a `process.cwd()`); validado ao montar |
 
 ## Tools & surfaces
 

@@ -109,6 +109,35 @@
             }
           }
         },
+        "argv": {
+          "description": "Shell command decomposition scope: the call must carry a command-string argument whose lexical decomposition (command words, argument tokens, redirect targets, pipeline signature) satisfies every listed field. command/pipeline are globs; args/anyArg follow patternMode. args requires EVERY pattern to match some token; anyArg requires SOME token to match a pattern; a !-prefixed args/anyArg pattern negates. A block must name at least one field.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "command": {
+              "description": "Command-word globs; ANY simple-command word matching ANY pattern satisfies the field.",
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 }
+            },
+            "args": {
+              "description": "Argument-token patterns; EVERY pattern must match at least one token; a !-prefixed pattern negates.",
+              "type": "array",
+              "items": { "$ref": "#/$defs/pattern" },
+              "minItems": 1
+            },
+            "anyArg": {
+              "description": "Argument-token patterns; ANY token matching ANY pattern satisfies the field; a !-prefixed pattern negates.",
+              "type": "array",
+              "items": { "$ref": "#/$defs/pattern" },
+              "minItems": 1
+            },
+            "pipeline": {
+              "description": "Pipeline-signature globs matched against the command words joined by `|` (e.g. curl|sh); ANY pattern matching satisfies the field.",
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
         "network": {
           "description": "Network scope (a network rule): the call must carry a URL candidate (a web-tool URL argument, or a URL embedded in bash/pwsh command text) — or, at the proxy layer, a connection target — satisfying every listed dimension. domains are subdomain-inclusive unless wildcarded; ips accept IPv4/IPv6 literals, globs, and IPv4 CIDRs; ports accept \"*\", one port, or an inclusive low-high range (numeric YAML ports accepted); schemes are http/https. A network block must name at least one dimension.",
           "type": "object",

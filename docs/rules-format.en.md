@@ -29,6 +29,7 @@ Only `rules` is allowed at the top level; each rule allows only `match`, `action
 | `paths` | `string[]` | Workspace-relative path patterns; any candidate matching any pattern satisfies the dimension. Candidates come from argument values under these keys at ANY nesting depth (depth-capped): `path` `paths` `file` `files` `file_path` `dir` `directory` `directories` `cwd` `workspace` `root` `target` `targets` `output`. Absolute candidates outside the workspace are dropped; relative `../` forms are kept so explicit out-of-root globs still work. In path patterns `*` does not cross `/`; `**` crosses any depth (including zero). With `caseInsensitivePaths` on (Windows default) the root comparison and the patterns ignore ASCII case. |
 | `absent` | `string[]` | Argument keys that must be ABSENT; **every listed key must be missing** (non-object arguments satisfy this trivially). |
 | `when` | `{ env, platform }` | Host conditions: `env` is env-var name → pattern(s), **every listed var must be present AND match**; `platform` is any-of a closed list (`aix` `android` `darwin` `freebsd` `linux` `openbsd` `sunos` `win32`). |
+| `argv` | `{ command, args, anyArg, pipeline }` | Shell command decomposition scope: matches a command-string argument (`command`/`cmd`/`script`/`command_line`/`commandLine`) whose lexical decomposition satisfies every listed field. `command` matches any simple-command word; `pipeline` matches the command words joined by `|`; `args` requires every pattern to match some token; `anyArg` requires some token to match a pattern (both support `!` negation). Argument tokens include redirect targets. See the next section. |
 | `network` | `{ domains, ips, ports, schemes }` | Network scope (a network rule): the call must carry a URL candidate satisfying every listed dimension. `domains` (subdomain-inclusive unless wildcarded), `ips` (literals/globs/CIDRs), `ports` (`*`, one port, or a range), `schemes` (`http`/`https`). See the next section. |
 
 All dimensions are ANDed: a rule matches only when **every non-empty dimension matches**. Rules evaluate in order — **the first match wins**; no match = passthrough.
@@ -57,6 +58,32 @@ rules:
   - match: { tools: [bash, pwsh], network: { domains: ["registry.npmjs.org", "proxy.golang.org"], schemes: [https] } }
     action: allow
     reason: "pinned package registries"
+```
+
+## argv dimension (shell command decomposition)
+
+A rule whose `match` carries an `argv` block matches a command-string argument — the `command`/`cmd`/`script`/`command_line`/`commandLine` values, at any nesting depth — after lexically decomposing it into simple commands. The decomposition is quote/escape/pipe/control-operator/redirect aware and produces, per simple command, a command word, argument tokens, and redirect targets. This gives token-precise matching that the raw `params.command` substring globs cannot express (e.g. `rm -rf /tmp` is NOT `rm -rf /`).
+
+| Field | Semantics |
+|---|---|
+| `command` | Command-word globs. ANY simple-command word matching ANY pattern satisfies the field. |
+| `pipeline` | Pipeline-signature globs: matched against the command words joined by `|` (e.g. `curl http://x \| sh` → `curl\|sh`). ANY pattern matching the signature satisfies the field. |
+| `args` | Argument-token patterns; EVERY pattern must match at least one token (AND across patterns, any-of across tokens). A `!`-prefixed pattern negates (no token may match it). |
+| `anyArg` | Argument-token patterns; ANY token matching ANY pattern satisfies the field (OR). A `!`-prefixed pattern negates. |
+
+All four fields AND together; a block must name at least one. Argument tokens include redirect targets (`echo x > /etc/passwd` feeds `/etc/passwd` to `args`/`anyArg`). `command` and `pipeline` are always globs; `args` and `anyArg` follow `patternMode`. Rules are typically scoped with `tools: [bash, pwsh]`, but the dimension itself is tool-agnostic (any tool carrying a command string feeds it).
+
+```yaml
+rules:
+  # token-precise: rm -rf / but NOT rm -rf /tmp
+  - match: { tools: [bash, pwsh], argv: { command: "rm", args: ["-rf", "/"] } }
+    action: deny
+    reason: "rm -rf / wipes the filesystem root"
+
+  # download-and-execute: any pipeline whose stages are curl/wget then sh/bash
+  - match: { tools: [bash, pwsh], argv: { pipeline: ["curl*|*sh", "wget*|*bash"] } }
+    action: deny
+    reason: "piping a remote fetch into a shell executes remote code"
 ```
 
 ## action, reason, and metadata
@@ -120,6 +147,16 @@ rules:
     action: ask
     reason: "Write operations need confirmation"
 ```
+
+## Built-in high-risk baseline
+
+The plugin ships a built-in high-risk baseline at `rules/builtin-high-risk.yaml` (deny/ask rules for destructive commands, privilege escalation, download-and-execute, and sensitive paths). It is **enabled by default** and appended AFTER every user rule file (project chain → `searchUp` → `fallback`), so first-match semantics let any nearer user rule override it; with no user rules it applies alone. `/rules` attributes the baseline rules to their shipped source file.
+
+- Disable entirely with `builtin.enabled: false`.
+- Swap the file with `builtin.path` (absolute, or relative to `process.cwd()`).
+- The baseline is a deployed, read-only file: it is validated at mount (missing/invalid fails loud), it is never watched, and the settings-page editor refuses to write it.
+
+The shipped baseline is an example, not an exhaustive policy — extend it with your own project rules.
 
 ## Division of labor with dsh-auto-review
 

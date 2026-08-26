@@ -40,7 +40,8 @@
 
 Every hit **and** every passthrough is audit-logged as a `permissionRules/decision` session event (log-only — nothing extra is injected into the model context).
 
-- **Rich matching** — tool-name globs (including `mcp__*`), agent-identity selectors (`main` / `subagent` / `preset:*`), argument key/value globs **or** regexes (with `!pattern` negation and an `absent` key dimension), workspace-relative path globs at **any nesting depth**, and `when` host conditions (env vars, platform).
+- **Rich matching** — tool-name globs (including `mcp__*`), agent-identity selectors (`main` / `subagent` / `preset:*`), argument key/value globs **or** regexes (with `!pattern` negation and an `absent` key dimension), workspace-relative path globs at **any nesting depth**, `when` host conditions (env vars, platform), and **shell command decomposition** (`argv`: command word, argument tokens, pipeline signature) for token-precise command matching.
+- **Built-in high-risk baseline** — a shipped deny/ask ruleset (destructive commands, privilege escalation, download-and-execute, sensitive paths) enabled by default and appended after user rules so a nearer user rule can override it; toggle with `builtin.enabled`.
 - **Hierarchical rule files** — optional `searchUp` merges every `.dsh/rules.yaml` from the session cwd to the filesystem root, nearest first.
 - **Dry-run rollout** — `enforce: false` audits what the policy *would* do while passing every call through.
 - **Hot reload** — Chokidar watch with debounce; a broken edit keeps the previous rules, never crashes.
@@ -128,6 +129,8 @@ All tunables are Schemastery `Config` fields (changeable from cordis.yml). An id
 | `network.loopback` | `allow` | Loopback targets: `allow` (Codex parity) or `policy` |
 | `network.injectEnv` | `true` | Whether proxy environment variables are injected for subprocesses |
 | `network.noProxy` | `clear` | Subprocess NO_PROXY handling: `clear` enforces the policy or `preserve` |
+| `builtin.enabled` | `true` | Built-in high-risk baseline: `false` disables the shipped deny/ask ruleset entirely |
+| `builtin.path` | *(shipped)* | Replacement baseline file (absolute, or relative to `process.cwd()`); validated at mount |
 
 ## Tools & surfaces
 

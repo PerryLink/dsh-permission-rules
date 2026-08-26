@@ -39,7 +39,8 @@
 
 每次命中**和**每次透传都作为 `permissionRules/decision` 会话事件审计落盘（仅日志——不会向模型上下文额外注入任何内容）。
 
-- **丰富匹配** —— 工具名 glob（含 `mcp__*`）、agent 身份选择器（`main` / `subagent` / `preset:*`）、参数键/值 glob **或** 正则（含 `!pattern` 取反与 `absent` 键维度）、**任意嵌套深度**的工作区相对路径 glob，以及 `when` 宿主条件（环境变量、平台）。
+- **丰富匹配** —— 工具名 glob（含 `mcp__*`）、agent 身份选择器（`main` / `subagent` / `preset:*`）、参数键/值 glob **或** 正则（含 `!pattern` 取反与 `absent` 键维度）、**任意嵌套深度**的工作区相对路径 glob、`when` 宿主条件（环境变量、平台），以及 **shell 命令分解**（`argv`：命令词、参数 token、管道签名）用于 token 级精确命令匹配。
+- **内置高危基线** —— 随附的 deny/ask 规则集（破坏性命令、权限提升、下载即执行、敏感路径），默认开启并追加在用户规则之后（更近的用户规则可覆盖）；用 `builtin.enabled` 开关。
 - **分层规则文件** —— 可选 `searchUp` 从会话 cwd 到文件系统根合并每个 `.dsh/rules.yaml`，就近优先。
 - **试运行上线** —— `enforce: false` 审计策略*会*做什么，同时放行每个调用。
 - **热重载** —— Chokidar 监听带去抖；损坏的编辑保留旧规则、绝不崩溃。
@@ -127,6 +128,8 @@ dsh --profile web --dump-config | grep -A4 'id: permission-rules'
 | `network.loopback` | `allow` | 回环目标：`allow`（Codex 对齐）或 `policy` |
 | `network.injectEnv` | `true` | 是否为子进程注入代理环境变量 |
 | `network.noProxy` | `clear` | 子进程 NO_PROXY 处理：`clear` 强制策略或 `preserve` |
+| `builtin.enabled` | `true` | 内置高危基线：`false` 完全禁用随附的 deny/ask 规则集 |
+| `builtin.path` | *(随附)* | 替换基线文件（绝对路径，或相对 `process.cwd()`）；挂载时校验 |
 
 ## Tools & surfaces
 

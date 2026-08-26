@@ -80,6 +80,7 @@ export interface DescribeTokens {
   absent: string
   when: string
   platform: string
+  argv: string
   network: string
   domains: string
   ips: string
@@ -316,9 +317,9 @@ export const UI_PROSE: Readonly<Record<UiLanguage, UiProse>> = { en: EN, zh: ZH,
 
 /** `describeRule` match-dimension tokens by language. */
 export const DESCRIBE_TOKENS: Readonly<Record<UiLanguage, DescribeTokens>> = {
-  en: { allTools: 'all tools', tools: 'tools', agents: 'agents', params: 'params', paths: 'paths', absent: 'absent', when: 'when', platform: 'platform', network: 'network', domains: 'domains', ips: 'ips', ports: 'ports', schemes: 'schemes', disabled: 'disabled', tags: 'tags', src: 'src' },
-  zh: { allTools: '全部工具', tools: '工具', agents: '代理', params: '参数', paths: '路径', absent: '缺省键', when: '条件', platform: '平台', network: '网络', domains: '域名', ips: 'IP', ports: '端口', schemes: '协议', disabled: '已禁用', tags: '标签', src: '来源' },
-  es: { allTools: 'todas las herramientas', tools: 'herramientas', agents: 'agentes', params: 'parámetros', paths: 'rutas', absent: 'ausentes', when: 'cuándo', platform: 'plataforma', network: 'red', domains: 'dominios', ips: 'IP', ports: 'puertos', schemes: 'esquemas', disabled: 'deshabilitada', tags: 'etiquetas', src: 'origen' },
-  pt: { allTools: 'todas as ferramentas', tools: 'ferramentas', agents: 'agentes', params: 'parâmetros', paths: 'caminhos', absent: 'ausentes', when: 'quando', platform: 'plataforma', network: 'rede', domains: 'domínios', ips: 'IP', ports: 'portas', schemes: 'esquemas', disabled: 'desativada', tags: 'etiquetas', src: 'origem' },
-  hi: { allTools: 'सभी टूल', tools: 'टूल', agents: 'एजेंट', params: 'पैरामीटर', paths: 'पथ', absent: 'अनुपस्थित', when: 'शर्त', platform: 'प्लेटफ़ॉर्म', network: 'नेटवर्क', domains: 'डोमेन', ips: 'IP', ports: 'पोर्ट', schemes: 'स्कीम', disabled: 'अक्षम', tags: 'टैग', src: 'स्रोत' },
+  en: { allTools: 'all tools', tools: 'tools', agents: 'agents', params: 'params', paths: 'paths', absent: 'absent', when: 'when', platform: 'platform', argv: 'argv', network: 'network', domains: 'domains', ips: 'ips', ports: 'ports', schemes: 'schemes', disabled: 'disabled', tags: 'tags', src: 'src' },
+  zh: { allTools: '全部工具', tools: '工具', agents: '代理', params: '参数', paths: '路径', absent: '缺省键', when: '条件', platform: '平台', argv: '命令', network: '网络', domains: '域名', ips: 'IP', ports: '端口', schemes: '协议', disabled: '已禁用', tags: '标签', src: '来源' },
+  es: { allTools: 'todas las herramientas', tools: 'herramientas', agents: 'agentes', params: 'parámetros', paths: 'rutas', absent: 'ausentes', when: 'cuándo', platform: 'plataforma', argv: 'comando', network: 'red', domains: 'dominios', ips: 'IP', ports: 'puertos', schemes: 'esquemas', disabled: 'deshabilitada', tags: 'etiquetas', src: 'origen' },
+  pt: { allTools: 'todas as ferramentas', tools: 'ferramentas', agents: 'agentes', params: 'parâmetros', paths: 'caminhos', absent: 'ausentes', when: 'quando', platform: 'plataforma', argv: 'comando', network: 'rede', domains: 'domínios', ips: 'IP', ports: 'portas', schemes: 'esquemas', disabled: 'desativada', tags: 'etiquetas', src: 'origem' },
+  hi: { allTools: 'सभी टूल', tools: 'टूल', agents: 'एजेंट', params: 'पैरामीटर', paths: 'पथ', absent: 'अनुपस्थित', when: 'शर्त', platform: 'प्लेटफ़ॉर्म', argv: 'कमांड', network: 'नेटवर्क', domains: 'डोमेन', ips: 'IP', ports: 'पोर्ट', schemes: 'स्कीम', disabled: 'अक्षम', tags: 'टैग', src: 'स्रोत' },
 }

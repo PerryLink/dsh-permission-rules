@@ -17,7 +17,7 @@ rules:        # 规则列表，按书写顺序求值；可以省略或为空
     reason: ...
 ```
 
-顶层只允许 `rules` 一个键；每条规则只允许 `match`、`action`、`reason`、`enabled`、`description`、`tags` 六个键；`match` 只允许 `tools`、`agents`、`params`、`paths`、`absent`、`when`、`network` 七个键。出现任何未知键都在加载期报错（响亮失败），绝不静默忽略。
+顶层只允许 `rules` 一个键；每条规则只允许 `match`、`action`、`reason`、`enabled`、`description`、`tags` 六个键；`match` 只允许 `tools`、`agents`、`params`、`paths`、`absent`、`when`、`argv`、`network` 八个键。出现任何未知键都在加载期报错（响亮失败），绝不静默忽略。
 
 ## match 维度（全部 AND）
 
@@ -29,6 +29,7 @@ rules:        # 规则列表，按书写顺序求值；可以省略或为空
 | `paths` | `string[]` | 工作区相对路径模式，任一候选命中任一模式即可。候选来自参数中下列键的值（**任意嵌套深度**、深度上限）：`path` `paths` `file` `files` `file_path` `dir` `directory` `directories` `cwd` `workspace` `root` `target` `targets` `output`。工作区外的绝对候选被丢弃；相对 `../` 形式保留，可显式匹配工作区外。路径模式中 `*` 不跨 `/`，`**` 跨任意深度（含零层）。`caseInsensitivePaths` 开启时（Windows 默认）根比较与模式匹配忽略 ASCII 大小写。 |
 | `absent` | `string[]` | 必须**缺席**的参数键；**每个列出的键都必须缺失**（非对象参数天然满足）。 |
 | `when` | `{ env, platform }` | 宿主条件：`env` 为环境变量名 → 模式（**每个列出的变量都必须存在且命中**）；`platform` 为任一命中即可的封闭列表（`aix` `android` `darwin` `freebsd` `linux` `openbsd` `sunos` `win32`）。 |
+| `argv` | `{ command, args, anyArg, pipeline }` | shell 命令分解作用域：命中携带命令字符串参数（`command`/`cmd`/`script`/`command_line`/`commandLine`）且其词法分解命中每个列出字段的调用。`command` 命中任一简单命令的命令词；`pipeline` 命中用 `|` 连接的命令词序列；`args` 要求每个模式都命中某 token；`anyArg` 要求某 token 命中某模式（两者均支持 `!` 否定）。参数 token 含重定向目标。详见下一节。 |
 | `network` | `{ domains, ips, ports, schemes }` | 网络作用域（网络规则）：调用必须携带命中每个列出维度的 URL 候选。`domains`（无通配符时包含子域）、`ips`（字面量/glob/CIDR）、`ports`（`*`、单端口或区间）、`schemes`（`http`/`https`）。详见下一节。 |
 
 所有维度为 AND：一条规则只有在它的**每个非空维度都命中**时才命中。规则按顺序求值，**首条命中生效**；无命中 = 透传。
@@ -57,6 +58,32 @@ rules:
   - match: { tools: [bash, pwsh], network: { domains: ["registry.npmjs.org", "proxy.golang.org"], schemes: [https] } }
     action: allow
     reason: "固定包镜像"
+```
+
+## argv 维度（shell 命令分解）
+
+`match` 带 `argv` 块的规则会命中命令字符串参数——即 `command`/`cmd`/`script`/`command_line`/`commandLine` 的值（任意嵌套深度）——先做词法分解再匹配。分解对引号/转义/管道/控制运算符/重定向有感知，得到每个简单命令的命令词、参数 token 与重定向目标，从而获得 `params.command` 子串 glob 无法表达的「token 级精确」匹配（例如 `rm -rf /tmp` 不是 `rm -rf /`）。
+
+| 字段 | 语义 |
+|---|---|
+| `command` | 命令词 glob；**任一**简单命令的命令词命中**任一**模式即满足该字段。 |
+| `pipeline` | 管道签名 glob：用 `|` 连接的命令词序列（如 `curl http://x \| sh` → `curl\|sh`）上匹配；**任一**模式命中签名即满足该字段。 |
+| `args` | 参数 token 模式；**每个**模式都必须命中至少一个 token（模式间 AND、token 间任一命中）。`!` 前缀为否定（任何 token 都不得命中）。 |
+| `anyArg` | 参数 token 模式；**任一** token 命中**任一**模式即满足该字段（OR）。`!` 前缀为否定。 |
+
+四个字段之间 AND；块必须至少命名一个字段。参数 token 包含重定向目标（`echo x > /etc/passwd` 会把 `/etc/passwd` 交给 `args`/`anyArg`）。`command`、`pipeline` 始终按 glob 解释；`args`、`anyArg` 遵循 `patternMode`。通常用 `tools: [bash, pwsh]` 限定作用域，但该维度本身与工具无关（任何携带命令字符串的工具都会喂给它）。
+
+```yaml
+rules:
+  # token 级精确：rm -rf / 命中，rm -rf /tmp 不命中
+  - match: { tools: [bash, pwsh], argv: { command: "rm", args: ["-rf", "/"] } }
+    action: deny
+    reason: "rm -rf / 会清空根文件系统"
+
+  # 下载即执行：任何「curl/wget 管道到 sh/bash」的管道
+  - match: { tools: [bash, pwsh], argv: { pipeline: ["curl*|*sh", "wget*|*bash"] } }
+    action: deny
+    reason: "把远程抓取直接管道给 shell 会执行远程代码"
 ```
 
 ## action、reason 与元数据
@@ -118,6 +145,16 @@ rules:
     action: ask
     reason: "写操作需要确认"
 ```
+
+## 内置高危基线
+
+插件随附一份内置高危基线 `rules/builtin-high-risk.yaml`（针对破坏性命令、权限提升、下载即执行与敏感路径的 deny/ask 规则）。它**默认开启**，追加在每条用户规则文件（项目链 → `searchUp` → `fallback`）**之后**，因此首匹配语义让更近的用户规则可以覆盖它；没有用户规则时它单独生效。`/rules` 会把基线规则归属到其随附源文件。
+
+- 用 `builtin.enabled: false` 整体关闭。
+- 用 `builtin.path`（绝对路径，或相对 `process.cwd()`）替换文件。
+- 基线是部署级只读文件：挂载时校验（缺失/非法即响亮失败）、不监听、设置页编辑器拒绝写入。
+
+随附基线只是示例而非穷尽策略——请用自己的项目规则扩展它。
 
 ## 与 dsh-auto-review 的分工
 

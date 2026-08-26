@@ -2,6 +2,18 @@
 
 All notable changes to dsh-permission-rules are recorded here, newest first.
 
+## Unreleased
+
+### Added
+
+- **Built-in high-risk baseline**: a shipped `rules/builtin-high-risk.yaml` (deny/ask rules for destructive commands — `rm -rf /`, `mkfs`, `dd of=/dev/*`, `chmod -R 777`, `chown -R` — privilege escalation — setuid/setgid, `shutdown`/`reboot` — download-and-execute — `curl|sh`/`wget|sh` — history rewrites — `git push --force`, `git reset --hard` — the fork bomb, and sensitive paths — `~/.ssh`, `.env`, credentials, `/etc/shadow`, `~/.aws`). Enabled by default and appended AFTER user rules (first-match lets a nearer user rule override it); toggle with `builtin.enabled`, swap with `builtin.path`.
+- **`argv` match dimension**: lexically decompose shell `command`/`cmd`/`script` arguments (quotes/escapes/pipes/control-operators/redirects aware) into command words, argument tokens, redirect targets, and a pipeline signature, then match them token-precisely (`command`, `args` AND, `anyArg` OR, `pipeline`) without changing existing rule syntax.
+- **Rule compile cache**: compiled rules are cached per source path + content hash, so the shared built-in baseline and any shared fallback/absolute `rulesFile` are parsed and compiled once across workspaces instead of once per cwd.
+
+### Docs
+
+- Document the `argv` dimension and the built-in baseline in `docs/rules-format.md`/`.en.md` and `docs/rules-format.schema.json`; add the `builtin.*` config keys to the five-language READMEs.
+
 ## v0.5.6 — 2026-08-25
 
 ### Fixed

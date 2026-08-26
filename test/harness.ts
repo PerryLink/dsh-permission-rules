@@ -161,7 +161,7 @@ export async function mountHarness(
   // landing regardless of the host probe timing; the degradation default
   // itself is covered by test/audit-support.spec.ts (which simulates the
   // pre-marker rc.6 line through the peer-version seam).
-  await ctx.plugin(plugin as unknown as import('@deepseek-ai/cordis').Plugin, { watch: false, allowUnmarkedAudit: true, network: { enabled: false }, ...pluginConfig })
+  await ctx.plugin(plugin as unknown as import('@deepseek-ai/cordis').Plugin, { watch: false, allowUnmarkedAudit: true, network: { enabled: false }, builtin: { enabled: false }, ...pluginConfig })
   const injected: UserMessage[] = []
   const agent = makeAgent(session, injected)
   return { ctx, session, agent, injected, cwd, subagents }

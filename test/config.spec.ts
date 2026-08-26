@@ -108,4 +108,17 @@ describe('resolveConfig', () => {
     expect(() => resolveConfig({ caseInsensitivePaths: 0 as never })).toThrow(/caseInsensitivePaths/)
     expect(() => resolveConfig({ allowUnmarkedAudit: 'yes' as never })).toThrow(/allowUnmarkedAudit/)
   })
+
+  it('defaults the built-in baseline on with the shipped path', () => {
+    const resolved = resolveConfig()
+    expect(resolved.builtin.enabled).toBe(true)
+    expect(resolved.builtin.path).toContain('builtin-high-risk.yaml')
+  })
+
+  it('resolves an explicit builtin path and honors the enable switch', () => {
+    const resolved = resolveConfig({ builtin: { enabled: false, path: '/etc/custom-rules.yaml' } })
+    expect(resolved.builtin.enabled).toBe(false)
+    expect(resolved.builtin.path).toBe('/etc/custom-rules.yaml')
+    expect(() => resolveConfig({ builtin: { enabled: 'yes' as never } })).toThrow(/builtin.enabled/)
+  })
 })

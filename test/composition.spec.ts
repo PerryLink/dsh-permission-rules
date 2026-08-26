@@ -72,6 +72,8 @@ describe('Loader composition', () => {
       'watch: false',
       'network:',
       '  enabled: false',
+      'builtin:',
+      '  enabled: false',
     ]))
     const evidence = runRunner(configPath)
     expect(evidence.status, `stderr:\n${evidence.stderr}`).toBe(0)

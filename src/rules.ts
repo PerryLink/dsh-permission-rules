@@ -9,6 +9,7 @@
 
 import { parse } from 'yaml'
 import { compileGlob, compilePatternRegex } from './glob.ts'
+import { decomposeShellCommand } from './shell.ts'
 
 /** What one matched rule does to a pending tool call. */
 export type RuleAction = 'allow' | 'deny' | 'ask'
@@ -105,6 +106,12 @@ export interface RuleMatchDoc {
   /** Environment/platform conditions; every listed env key must be present and match. */
   when: WhenDoc
   /**
+   * Shell command decomposition scope, when this rule matches on the
+   * command word and argument tokens of a command-string argument; absent
+   * means the rule never evaluates decomposed commands.
+   */
+  argv?: ArgvDoc
+  /**
    * Network scope, when this rule is a network rule; absent means the rule
    * never evaluates URL/connection targets.
    */
@@ -117,6 +124,23 @@ export interface WhenDoc {
   env: Record<string, string[]>
   /** Platform names; ANY match satisfies the dimension. */
   platform: string[]
+}
+
+/**
+ * The parsed `argv` (shell command decomposition) match dimensions. A rule
+ * WITH this block matches a tool call only when the call carries a
+ * command-string argument whose lexical decomposition satisfies every
+ * listed field (AND across `command`/`args`/`anyArg`).
+ */
+export interface ArgvDoc {
+  /** Command-word globs; ANY simple-command word matching ANY pattern satisfies the field. */
+  command: string[]
+  /** Argument-token patterns; EVERY pattern must match at least one token (AND); a `!`-prefixed pattern negates. */
+  args: string[]
+  /** Argument-token patterns; ANY token matching ANY pattern satisfies the field (OR); a `!`-prefixed pattern negates. */
+  anyArg: string[]
+  /** Pipeline-signature globs: matched against the command words joined by `|` (e.g. `curl|sh`); ANY pattern matching the signature satisfies the field. */
+  pipeline: string[]
 }
 
 /**
@@ -176,10 +200,24 @@ export interface CompiledRule {
     readonly env: ReadonlyMap<string, readonly RegExp[]>
     readonly platform: readonly string[]
   }
+  /** Compiled `argv` dimensions, when this rule has command-decomposition scope. */
+  readonly argv?: CompiledArgv
   /** Compiled network dimensions, when this rule has network scope. */
   readonly network?: CompiledNetwork
   /** The original source strings, kept for the `/rules` display. */
   readonly source: RuleDocEntry
+}
+
+/** The compiled `argv` (shell command decomposition) dimensions of one rule. */
+export interface CompiledArgv {
+  /** Command-word globs (always globs, like tool names). */
+  readonly command: readonly RegExp[]
+  /** AND argument-token patterns (positive every-match + negative any-exclude). */
+  readonly args: { readonly positive: readonly RegExp[]; readonly negative: readonly RegExp[] }
+  /** OR argument-token patterns (positive any-match + negative any-exclude). */
+  readonly anyArg: { readonly positive: readonly RegExp[]; readonly negative: readonly RegExp[] }
+  /** Pipeline-signature globs (matched against the command words joined by `|`). */
+  readonly pipeline: readonly RegExp[]
 }
 
 /** One compiled port pattern: an inclusive range; `max: Infinity` is the `*` catch-all. */
@@ -279,10 +317,42 @@ export function compileRules(doc: RulesFileDoc, options: CompileOptions): Compil
   if (doc.rules.length > options.maxRules) {
     throw new RuleError(`rule count ${doc.rules.length} exceeds maxRules ${options.maxRules}`)
   }
-  return {
-    rules: doc.rules.map((entry, index) => compileRule(entry, index, 0, options)),
-    caseInsensitivePaths: options.caseInsensitivePaths,
+  return mergeCompiledRules([compileSourceRules(doc, options)], options)
+}
+
+/**
+ * Compile one parsed document into per-source compiled rules. The returned
+ * rules carry source-local `index` values and `sourceIndex` 0 — the
+ * cacheable unit a runtime can reuse across chains (keyed by source path +
+ * content hash). The total-count cap is NOT applied here; it bounds the
+ * merged chain in {@link mergeCompiledRules}.
+ * @param doc - the parsed document.
+ * @param options - compile options.
+ * @returns the compiled rules of one source.
+ */
+export function compileSourceRules(doc: RulesFileDoc, options: CompileOptions): CompiledRule[] {
+  return doc.rules.map((entry, index) => compileRule(entry, index, 0, options))
+}
+
+/**
+ * Merge per-source compiled rule lists into one chain, assigning the
+ * global 0-based `index` and per-list `sourceIndex` attribution. The TOTAL
+ * rule count is capped by `maxRules`.
+ * @param sources - one compiled rule list per source file, nearest first.
+ * @param options - compile options (the cap).
+ * @returns the merged ruleset.
+ */
+export function mergeCompiledRules(sources: readonly CompiledRule[][], options: CompileOptions): CompiledRuleset {
+  const merged: CompiledRule[] = []
+  sources.forEach((list, sourceIndex) => {
+    for (const rule of list) {
+      merged.push({ ...rule, index: merged.length, sourceIndex })
+    }
+  })
+  if (merged.length > options.maxRules) {
+    throw new RuleError(`rule count ${merged.length} exceeds maxRules ${options.maxRules}`)
   }
+  return { rules: merged, caseInsensitivePaths: options.caseInsensitivePaths }
 }
 
 /**
@@ -297,17 +367,8 @@ export function compileRules(doc: RulesFileDoc, options: CompileOptions): Compil
  */
 export function compileRulesChain(entries: readonly RulesChainEntry[], options: CompileOptions): { ruleset: CompiledRuleset; sources: string[] } {
   const sources = entries.map(entry => entry.path)
-  const merged: CompiledRule[] = []
-  for (const entry of entries) {
-    const doc = parseRulesDocument(entry.text)
-    for (const rule of doc.rules) {
-      merged.push(compileRule(rule, merged.length, sources.indexOf(entry.path), options))
-    }
-  }
-  if (merged.length > options.maxRules) {
-    throw new RuleError(`rule count ${merged.length} exceeds maxRules ${options.maxRules}`)
-  }
-  return { ruleset: { rules: merged, caseInsensitivePaths: options.caseInsensitivePaths }, sources }
+  const compiledSources = entries.map(entry => compileSourceRules(parseRulesDocument(entry.text), options))
+  return { ruleset: mergeCompiledRules(compiledSources, options), sources }
 }
 
 /** Compile one parsed rule into its hot-path form. */
@@ -323,6 +384,7 @@ function compileRule(entry: RuleDocEntry, index: number, sourceIndex: number, op
   for (const [key, patterns] of Object.entries(entry.match.when.env)) {
     env.set(key, patterns.map(pattern => compileValuePattern(pattern, options.patternMode, options.maxGlobStars)))
   }
+  const argv = entry.match.argv === undefined ? undefined : compileArgv(entry.match.argv, options)
   return {
     index,
     sourceIndex,
@@ -337,8 +399,20 @@ function compileRule(entry: RuleDocEntry, index: number, sourceIndex: number, op
     paths,
     absent: entry.match.absent,
     ...(env.size === 0 && entry.match.when.platform.length === 0 ? {} : { when: { env, platform: entry.match.when.platform } }),
+    ...(argv === undefined ? {} : { argv }),
     ...(entry.match.network === undefined ? {} : { network: compileNetwork(entry.match.network, options.maxGlobStars) }),
     source: entry,
+  }
+}
+
+/** Compile the `argv` block of one rule; pattern errors throw at load. */
+function compileArgv(doc: ArgvDoc, options: CompileOptions): CompiledArgv {
+  const command = doc.command.map(pattern => compileToolPattern(pattern, options.maxGlobStars))
+  return {
+    command,
+    args: compileParamPatterns('argv.args', doc.args, options),
+    anyArg: compileParamPatterns('argv.anyArg', doc.anyArg, options),
+    pipeline: doc.pipeline.map(pattern => compileToolPattern(pattern, options.maxGlobStars)),
   }
 }
 
@@ -376,6 +450,7 @@ export function matchRules(
     if (!matchWhen(rule, context)) continue
     if (rule.params.size > 0 && (argRecord === undefined || !matchParams(rule, argRecord))) continue
     if (rule.absent.length > 0 && !matchAbsent(rule, argRecord)) continue
+    if (rule.argv !== undefined && (argRecord === undefined || !matchArgv(rule, argRecord))) continue
     if (rule.paths.length > 0 && (argRecord === undefined || !matchPaths(rule, argRecord, cwd, ruleset.caseInsensitivePaths))) continue
     if (rule.network !== undefined && (argRecord === undefined || !matchNetwork(rule, argRecord))) continue
     return { ruleIndex: rule.index, rule }
@@ -407,7 +482,7 @@ export function findUnreachableRules(ruleset: CompiledRuleset): number[] {
 
 /** Whether every match dimension of one rule is empty. */
 function isCatchAll(rule: CompiledRule): boolean {
-  return rule.tools.length === 0 && rule.agents.length === 0 && rule.params.size === 0 && rule.paths.length === 0 && rule.absent.length === 0 && rule.when === undefined && rule.network === undefined
+  return rule.tools.length === 0 && rule.agents.length === 0 && rule.params.size === 0 && rule.paths.length === 0 && rule.absent.length === 0 && rule.when === undefined && rule.argv === undefined && rule.network === undefined
 }
 
 /**
@@ -432,6 +507,15 @@ export function describeRule(rule: CompiledRule, tokens: DescribeTokens, source?
   if (params.length > 0) parts.push(`${tokens.params}:${params}`)
   if (rule.source.match.paths.length > 0) parts.push(`${tokens.paths}:${rule.source.match.paths.join(',')}`)
   if (rule.source.match.absent.length > 0) parts.push(`${tokens.absent}:${rule.source.match.absent.join(',')}`)
+  const argvDoc = rule.source.match.argv
+  if (argvDoc !== undefined) {
+    const argvParts: string[] = []
+    if (argvDoc.command.length > 0) argvParts.push(`command=${argvDoc.command.join(',')}`)
+    if (argvDoc.args.length > 0) argvParts.push(`args=${argvDoc.args.join(',')}`)
+    if (argvDoc.anyArg.length > 0) argvParts.push(`anyArg=${argvDoc.anyArg.join(',')}`)
+    if (argvDoc.pipeline.length > 0) argvParts.push(`pipeline=${argvDoc.pipeline.join(',')}`)
+    parts.push(`${tokens.argv}:${argvParts.join(' ')}`)
+  }
   const whenParts = Object.entries(rule.source.match.when.env)
     .map(([key, patterns]) => `${key}=${patterns.join('|')}`)
     .join(' ')
@@ -463,6 +547,7 @@ export interface DescribeTokens {
   readonly absent: string
   readonly when: string
   readonly platform: string
+  readonly argv: string
   readonly network: string
   readonly domains: string
   readonly ips: string
@@ -517,6 +602,54 @@ function matchAbsent(rule: CompiledRule, argRecord: Record<string, unknown> | un
     if (argRecord !== undefined && argRecord[key] !== undefined) return false
   }
   return true
+}
+
+/**
+ * Whether a rule's `argv` dimension holds: at least one command-string
+ * argument must decompose into simple commands satisfying EVERY listed
+ * field. `command` matches any simple-command word; `pipeline` matches the
+ * command words joined by `|` (e.g. `curl|sh`); `args` requires every
+ * positive pattern to match some token and no negative to match any;
+ * `anyArg` requires some token to match a positive pattern (when one is
+ * listed) and no negative to match any. Argument tokens include redirect
+ * targets, so `> /etc/passwd` feeds the same token set as an argument.
+ */
+function matchArgv(rule: CompiledRule, args: Record<string, unknown>): boolean {
+  const argv = rule.argv
+  if (argv === undefined) return true
+  const commands = extractCommandCandidates(args).flatMap(text => decomposeShellCommand(text).commands)
+  if (commands.length === 0) return false
+  if (argv.command.length > 0 && !commands.some(command => argv.command.some(regex => regex.test(command.command)))) return false
+  if (argv.pipeline.length > 0 && !argv.pipeline.some(regex => regex.test(commands.map(command => command.command).join('|')))) return false
+  const tokens = commands.flatMap(command => [...command.args, ...command.redirects])
+  if (argv.args.positive.length > 0) {
+    for (const pattern of argv.args.positive) {
+      if (!tokens.some(token => pattern.test(token))) return false
+    }
+  }
+  if (argv.args.negative.length > 0 && tokens.some(token => argv.args.negative.some(regex => regex.test(token)))) return false
+  if (argv.anyArg.positive.length > 0 && !tokens.some(token => argv.anyArg.positive.some(regex => regex.test(token)))) return false
+  if (argv.anyArg.negative.length > 0 && tokens.some(token => argv.anyArg.negative.some(regex => regex.test(token)))) return false
+  return true
+}
+
+/** Collect command-string candidates from tool arguments (the documented command keys, any depth). */
+function extractCommandCandidates(args: Record<string, unknown>): string[] {
+  const candidates: string[] = []
+  const walk = (node: unknown, depth: number): void => {
+    if (depth > MAX_ARGUMENT_DEPTH) return
+    if (Array.isArray(node)) {
+      for (const element of node) walk(element, depth + 1)
+      return
+    }
+    if (typeof node !== 'object' || node === null) return
+    for (const [key, value] of Object.entries(node)) {
+      if (COMMAND_CANDIDATE_KEYS.includes(key) && typeof value === 'string') candidates.push(value)
+      walk(value, depth + 1)
+    }
+  }
+  walk(args, 0)
+  return candidates
 }
 
 /** Whether a rule's when dimension holds for the host facts. */
@@ -622,9 +755,9 @@ function parseRuleEntry(raw: unknown, index: number): RuleDocEntry {
 function parseMatch(raw: unknown, at: string): RuleMatchDoc {
   if (raw === undefined) return { tools: [], agents: [], params: {}, paths: [], absent: [], when: { env: {}, platform: [] } }
   const record = asRecord(raw, `${at}.match`)
-  const unknownFields = Object.keys(record).filter(key => key !== 'tools' && key !== 'agents' && key !== 'params' && key !== 'paths' && key !== 'absent' && key !== 'when' && key !== 'network')
+  const unknownFields = Object.keys(record).filter(key => key !== 'tools' && key !== 'agents' && key !== 'params' && key !== 'paths' && key !== 'absent' && key !== 'when' && key !== 'argv' && key !== 'network')
   if (unknownFields.length > 0) {
-    throw new RuleError(`${at}.match: unknown field${unknownFields.length > 1 ? 's' : ''} ${unknownFields.map(k => JSON.stringify(k)).join(', ')} (allowed: tools, agents, params, paths, absent, when, network)`)
+    throw new RuleError(`${at}.match: unknown field${unknownFields.length > 1 ? 's' : ''} ${unknownFields.map(k => JSON.stringify(k)).join(', ')} (allowed: tools, agents, params, paths, absent, when, argv, network)`)
   }
   return {
     tools: parseStringList(record['tools'], `${at}.match.tools`),
@@ -633,8 +766,30 @@ function parseMatch(raw: unknown, at: string): RuleMatchDoc {
     paths: parseStringList(record['paths'], `${at}.match.paths`),
     absent: parseStringList(record['absent'], `${at}.match.absent`),
     when: parseWhen(record['when'], `${at}.match.when`),
+    ...(record['argv'] === undefined ? {} : { argv: parseArgv(record['argv'], `${at}.match.argv`) }),
     ...(record['network'] === undefined ? {} : { network: parseNetwork(record['network'], `${at}.match.network`) }),
   }
+}
+
+/**
+ * Validate the `argv` block of one rule: closed field vocabulary plus the
+ * same pattern-shape rules as every other pattern list. A block with every
+ * field empty is rejected — an `argv` rule must name at least one field.
+ */
+function parseArgv(raw: unknown, at: string): ArgvDoc {
+  const record = asRecord(raw, at)
+  const unknownFields = Object.keys(record).filter(key => key !== 'command' && key !== 'args' && key !== 'anyArg' && key !== 'pipeline')
+  if (unknownFields.length > 0) {
+    throw new RuleError(`${at}: unknown field${unknownFields.length > 1 ? 's' : ''} ${unknownFields.map(k => JSON.stringify(k)).join(', ')} (allowed: command, args, anyArg, pipeline)`)
+  }
+  const command = parseStringList(record['command'], `${at}.command`)
+  const args = parsePatternValues(record['args'], `${at}.args`)
+  const anyArg = parsePatternValues(record['anyArg'], `${at}.anyArg`)
+  const pipeline = parseStringList(record['pipeline'], `${at}.pipeline`)
+  if (command.length === 0 && args.length === 0 && anyArg.length === 0 && pipeline.length === 0) {
+    throw new RuleError(`${at}: an argv block must name at least one of command, args, anyArg, pipeline (drop the block for a tool-level rule)`)
+  }
+  return { command, args, anyArg, pipeline }
 }
 
 /** Validate the params map: non-empty string keys → one pattern or a pattern list. */
