@@ -2,6 +2,15 @@
 
 All notable changes to dsh-permission-rules are recorded here, newest first.
 
+## v0.6.1 — 2026-08-27
+
+### Fixed
+
+- Declare the web-client inject packages (`@deepseek-ai/dsh-client-connection`,
+  `@deepseek-ai/dsh-client-locale`, `@deepseek-ai/dsh-client-runtime`,
+  `@deepseek-ai/dsh-client-ui-settings`) as optional peerDependencies so the
+  bundle composition is explicit and standalone installs stay clean.
+
 ## v0.6.0 — 2026-08-26
 
 ### Added
