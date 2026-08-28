@@ -6,6 +6,7 @@ on:
 
 permissions:
   contents: write
+  id-token: write
 
 jobs:
   release:
@@ -43,7 +44,7 @@ jobs:
         if: ${{ env.NPM_TOKEN != '' }}
         run: |
           echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
-          npm publish
+          npm publish --provenance
 
       - name: Publish the release artifact
         uses: softprops/action-gh-release@v2
