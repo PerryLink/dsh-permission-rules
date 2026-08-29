@@ -1,6 +1,7 @@
 <div align="center">
 
 # 🛡️ dsh-permission-rules
+- **Canal 1024 store**: `npm i -g dsh1024` uma vez, depois `dsh1024 plugin --profile web add dsh-permission-rules` (conta para o ranking de instalações do [deepseek1024.com](https://deepseek1024.com)).
 
 **Regras de permissão declarativas estilo Claude Code para o DeepSeek Harness.**
 
