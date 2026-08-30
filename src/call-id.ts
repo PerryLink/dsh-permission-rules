@@ -1,0 +1,11 @@
+/**
+ * Dual-ruler call-id brand: host master renamed the dsh-llm `CallId`
+ * brand to `ToolCallId`, while the published 0.1.1-rc.2 line still
+ * exports `CallId`. Derive the brand from the dsh-tools execution
+ * contract so both rulers typecheck without naming either brand name.
+ * @module dsh-permission-rules/call-id
+ */
+
+import type { ToolExecution } from '@deepseek-ai/dsh-tools'
+
+export type CallId = ToolExecution['callId']

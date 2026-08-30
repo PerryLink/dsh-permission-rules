@@ -30,8 +30,8 @@
  * @module dsh-permission-rules/events
  */
 
-import type { CallId } from '@deepseek-ai/dsh-llm'
 import type { PreToolDecision } from '@deepseek-ai/dsh-tools'
+import type { CallId } from './call-id.ts'
 
 declare module '@deepseek-ai/dsh-session/types' {
   interface SessionEventMap {

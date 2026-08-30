@@ -2,6 +2,22 @@
 
 All notable changes to dsh-permission-rules are recorded here, newest first.
 
+## [Unreleased]
+
+### Fixed
+
+- Replace the removed `@deepseek-ai/dsh-client-runtime` client metadata with the
+  current `@deepseek-ai/dsh-client-web` package (`dsh.client.inject` + optional
+  peerDependencies) and align the client-bundle externals with the shell's
+  frozen module table at the 0.1.2-alpha host line
+  (`@deepseek-ai/dsh-client-store` replaces the removed
+  `@deepseek-ai/dsh-client-runtime/client` exemption; the removed
+  `@deepseek-ai/dsh-client-web-react` entry is dropped).
+- Derive the call-id brand from the dsh-tools execution contract
+  (`ToolExecution['callId']`) in `src` and `test`, so both the published
+  0.1.1-rc.2 line (dsh-llm `CallId`) and the 0.1.2-alpha host line (dsh-llm
+  `ToolCallId`) typecheck without naming either brand name.
+
 ## v0.6.2 — 2026-08-30
 
 ### Fixed

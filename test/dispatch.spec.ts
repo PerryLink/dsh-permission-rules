@@ -8,7 +8,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
-import { CallId } from '@deepseek-ai/dsh-llm'
+import { CallId } from './call-id.ts'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import type { PreToolDecision } from '@deepseek-ai/dsh-tools'
 import { dispatchPreExecute, makeAgent, makeExec, mountHarness, removeWorkspace, tempWorkspace } from './harness.ts'

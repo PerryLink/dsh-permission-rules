@@ -10,7 +10,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { CallId } from '@deepseek-ai/dsh-llm'
+import { CallId } from './call-id.ts'
 import type { ApprovalOutcome } from '@deepseek-ai/dsh-user-approval'
 // The sibling package's shipped tarball carries runtime JS without its
 // .d.ts, so this cross-package test imports it through a local ambient
