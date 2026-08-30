@@ -169,7 +169,7 @@ Todos os parâmetros são campos Schemastery `Config` (alteráveis pelo cordis.y
 
 ## Known limitations
 
-- **Marcador de auditoria em hosts anteriores ao marcador.** `permissionRules/decision` é anexado com `ignorable: true`; hosts cujo `Session.append` é anterior ao marcador (as linhas `0.1.0-rc.1`–`rc.7` e `0.1.1-rc.1`–`rc.7`) o descartam silenciosamente, então o runtime desativa a auditoria de log com um aviso único. Ponha `allowUnmarkedAudit: true` para reativar; repare logs já escritos com `scripts/repair-session-logs.mjs`.
+- **Marcador de auditoria em hosts anteriores ao marcador ou que rejeitam eventos.** `permissionRules/decision` é anexado com `ignorable: true`; hosts cujo `Session.append` é anterior ao marcador (as linhas `0.1.0-rc.1`–`rc.7` e `0.1.1-rc.1`–`rc.7`) o descartam silenciosamente, e a linha `0.1.2-alpha` rejeita eventos de plugin na leitura mesmo marcados — o runtime detecta ambos antes do primeiro append e desativa a auditoria de log com um aviso único. Ponha `allowUnmarkedAudit: true` para reativar; repare logs já escritos com `scripts/repair-session-logs.mjs` (seu modo `strip` remove linhas de auditoria onde o marcador não ajuda).
 - **Candidatos de caminho são heurísticos.** Somente as chaves de argumento documentadas alimentam a correspondência de caminho, e a correspondência relativa ao workspace é insensível a maiúsculas ASCII apenas com `caseInsensitivePaths` ativado.
 - **Globs são um subconjunto conservador.** Sem expansão de chaves — escreva dois padrões, ou use o modo regex.
 - **A guarda de backtracking de regex é estrutural, não exaustiva.** Prefira o modo glob para arquivos não confiáveis.

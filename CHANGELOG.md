@@ -2,6 +2,22 @@
 
 All notable changes to dsh-permission-rules are recorded here, newest first.
 
+## [Unreleased]
+
+### Fixed
+
+- `isUnmarkedHostVersion` now treats the whole `0.1.2-alpha` line as unable to
+  safely persist audit events: that line refuses to interpret logs containing
+  out-of-vocabulary event types even when the envelope carries
+  `ignorable: true` (verified on `0.1.2-alpha-1`), so audit events written
+  there made sessions unresumable on the host itself. Session-log audit is now
+  disabled on that line before the first append with the same one-time warning
+  and `allowUnmarkedAudit: true` opt-back-in as the known-unmarked rc lines.
+  Reported by [@rgw87](https://github.com/PerryLink/dsh-permission-rules/issues/15).
+- `scripts/repair-session-logs.mjs` gains a `strip` mode that removes targeted
+  audit rows entirely, for harness lines where the `ignorable` marker cannot
+  help; the five-language READMEs document it.
+
 ## v0.6.1 — 2026-08-27
 
 ### Fixed

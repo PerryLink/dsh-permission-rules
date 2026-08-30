@@ -169,7 +169,7 @@ dsh --profile web --dump-config | grep -A4 'id: permission-rules'
 
 ## Known limitations
 
-- **前标记宿主上的审计标记。** `permissionRules/decision` 以 `ignorable: true` 追加；`Session.append` 早于该标记的宿主（`0.1.0-rc.1`–`rc.7` 与 `0.1.1-rc.1`–`rc.7` 线）静默丢弃它，因此运行时以一次性警告禁用会话日志审计。设 `allowUnmarkedAudit: true` 重新启用；用 `scripts/repair-session-logs.mjs` 修复已写日志。
+- **前标记宿主与拒绝型宿主上的审计标记。** `permissionRules/decision` 以 `ignorable: true` 追加；`Session.append` 早于该标记的宿主（`0.1.0-rc.1`–`rc.7` 与 `0.1.1-rc.1`–`rc.7` 线）静默丢弃它，而 `0.1.2-alpha` 线在读取时连已标记的插件事件也拒绝——运行时在首次追加前检测两者并以一次性警告禁用会话日志审计。设 `allowUnmarkedAudit: true` 重新启用；用 `scripts/repair-session-logs.mjs` 修复已写日志（标记无济于事的宿主用其 `strip` 模式移除审计行）。
 - **路径候选是启发式的。** 只有文档化的参数键参与路径匹配，且工作区相对匹配仅在 `caseInsensitivePaths` 开启时忽略 ASCII 大小写。
 - **glob 是保守子集。** 无花括号展开——写两个模式，或用正则模式。
 - **正则回溯守卫是结构性的、非穷尽的。** 对不可信文件优先用 glob 模式。

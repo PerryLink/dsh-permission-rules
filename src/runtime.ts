@@ -407,8 +407,11 @@ export class PermissionRulesRuntime {
    * runtime therefore detects such hosts BEFORE the first append (peer
    * version) and re-checks after the first append (returned envelope), then
    * degrades: session-log audit is disabled with a one-time warning unless
-   * `allowUnmarkedAudit: true` opts back in. `source` names the matched
-   * rule's file, or the nearest effective file on a passthrough; `cwd`
+   * `allowUnmarkedAudit: true` opts back in. The `0.1.2-alpha` line refuses
+   * plugin event types on read even when marked, so its version gate
+   * disables audit the same way (see `isUnmarkedHostVersion`). `source`
+   * names the matched rule's file, or the nearest effective file on a
+   * passthrough; `cwd`
    * names the workspace the rules were resolved for; `dryRun` marks
    * would-be deny/ask hits under `enforce: false`; `modeDefault` records a
    * network mode-default decision on a web tool (no rule fired).
@@ -772,7 +775,7 @@ export class PermissionRulesRuntime {
   /** One-time warning that session-log audit was disabled to keep session logs loadable. */
   private warnUnmarkedAuditHost(): void {
     this.ctx.logger.warn(
-      'permission-rules: this host drops the ignorable marker on audit events (Session.append predates it), which would make sessions unresumable on stricter harness builds — session-log audit is disabled; set allowUnmarkedAudit: true to opt back in, and repair existing logs with scripts/repair-session-logs.mjs (see https://github.com/PerryLink/dsh-permission-rules/issues/2)',
+      'permission-rules: this host cannot safely persist ignorable-marked audit events (its Session.append predates the marker, or its read path refuses plugin events), which would make sessions unresumable on stricter harness builds — session-log audit is disabled; set allowUnmarkedAudit: true to opt back in, and repair existing logs with scripts/repair-session-logs.mjs (see https://github.com/PerryLink/dsh-permission-rules/issues/2)',
     )
   }
 
@@ -1245,25 +1248,36 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
 }
 
 /**
- * Whether a `@deepseek-ai/dsh-session` version line predates the
- * `ignorable` envelope-marker surface: the released `0.1.0-rc.1`–`0.1.0-rc.7`
- * lines silently drop the marker from `Session.append` options, so audit
- * events written by those builds land unmarked and break resume on
- * stricter hosts. `0.1.0-rc.8` and later stamp the marker. The `0.1.1-rc`
- * line regressed the same way (verified on `0.1.1-rc.2` — the stamping
- * fix exists only on harness master), so `0.1.1-rc.1`–`0.1.1-rc.7` are
- * treated as unmarked too; over-refusal is harmless because
- * `allowUnmarkedAudit: true` opts back in. Extend the bound if a future
- * rc line regresses. Non-matching (later rc, stable, or unresolvable)
- * versions are treated as possibly-marker-aware and verified by the
- * append probe.
+ * Whether a `@deepseek-ai/dsh-session` version line cannot safely persist
+ * plugin audit events, either because it predates the `ignorable`
+ * envelope-marker surface or because its read path refuses out-of-vocabulary
+ * event types even when marked:
+ * - The released `0.1.0-rc.1`–`0.1.0-rc.7` lines silently drop the marker
+ *   from `Session.append` options, so audit events written by those builds
+ *   land unmarked and break resume on stricter hosts. `0.1.0-rc.8` and
+ *   later stamp the marker. The `0.1.1-rc` line regressed the same way
+ *   (verified on `0.1.1-rc.2` — the stamping fix exists only on harness
+ *   master), so `0.1.1-rc.1`–`0.1.1-rc.7` are treated as unmarked too.
+ * - The `0.1.2-alpha` line refuses to interpret logs containing plugin
+ *   event types even when the envelope carries `ignorable: true` (verified
+ *   on `0.1.2-alpha-1`, reported by @rgw87 in issue #15), so audit events
+ *   written there make the session unresumable on that host itself. The
+ *   whole alpha line is treated as unsafe; over-refusal is harmless because
+ *   `allowUnmarkedAudit: true` opts back in, and
+ *   `scripts/repair-session-logs.mjs strip` removes already-written audit
+ *   rows for hosts where the marker cannot help. Extend the bound if a
+ *   future alpha/rc line regresses. Non-matching (later rc, stable, or
+ *   unresolvable) versions are treated as possibly-marker-aware and
+ *   verified by the append probe.
  * @param version - the installed peer version string.
- * @returns true for the known-unmarked rc.1–rc.7 lines of `0.1.0` and `0.1.1`.
+ * @returns true for the known-unsafe rc.1–rc.7 lines of `0.1.0` and
+ *   `0.1.1`, and the `0.1.2-alpha` line.
  */
 export function isUnmarkedHostVersion(version: string): boolean {
-  const match = /^0\.1\.[01]-rc\.(\d+)$/.exec(version.trim())
-  if (match === null) return false
-  return Number(match[1]) <= 7
+  const v = version.trim()
+  const rc = /^0\.1\.[01]-rc\.(\d+)$/.exec(v)
+  if (rc !== null) return Number(rc[1]) <= 7
+  return /^0\.1\.2-alpha[.-]\d+$/.test(v)
 }
 
 /**
