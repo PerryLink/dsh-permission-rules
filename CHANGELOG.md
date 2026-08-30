@@ -2,7 +2,7 @@
 
 All notable changes to dsh-permission-rules are recorded here, newest first.
 
-## [Unreleased]
+## v0.6.2 — 2026-08-30
 
 ### Fixed
 
@@ -207,3 +207,4 @@ All notable changes to dsh-permission-rules are recorded here, newest first.
 - `ask` rides the official approval seam (compose with `dsh-auto-review` for a second-model answerer).
 - Per-workspace rule discovery (`<cwd>/.dsh/rules.yaml`), `fallbackPath`, Chokidar HMR with debounce, `/rules` session command.
 - Fail-loud loading: invalid YAML, unknown fields/actions, bad globs/regexes, and rule counts over `maxRules` fail the load.
+
