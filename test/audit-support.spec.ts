@@ -17,11 +17,11 @@ import { isUnmarkedHostVersion } from '../src/runtime.ts'
 import type { PermissionRulesRuntime } from '../src/runtime.ts'
 import { dispatchPreExecute, makeExec, mountHarness, removeWorkspace, tempWorkspace } from './harness.ts'
 
-/** Version-line classification for the known-unmarked rc.1–rc.7 peers of the 0.1.0 and 0.1.1 lines. */
+/** Version-line classification for the known-unmarked rc.1–rc.7 peers of the 0.1.0 and 0.1.1 lines, and the read-path-refusing 0.1.2-alpha line. */
 describe('isUnmarkedHostVersion', () => {
-  it('flags the 0.1.0/0.1.1 rc.1–rc.7 lines and nothing else', () => {
-    for (const version of ['0.1.0-rc.1', '0.1.0-rc.6', '0.1.0-rc.7', '0.1.1-rc.1', '0.1.1-rc.2', '0.1.1-rc.7']) expect(isUnmarkedHostVersion(version)).toBe(true)
-    for (const version of ['0.1.0-rc.8', '0.1.0-rc.10', '0.1.1-rc.8', '0.1.1-rc.10', '0.1.0', '0.2.0', '0.1.0-rc.6-pre', 'garbage']) expect(isUnmarkedHostVersion(version)).toBe(false)
+  it('flags the 0.1.0/0.1.1 rc.1–rc.7 lines and the 0.1.2-alpha line, and nothing else', () => {
+    for (const version of ['0.1.0-rc.1', '0.1.0-rc.6', '0.1.0-rc.7', '0.1.1-rc.1', '0.1.1-rc.2', '0.1.1-rc.7', '0.1.2-alpha-1', '0.1.2-alpha.1', '0.1.2-alpha.2']) expect(isUnmarkedHostVersion(version)).toBe(true)
+    for (const version of ['0.1.0-rc.8', '0.1.0-rc.10', '0.1.1-rc.8', '0.1.1-rc.10', '0.1.0', '0.2.0', '0.1.0-rc.6-pre', '0.1.2-alpha', '0.1.2-beta.1', '0.1.2', 'garbage']) expect(isUnmarkedHostVersion(version)).toBe(false)
   })
 })
 
@@ -98,6 +98,28 @@ describe('audit host-capability degradation', () => {
       expect(appendSpy).toHaveBeenCalledTimes(2)
     } finally {
       appendSpy.mockRestore()
+      versionSpy.mockRestore()
+      warn.mockRestore()
+      removeWorkspace(cwd)
+    }
+  })
+
+  it('a simulated 0.1.2-alpha host disables session-log audit BEFORE the first append, warning once', async () => {
+    const cwd = tempWorkspace()
+    const harness = await mountHarness({ allowUnmarkedAudit: false }, { cwd })
+    const runtime = harness.ctx.get('permissionRulesRuntime') as PermissionRulesRuntime
+    const warn = vi.spyOn(harness.ctx.logger, 'warn').mockImplementation(() => undefined)
+    // The 0.1.2-alpha read path refuses plugin events even when marked
+    // (issue #15); its version gate must disable audit like the rc.1–rc.7
+    // lines do, so the line is simulated through the peer-version pre-check.
+    const versionSpy = vi.spyOn(runtime as unknown as { peerVersion(): string | null }, 'peerVersion').mockReturnValue('0.1.2-alpha-1')
+    try {
+      await dispatchPreExecute(harness.ctx, makeExec({ name: 'bash', arguments: {}, agent: harness.agent }))
+      expect(harness.session.events.filter(event => event.type === 'permissionRules/decision')).toHaveLength(0)
+      const unmarkedWarnings = warn.mock.calls.filter(([message]) => String(message).includes('ignorable'))
+      expect(unmarkedWarnings).toHaveLength(1)
+      expect(String(unmarkedWarnings[0]?.[0])).toContain('allowUnmarkedAudit')
+    } finally {
       versionSpy.mockRestore()
       warn.mockRestore()
       removeWorkspace(cwd)

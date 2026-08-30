@@ -6,9 +6,17 @@
  * `SessionFormatUnsupportedError` ("unknown to this harness and not marked
  * ignorable").
  *
- * This script rewrites ONLY the targeted log-only audit rows, adding
+ * `repair` rewrites ONLY the targeted log-only audit rows, adding
  * `ignorable: true` to their envelopes; every other byte is preserved. Each
  * modified artifact is backed up to `<file>.bak-<epoch>` before replacement.
+ *
+ * `strip` removes the targeted rows entirely. It exists for harness lines
+ * whose read path refuses out-of-vocabulary event types even when the
+ * envelope is marked (the `0.1.2-alpha` line, verified on `0.1.2-alpha-1` —
+ * issue #15): there the marker cannot help, and dropping the log-only audit
+ * rows is the only repair. The target vocabulary is reconstruction-safe by
+ * construction (never injected into the model context), so removal does not
+ * change how the session replays.
  *
  * It understands both physical encodings of the JSONL backend:
  *   - `session.jsonl.zstd` — a concatenation of checksummed Zstandard frames
@@ -20,6 +28,7 @@
  * Usage:
  *   node scripts/repair-session-logs.mjs scan [--home DIR]      # report foreign rows, change nothing
  *   node scripts/repair-session-logs.mjs repair [--home DIR] [--dry-run]
+ *   node scripts/repair-session-logs.mjs strip [--home DIR] [--dry-run]
  *   node scripts/repair-session-logs.mjs repair --types a/b,c/d
  *
  * `--home` defaults to `$env:DSH_HOME/sessions` or `~/.dsh/sessions`.
@@ -171,37 +180,44 @@ function splitLines(text) {
 }
 
 /**
- * Apply the ignorable marker to targeted audit rows in one JSONL frame.
+ * Apply the ignorable marker to targeted audit rows in one JSONL frame, or
+ * drop them outright in strip mode (for harness lines that refuse marked
+ * plugin events, e.g. the 0.1.2-alpha line).
  * @param {string} text - the frame plaintext.
  * @param {Set<string>} targetTypes - event types to mark.
  * @param {Map<string, number>} foreignSeen - scan accumulator: type -> row count.
+ * @param {boolean} strip - remove targeted rows instead of marking them.
  * @returns {{ text: string, changed: number }}
  */
-function filterFrame(text, targetTypes, foreignSeen) {
+function filterFrame(text, targetTypes, foreignSeen, strip) {
   const lines = splitLines(text)
   let changed = 0
-  const out = lines.map(line => {
-    if (line.length === 0) return line
+  const out = lines.flatMap(line => {
+    if (line.length === 0) return [line]
     let row
     try {
       row = JSON.parse(line)
     } catch {
-      return line // preserve unparsable bytes exactly; the reader owns the refusal
+      return [line] // preserve unparsable bytes exactly; the reader owns the refusal
     }
-    if (typeof row !== 'object' || row === null) return line
+    if (typeof row !== 'object' || row === null) return [line]
     const type = row.type
-    if (typeof type !== 'string' || STORAGE_ROW_TYPES.has(type)) return line
-    if (type === 'session') return line // header row: never an event
+    if (typeof type !== 'string' || STORAGE_ROW_TYPES.has(type)) return [line]
+    if (type === 'session') return [line] // header row: never an event
     if (!KNOWN_SESSION_EVENT_TYPES.has(type)) {
       foreignSeen.set(type, (foreignSeen.get(type) ?? 0) + 1)
     }
     if (targetTypes.has(type)) {
-      if (row.ignorable === true) return line
+      if (strip) {
+        changed += 1
+        return []
+      }
+      if (row.ignorable === true) return [line]
       row.ignorable = true
       changed += 1
-      return JSON.stringify(row)
+      return [JSON.stringify(row)]
     }
-    return line
+    return [line]
   })
   return { text: out.join('\n') + '\n', changed }
 }
@@ -249,7 +265,7 @@ function parseArgs(argv) {
   const args = { mode: undefined, home: undefined, dryRun: false, types: DEFAULT_TARGET_TYPES }
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]
-    if (arg === 'scan' || arg === 'repair') args.mode = arg
+    if (arg === 'scan' || arg === 'repair' || arg === 'strip') args.mode = arg
     else if (arg === '--home') args.home = argv[++i]
     else if (arg === '--dry-run') args.dryRun = true
     else if (arg === '--types') args.types = argv[++i].split(',')
@@ -258,7 +274,7 @@ function parseArgs(argv) {
 }
 
 function usage() {
-  console.error('usage: node repair-session-logs.mjs scan|repair [--home DIR] [--dry-run] [--types a/b,c/d]')
+  console.error('usage: node repair-session-logs.mjs scan|repair|strip [--home DIR] [--dry-run] [--types a/b,c/d]')
   process.exit(2)
 }
 
@@ -297,8 +313,9 @@ for (const path of logs) {
   }
   let fileChanged = 0
   const newFrames = []
+  const strip = args.mode === 'strip'
   for (const frame of log.frames) {
-    const { text, changed } = filterFrame(frame.text, targetTypes, foreignSeen)
+    const { text, changed } = filterFrame(frame.text, targetTypes, foreignSeen, strip)
     newFrames.push({ ...frame, text })
     fileChanged += changed
   }
@@ -306,16 +323,16 @@ for (const path of logs) {
   if (fileChanged > 0) {
     affectedFiles += 1
     marked += fileChanged
-    if (args.mode === 'repair' && !args.dryRun) {
+    if (args.mode !== 'scan' && !args.dryRun) {
       const backup = `${path}.bak-${Date.now()}`
       renameSync(path, backup)
       const content = log.compressed
         ? Buffer.concat(newFrames.map(frame => zstdCompressSync(frame.text, CHECKSUM_OPTIONS)))
         : Buffer.from(newFrames[0].text, 'utf8')
       writeFileSync(path, content)
-      console.log(`repaired ${path} (${fileChanged} row(s) marked ignorable; backup: ${backup})`)
+      console.log(`${strip ? 'stripped' : 'repaired'} ${path} (${fileChanged} row(s) ${strip ? 'removed' : 'marked ignorable'}; backup: ${backup})`)
     } else {
-      console.log(`${args.dryRun ? '[dry-run] would repair' : 'would repair'} ${path}: ${fileChanged} row(s)`)
+      console.log(`[${args.dryRun ? 'dry-run' : 'scan'}] would ${strip ? 'strip' : 'repair'} ${path}: ${fileChanged} row(s)`)
     }
   }
 }
@@ -328,5 +345,7 @@ if (foreignSeen.size > 0) {
   }
 }
 for (const failure of failures) console.error(`error: ${failure}`)
-console.log(`\n${scanned} log(s) scanned, ${affectedFiles} affected, ${marked} row(s) would be marked${args.mode === 'repair' && !args.dryRun ? ' (repaired)' : ''}`)
+const verb = args.mode === 'strip' ? 'stripped' : 'marked'
+const past = args.mode !== 'scan' && !args.dryRun ? ` (${verb})` : ''
+console.log(`\n${scanned} log(s) scanned, ${affectedFiles} affected, ${marked} row(s) would be ${verb}${past}`)
 process.exit(failures.length > 0 ? 1 : 0)

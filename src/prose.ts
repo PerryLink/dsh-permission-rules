@@ -109,7 +109,7 @@ const EN: UiProse = {
   usage: 'Usage: /rules [list | reload | network | decisions [n] | test <tool> <json-args>]',
   decisionsHeader: (shown, total) => `Last ${shown} of ${total} permission decision(s) for this session:`,
   noDecisions: 'No permission decisions recorded in this session yet.',
-  auditDisabledNotice: 'Session-log audit is disabled on this host: its Session.append predates the ignorable marker and would make sessions unresumable elsewhere (set allowUnmarkedAudit: true to opt back in).',
+  auditDisabledNotice: 'Session-log audit is disabled on this host: it cannot safely persist ignorable-marked audit events, which would make sessions unresumable elsewhere (set allowUnmarkedAudit: true to opt back in).',
   invalidDecisionsCount: arg => `Invalid decisions count "${arg}": give a positive integer (default 10).`,
   decisionLine: (seq, action, toolName, ruleIndex, reason, dryRun, outcome) => {
     const rule = ruleIndex === undefined ? '' : ` (rule ${ruleIndex + 1})`
@@ -152,7 +152,7 @@ const ZH: UiProse = {
   usage: '用法：/rules [list | reload | network | decisions [n] | test <工具名> <json-参数>]',
   decisionsHeader: (shown, total) => `本会话最近 ${shown}/${total} 条权限裁决：`,
   noDecisions: '本会话还没有记录任何权限裁决。',
-  auditDisabledNotice: '本宿主上会话日志审计已停用：其 Session.append 早于 ignorable 标记支持，会令会话在其他宿主上无法恢复（设 allowUnmarkedAudit: true 可重新开启）。',
+  auditDisabledNotice: '本宿主上会话日志审计已停用：其无法安全持久化 ignorable 标记的审计事件，会令会话在其他宿主上无法恢复（设 allowUnmarkedAudit: true 可重新开启）。',
   invalidDecisionsCount: arg => `无效的裁决条数 "${arg}"：请给正整数（默认 10）。`,
   decisionLine: (seq, action, toolName, ruleIndex, reason, dryRun, outcome) => {
     const rule = ruleIndex === undefined ? '' : `（规则 ${ruleIndex + 1}）`
@@ -195,7 +195,7 @@ const ES: UiProse = {
   usage: 'Uso: /rules [list | reload | network | decisions [n] | test <herramienta> <json-args>]',
   decisionsHeader: (shown, total) => `Últimas ${shown} de ${total} decisión(es) de permiso de esta sesión:`,
   noDecisions: 'Esta sesión aún no registra decisiones de permiso.',
-  auditDisabledNotice: 'La auditoría del registro de sesión está desactivada en este host: su Session.append es anterior al marcador ignorable y haría las sesiones irrecuperables en otros hosts (establece allowUnmarkedAudit: true para reactivarla).',
+  auditDisabledNotice: 'La auditoría del registro de sesión está desactivada en este host: no puede persistir de forma segura eventos de auditoría marcados como ignorable, lo que haría las sesiones irrecuperables en otros hosts (establece allowUnmarkedAudit: true para reactivarla).',
   invalidDecisionsCount: arg => `Cantidad de decisiones inválida "${arg}": indique un entero positivo (por defecto 10).`,
   decisionLine: (seq, action, toolName, ruleIndex, reason, dryRun, outcome) => {
     const rule = ruleIndex === undefined ? '' : ` (regla ${ruleIndex + 1})`
@@ -238,7 +238,7 @@ const PT: UiProse = {
   usage: 'Uso: /rules [list | reload | network | decisions [n] | test <ferramenta> <json-args>]',
   decisionsHeader: (shown, total) => `Últimas ${shown} de ${total} decisão(ões) de permissão desta sessão:`,
   noDecisions: 'Esta sessão ainda não registrou decisões de permissão.',
-  auditDisabledNotice: 'A auditoria do registro da sessão está desativada neste host: seu Session.append é anterior ao marcador ignorable e tornaria as sessões irrecuperáveis em outros hosts (defina allowUnmarkedAudit: true para reativar).',
+  auditDisabledNotice: 'A auditoria do registro da sessão está desativada neste host: ele não consegue persistir com segurança eventos de auditoria marcados como ignorable, o que tornaria as sessões irrecuperáveis em outros hosts (defina allowUnmarkedAudit: true para reativar).',
   invalidDecisionsCount: arg => `Quantidade de decisões inválida "${arg}": informe um inteiro positivo (padrão 10).`,
   decisionLine: (seq, action, toolName, ruleIndex, reason, dryRun, outcome) => {
     const rule = ruleIndex === undefined ? '' : ` (regra ${ruleIndex + 1})`
@@ -281,7 +281,7 @@ const HI: UiProse = {
   usage: 'उपयोग: /rules [list | reload | network | decisions [n] | test <टूल> <json-args>]',
   decisionsHeader: (shown, total) => `इस सत्र के अंतिम ${shown}/${total} अनुमति निर्णय:`,
   noDecisions: 'इस सत्र में अभी कोई अनुमति निर्णय दर्ज नहीं है।',
-  auditDisabledNotice: 'इस होस्ट पर सत्र-लॉग ऑडिट अक्षम है: इसका Session.append ignorable मार्कर से पुराना है और सत्र अन्य होस्ट पर अप्राप्य बन जाते (पुनः चालू करने के लिए allowUnmarkedAudit: true सेट करें)।',
+  auditDisabledNotice: 'इस होस्ट पर सत्र-लॉग ऑडिट अक्षम है: यह ignorable-चिह्नित ऑडिट इवेंट को सुरक्षित रूप से सहेज नहीं सकता, जिससे सत्र अन्य होस्ट पर अप्राप्य हो जाते (पुनः चालू करने के लिए allowUnmarkedAudit: true सेट करें)।',
   invalidDecisionsCount: arg => `अमान्य निर्णय-संख्या "${arg}": एक धनात्मक पूर्णांक दें (डिफ़ॉल्ट 10)।`,
   decisionLine: (seq, action, toolName, ruleIndex, reason, dryRun, outcome) => {
     const rule = ruleIndex === undefined ? '' : ` (नियम ${ruleIndex + 1})`
