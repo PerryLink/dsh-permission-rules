@@ -1,8 +1,14 @@
 # Changelog
 
+
+## [Unreleased]
+
+### Changed
+
+- Align devDeps pins to the published dsh 0.1.2-alpha.2 line (0.1.1-rc.2 -> 0.1.2-alpha.2); no behavior change to envelope/gating semantics.
 All notable changes to dsh-permission-rules are recorded here, newest first.
 
-## v0.6.3 — 2026-08-30
+## v0.6.3 鈥?2026-08-30
 
 ### Fixed
 
@@ -18,7 +24,7 @@ All notable changes to dsh-permission-rules are recorded here, newest first.
   0.1.1-rc.2 line (dsh-llm `CallId`) and the 0.1.2-alpha host line (dsh-llm
   `ToolCallId`) typecheck without naming either brand name.
 
-## v0.6.2 — 2026-08-30
+## v0.6.2 鈥?2026-08-30
 
 ### Fixed
 
@@ -34,7 +40,7 @@ All notable changes to dsh-permission-rules are recorded here, newest first.
   audit rows entirely, for harness lines where the `ignorable` marker cannot
   help; the five-language READMEs document it.
 
-## v0.6.1 — 2026-08-27
+## v0.6.1 鈥?2026-08-27
 
 ### Fixed
 
@@ -43,11 +49,11 @@ All notable changes to dsh-permission-rules are recorded here, newest first.
   `@deepseek-ai/dsh-client-ui-settings`) as optional peerDependencies so the
   bundle composition is explicit and standalone installs stay clean.
 
-## v0.6.0 — 2026-08-26
+## v0.6.0 鈥?2026-08-26
 
 ### Added
 
-- **Built-in high-risk baseline**: a shipped `rules/builtin-high-risk.yaml` (deny/ask rules for destructive commands — `rm -rf /`, `mkfs`, `dd of=/dev/*`, `chmod -R 777`, `chown -R` — privilege escalation — setuid/setgid, `shutdown`/`reboot` — download-and-execute — `curl|sh`/`wget|sh` — history rewrites — `git push --force`, `git reset --hard` — the fork bomb, and sensitive paths — `~/.ssh`, `.env`, credentials, `/etc/shadow`, `~/.aws`). Enabled by default and appended AFTER user rules (first-match lets a nearer user rule override it); toggle with `builtin.enabled`, swap with `builtin.path`.
+- **Built-in high-risk baseline**: a shipped `rules/builtin-high-risk.yaml` (deny/ask rules for destructive commands 鈥?`rm -rf /`, `mkfs`, `dd of=/dev/*`, `chmod -R 777`, `chown -R` 鈥?privilege escalation 鈥?setuid/setgid, `shutdown`/`reboot` 鈥?download-and-execute 鈥?`curl|sh`/`wget|sh` 鈥?history rewrites 鈥?`git push --force`, `git reset --hard` 鈥?the fork bomb, and sensitive paths 鈥?`~/.ssh`, `.env`, credentials, `/etc/shadow`, `~/.aws`). Enabled by default and appended AFTER user rules (first-match lets a nearer user rule override it); toggle with `builtin.enabled`, swap with `builtin.path`.
 - **`argv` match dimension**: lexically decompose shell `command`/`cmd`/`script` arguments (quotes/escapes/pipes/control-operators/redirects aware) into command words, argument tokens, redirect targets, and a pipeline signature, then match them token-precisely (`command`, `args` AND, `anyArg` OR, `pipeline`) without changing existing rule syntax.
 - **Rule compile cache**: compiled rules are cached per source path + content hash, so the shared built-in baseline and any shared fallback/absolute `rulesFile` are parsed and compiled once across workspaces instead of once per cwd.
 
@@ -55,13 +61,13 @@ All notable changes to dsh-permission-rules are recorded here, newest first.
 
 - Document the `argv` dimension and the built-in baseline in `docs/rules-format.md`/`.en.md` and `docs/rules-format.schema.json`; add the `builtin.*` config keys to the five-language READMEs.
 
-## v0.5.6 — 2026-08-25
+## v0.5.6 鈥?2026-08-25
 
 ### Fixed
 
-- `isUnmarkedHostVersion` only matched the `0.1.0-rc` line, so hosts on the `0.1.1-rc` line passed the pre-check and wrote the first `permissionRules/decision` event unmarked — that polluted event makes the session unresumable on stricter harness builds. The gate now covers `0.1.1-rc.1`–`rc.7` as known-unmarked (verified on `0.1.1-rc.2`, where the harness still drops the `ignorable` marker); over-refusal is opt-out via `allowUnmarkedAudit: true`. Reported by [@cuohua](https://github.com/PerryLink/dsh-permission-rules/issues/11).
+- `isUnmarkedHostVersion` only matched the `0.1.0-rc` line, so hosts on the `0.1.1-rc` line passed the pre-check and wrote the first `permissionRules/decision` event unmarked 鈥?that polluted event makes the session unresumable on stricter harness builds. The gate now covers `0.1.1-rc.1`鈥揱rc.7` as known-unmarked (verified on `0.1.1-rc.2`, where the harness still drops the `ignorable` marker); over-refusal is opt-out via `allowUnmarkedAudit: true`. Reported by [@cuohua](https://github.com/PerryLink/dsh-permission-rules/issues/11).
 
-## v0.5.5 — 2026-08-23
+## v0.5.5 鈥?2026-08-23
 
 ### Docs
 
@@ -69,7 +75,7 @@ All notable changes to dsh-permission-rules are recorded here, newest first.
 - The injected network-policy system-prompt paragraph now opens with a short role sentence (Minimal persona style), as the engineering standard requires.
 - Refresh the five-language README Development section test count to the current `236 tests, 20 files` (was `139 tests, 9 suites`).
 
-## v0.5.4 — 2026-08-22
+## v0.5.4 鈥?2026-08-22
 
 ### DeepSeek Harness rc.2 compatibility
 
@@ -78,35 +84,35 @@ All notable changes to dsh-permission-rules are recorded here, newest first.
 - `pnpm-workspace.yaml` now excludes the whole `@deepseek-ai/*` scope from `minimumReleaseAge`; the compat workflow pins the rc.2 CLI and `dsh-base`/`dsh-headless` bundles.
 - The rc.2 `@deepseek-ai/dsh-*` prereleases resolve from `next` (their `latest` tags are stale), so the fresh transitive peers cannot be hoisted. The workspace drops `nodeLinker: hoisted` (the default isolated linker skips unresolvable peers, as the sibling repo does), and the load-bearing peers are pinned explicitly as devDependencies: `dsh-brand`, `dsh-invariants`, `dsh-session-projection` (sibling tarball peers) and `cordis-plugin-include` (the Loader composition runner).
 
-## v0.5.3 — 2026-08-21
+## v0.5.3 鈥?2026-08-21
 
 ### DeepSeek Harness rc.8 compatibility
 
 - The dsh peer family moves to `0.1.0-rc.8`: devDependencies pin the exact rc.8 line, peerDependencies widen to `>=0.1.0-rc.8 <0.2.0`, the workshop compatibility manifest adds rc.8, and the five-language Harness compatibility row declares it. The rc.8 `commands.execute` signature gained the `images` parameter, so the `/rules` specs and the Loader composition runner pass an empty attachment array; the composition suite proves the built entry loads and serves `/rules` on the rc.8 peers.
 - The rc.8 `dsh-session` stamps the envelope's `ignorable` marker, so the audit-capability degradation tests now simulate the pre-marker line through the runtime's `peerVersion` seam instead of claiming the released peers are unmarked; `isUnmarkedHostVersion`'s contract and the test-harness notes document the marker-aware rc.8 line.
 
-## v0.5.2 — 2026-08-19
+## v0.5.2 鈥?2026-08-19
 
 ### Fixed
 
 - **Client dictionaries survive hot-reload**: the browser half now holds the `locale.register` disposer through the plugin fiber's `ctx.effect` (the locale registry throws on a duplicate namespace). Disposing the client fiber unregisters the `settings.permissionRules` dictionaries; remounting re-registers cleanly instead of failing the mount until the next page refresh. Regression covered by a dispose-and-remount client test against a duplicate-strict locale registry.
 
-## v0.5.1 — 2026-08-17
+## v0.5.1 鈥?2026-08-17
 
 ### Added
 
-- **Shared rule-syntax test vectors** (`docs/rule-test-vectors/`): an implementation-neutral conformance corpus (schema `dsh-rule-test-vectors/v1`) covering exact/glob tool matches, params globs and negation, path patterns, `when.platform`/`when.env`, the `agents` identity dimension, `absent`, first-match ordering, and disabled rules. `test/test-vectors.spec.ts` proves every case through the real parser/matcher — the reference implementation for the cross-gate corpus agreed with sjh9714 (issues #4/#5).
+- **Shared rule-syntax test vectors** (`docs/rule-test-vectors/`): an implementation-neutral conformance corpus (schema `dsh-rule-test-vectors/v1`) covering exact/glob tool matches, params globs and negation, path patterns, `when.platform`/`when.env`, the `agents` identity dimension, `absent`, first-match ordering, and disabled rules. `test/test-vectors.spec.ts` proves every case through the real parser/matcher 鈥?the reference implementation for the cross-gate corpus agreed with sjh9714 (issues #4/#5).
 
 ### Changed
 
-- `scripts/repair-session-logs.mjs` default target set now covers all five `autoReview/*` event types (`state`, `verdict`, `circuit`, `override`, `rejection`) in addition to `permissionRules/decision`, so sessions polluted by `dsh-auto-review` ≤ 0.5.0 on rc.6 hosts repair in one pass.
+- `scripts/repair-session-logs.mjs` default target set now covers all five `autoReview/*` event types (`state`, `verdict`, `circuit`, `override`, `rejection`) in addition to `permissionRules/decision`, so sessions polluted by `dsh-auto-review` 鈮?0.5.0 on rc.6 hosts repair in one pass.
 - The dsh-auto-review integration dependency moves to `vendor/dsh-auto-review-0.5.1.tgz` (its rc.6 audit-gating fix); the integration specs mount it with `allowUnmarkedAudit: true` so the asserted audit chain stays testable against the rc.6 peers.
 
-## v0.5.0 — 2026-08-16
+## v0.5.0 鈥?2026-08-16
 
 ### Added
 
-- **Process-level network policy (Codex-style).** Shell subprocess traffic flows through a built-in local HTTP/CONNECT proxy, and every connection is decided by ordered network rules (`match.network` with `domains` / `ips` / `ports` / `schemes` — globs, wildcards, CIDRs, port ranges; numeric YAML ports are accepted) or by the three network modes mapped onto the official sandbox presets (`deny-all` / `whitelist` / `allow-all` with an `auto` mode).
+- **Process-level network policy (Codex-style).** Shell subprocess traffic flows through a built-in local HTTP/CONNECT proxy, and every connection is decided by ordered network rules (`match.network` with `domains` / `ips` / `ports` / `schemes` 鈥?globs, wildcards, CIDRs, port ranges; numeric YAML ports are accepted) or by the three network modes mapped onto the official sandbox presets (`deny-all` / `whitelist` / `allow-all` with an `auto` mode).
 - URL-candidate extraction on the tools/pre-execute hot path: network rules fire on web-tool arguments and on URLs embedded in bash/pwsh command text; loopback targets can short-circuit rules per policy.
 - Proxy-layer audit: denied connections append `permissionRules/network` to the owning session (same adaptive `ignorable` gate as `permissionRules/decision`), with block counters and recent interceptions in `/rules network` and the settings page.
 - Settings page with a network-mode editor, a known-source rule editor and validated saves; the Typert remote surface (`src/typert.host.ts` / `src/remote-service.ts` / `src/wire.ts`) serves the snapshot and editor.
@@ -119,30 +125,30 @@ All notable changes to dsh-permission-rules are recorded here, newest first.
 - Bare IPv6 loopback candidates (`::1`, full-form `0:0:0:0:0:0:0:1`) parse and are recognized as loopback; literal-IP hosts still match wildcard domain rules.
 - `.dsh/rules.yaml` writes create missing parent directories.
 
-## v0.4.2 — 2026-08-15
+## v0.4.2 鈥?2026-08-15
 
 ### Ecosystem intake
 
-- Declares the DSH Hub Workshop intake manifest in `package.json#dshWorkshop` (`omdsh-workshop-package/v1`): `harness-profile` integration via the bundle patch, transactional install with generation rollback, restart-profile activation with supported dispose, structured permissions (`files:read`, `files:watch`, `session:append`, `network:none`), RC.6 compatibility, and a named `/rules` command capability. Runtime evidence paths stay `null` — author-declared only until Harness-produced lifecycle evidence exists.
+- Declares the DSH Hub Workshop intake manifest in `package.json#dshWorkshop` (`omdsh-workshop-package/v1`): `harness-profile` integration via the bundle patch, transactional install with generation rollback, restart-profile activation with supported dispose, structured permissions (`files:read`, `files:watch`, `session:append`, `network:none`), RC.6 compatibility, and a named `/rules` command capability. Runtime evidence paths stay `null` 鈥?author-declared only until Harness-produced lifecycle evidence exists.
 
-## v0.4.1 — 2026-08-15
+## v0.4.1 鈥?2026-08-15
 
 ### Audit safety on every host (fixes [#2](https://github.com/PerryLink/dsh-permission-rules/issues/2))
 
 - Hosts whose `Session.append` predates the `ignorable` envelope marker (the `0.1.0-rc.6` line) silently drop the marker, writing audit events that make sessions unresumable on stricter harness builds (`SessionFormatUnsupportedError`). The runtime now detects such hosts BEFORE the first append (peer-version pre-check) and re-checks after the first append (probe of the returned envelope), then degrades gracefully: session-log audit is disabled with a one-time warning so session logs stay loadable everywhere.
 - New `allowUnmarkedAudit` config (default `false`): set `true` to opt back into the in-session audit trail on pre-marker hosts (accepting that those sessions may need `scripts/repair-session-logs.mjs` before loading on a newer harness). `/rules decisions` explains the disabled audit on degraded hosts.
-- `events.ts` no longer claims rc.6 hosts are harmless ("no failure either way") — the failure mode is documented accurately, and `isMarkedAuditEvent`/`isUnmarkedHostVersion` ship as exported capability helpers.
+- `events.ts` no longer claims rc.6 hosts are harmless ("no failure either way") 鈥?the failure mode is documented accurately, and `isMarkedAuditEvent`/`isUnmarkedHostVersion` ship as exported capability helpers.
 - Thanks to [@22xuan](https://github.com/22xuan) for the detailed report and the upstream harness discussion; credited in the README Acknowledgments.
 
 ### Engineering
 
 - 139 tests across 9 suites: new `audit-support.spec.ts` covers the version-line classification, the envelope probe, the pre-append degradation, the opt-in, and the `/rules decisions` notice. Five-language READMEs (config table, Known limitations, Acknowledgments), AGENTS.md, CHANGELOG, and VERIFICATION updated.
 
-## v0.4.0 — 2026-08-15
+## v0.4.0 鈥?2026-08-15
 
 ### Hot reload and workspace identity
 
-- **Mid-session rule-file creation is adopted automatically.** Expected-but-absent rule files (the project file when it is not in effect, a fallback deleted after mount) are now watched through their deepest existing ancestor directory (chokidar cannot reliably watch a missing path whose parent is also missing), so creating `.dsh/rules.yaml` — or recreating it after a fallback took over — takes effect without a manual `/rules reload`. Under `searchUp`, only the immediate cwd-level candidate is watched; deeper ancestors still need a reload.
+- **Mid-session rule-file creation is adopted automatically.** Expected-but-absent rule files (the project file when it is not in effect, a fallback deleted after mount) are now watched through their deepest existing ancestor directory (chokidar cannot reliably watch a missing path whose parent is also missing), so creating `.dsh/rules.yaml` 鈥?or recreating it after a fallback took over 鈥?takes effect without a manual `/rules reload`. Under `searchUp`, only the immediate cwd-level candidate is watched; deeper ancestors still need a reload.
 - The per-workspace cache key is now the resolved cwd, case-folded on Windows: differently-spelled paths to the same workspace share one cache entry and one watcher set instead of doubling both.
 
 ### Commands and observability
@@ -154,9 +160,9 @@ All notable changes to dsh-permission-rules are recorded here, newest first.
 ### Engineering
 
 - 133 tests across 8 suites (new coverage: creation-adoption watch paths, fallback recreation, cache-key dedup, `--platform`, `list`, source attribution); coverage gate held. Five-language READMEs, both rules-format references, AGENTS.md, and the `/rules` command hint updated.
-- The test harness now mounts with `watch: false` by default (only the chokidar-mocked watch suite opts in): real watchers on temp workspaces tripped a Node 24 + Windows libuv assertion (`src\win\fs-event.c`) when dirs were removed mid-test — the pre-existing cause of the red windows-latest/Node 24 matrix cells since v0.3.0.
+- The test harness now mounts with `watch: false` by default (only the chokidar-mocked watch suite opts in): real watchers on temp workspaces tripped a Node 24 + Windows libuv assertion (`src\win\fs-event.c`) when dirs were removed mid-test 鈥?the pre-existing cause of the red windows-latest/Node 24 matrix cells since v0.3.0.
 
-## v0.3.0 — 2026-08-14
+## v0.3.0 鈥?2026-08-14
 
 ### Rules vocabulary
 
@@ -165,7 +171,7 @@ All notable changes to dsh-permission-rules are recorded here, newest first.
 
 ### Dry-run rollout and audit fidelity
 
-- `enforce: false` dry-run mode: deny/ask hits are audit-logged with a `dryRun` marker — the record keeps the would-be action AND the real downstream outcome — while every call is delegated via `next()`. `/rules` prints a dry-run notice while the mode is active and `/rules decisions` renders `(dry-run → <outcome>)` on such rows. Trial a new policy in production before enforcing it.
+- `enforce: false` dry-run mode: deny/ask hits are audit-logged with a `dryRun` marker 鈥?the record keeps the would-be action AND the real downstream outcome 鈥?while every call is delegated via `next()`. `/rules` prints a dry-run notice while the mode is active and `/rules decisions` renders `(dry-run 鈫?<outcome>)` on such rows. Trial a new policy in production before enforcing it.
 - `permissionRules/decision` events now carry `cwd`, the workspace the rule chain was resolved for.
 
 ### Commands and observability
@@ -177,7 +183,7 @@ All notable changes to dsh-permission-rules are recorded here, newest first.
 
 - 125 tests across 8 suites; coverage gate held. Five-language READMEs, both rules-format references, the JSON Schema, and the `/rules` command hint updated for `agents` and `enforce`.
 
-## v0.2.0 — 2026-08-14
+## v0.2.0 鈥?2026-08-14
 
 ### Rules vocabulary
 
@@ -191,13 +197,13 @@ All notable changes to dsh-permission-rules are recorded here, newest first.
 
 ### Security hardening
 
-- Catastrophic-backtracking guards at load time: glob patterns are capped at `maxGlobStars` (default 2) unbounded star expansions — the exact degree bound of the generated regex — and regex-mode patterns reject nested unbounded quantifiers (`(a+)+`) and quantified overlapping literal alternations (`(a|aa)+`). Chains of independent quantifiers (`\d+\.\d+\.\d+`) stay allowed by design; glob mode is the guarded default.
-- Audit fidelity: `permissionRules/decision` now carries `outcome`, the FINAL pre-execute decision — an allow hit or passthrough followed by a downstream deny is logged as such instead of claiming the call was allowed.
+- Catastrophic-backtracking guards at load time: glob patterns are capped at `maxGlobStars` (default 2) unbounded star expansions 鈥?the exact degree bound of the generated regex 鈥?and regex-mode patterns reject nested unbounded quantifiers (`(a+)+`) and quantified overlapping literal alternations (`(a|aa)+`). Chains of independent quantifiers (`\d+\.\d+\.\d+`) stay allowed by design; glob mode is the guarded default.
+- Audit fidelity: `permissionRules/decision` now carries `outcome`, the FINAL pre-execute decision 鈥?an allow hit or passthrough followed by a downstream deny is logged as such instead of claiming the call was allowed.
 
 ### Commands and observability
 
 - `/rules decisions [n]` lists the session's audit trail (default 10, newest last).
-- `/rules test <tool> <json-args>` dry-evaluates the active rules against a hypothetical call — no tool executes.
+- `/rules test <tool> <json-args>` dry-evaluates the active rules against a hypothetical call 鈥?no tool executes.
 - `/rules` output localizes via the new `language` config (`en`/`zh`/`es`/`pt`/`hi`; `en`/`zh` are the reference translations) and warns about rules shadowed by an earlier catch-all rule.
 - The runtime registers itself as `ctx.permissionRulesRuntime` (watcher/timer counts for host introspection and tests).
 
@@ -210,13 +216,13 @@ All notable changes to dsh-permission-rules are recorded here, newest first.
 
 ### Engineering
 
-- ESLint (flat config, `@eslint/js` + `typescript-eslint`); CI matrix (3 OS × Node 22/24) with a coverage gate (90/80/90/90) and `pack:check`.
+- ESLint (flat config, `@eslint/js` + `typescript-eslint`); CI matrix (3 OS 脳 Node 22/24) with a coverage gate (90/80/90/90) and `pack:check`.
 - README sync gate (`scripts/check-readme-sync.mjs`, wired into CI): the five language READMEs must share section structure, config-table keys, and `/rules` command docs.
 - Release workflow: tags build, pack, verify the changelog names the version, and attach the tarball to a GitHub Release.
 - `package.json` hygiene: `CHANGELOG.md` ships in the npm files, `sideEffects: false` declared, `.gitattributes` for line endings.
 - Test suite grown to 106 tests across 8 suites; coverage gate held (statements 95%+ / branches 89%+ / functions 99%+ / lines 95%+).
 
-## v0.1.0 — 2026-08-13
+## v0.1.0 鈥?2026-08-13
 
 - First release: declarative `allow`/`deny`/`ask` rules on the `tools/pre-execute` waterfall with tool-name globs, argument glob/regex matching, and workspace-relative path matching.
 - `permissionRules/decision` log-only audit for every hit and passthrough.
