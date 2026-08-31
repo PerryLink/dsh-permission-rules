@@ -1,6 +1,6 @@
 /**
  * Runtime of `dsh-permission-rules`: per-workspace rule loading (project
- * file chain by session cwd → fallback path → empty set), the
+ * file chain by session cwd 鈫?fallback path 鈫?empty set), the
  * `tools/pre-execute` listener that turns a first-match hit into a
  * deny/ask decision (and NEVER short-circuits on allow or passthrough),
  * the `permissionRules/decision` audit event, the `/rules` session command
@@ -136,8 +136,8 @@ export class PermissionRulesRuntime {
 
   /**
    * Resolve which files serve a workspace, nearest first: the USER rule
-   * files (project file under the session cwd — or an absolute `rulesFile`
-   * — with `searchUp` also merging every parent directory's file on the
+   * files (project file under the session cwd 鈥?or an absolute `rulesFile`
+   * 鈥?with `searchUp` also merging every parent directory's file on the
    * way to the root, else the configured fallback, else `[]`), followed by
    * the built-in high-risk baseline when enabled. The baseline sits LAST so
    * first-match semantics let any nearer user rule override it; with no
@@ -157,7 +157,7 @@ export class PermissionRulesRuntime {
     return this.config.builtin.enabled ? this.config.builtin.path : undefined
   }
 
-  /** The user rule files serving a workspace (project chain → fallback → empty), nearest first. */
+  /** The user rule files serving a workspace (project chain 鈫?fallback 鈫?empty), nearest first. */
   private resolveUserSources(cwd: string): string[] {
     if (this.config.searchUp) {
       const sources: string[] = []
@@ -336,11 +336,11 @@ export class PermissionRulesRuntime {
    * (first match wins, short-circuiting downstream listeners); an allow hit
    * and a passthrough MUST delegate via `next()` so later listeners keep
    * their say. Network-scoped rule hits on tool calls carry the structured
-   * `[network: …]` marker; when NO rule matches a web tool
+   * `[network: 鈥` marker; when NO rule matches a web tool
    * (`web_fetch`/`web_search`) the network mode default applies (deny-all
-   * denies, whitelist asks/denies, allow-all passes) — shell tools are
+   * denies, whitelist asks/denies, allow-all passes) 鈥?shell tools are
    * NOT gated here, the proxy enforces their traffic per connection.
-   * Under `enforce: false` (dry-run) a deny/ask hit also delegates — the
+   * Under `enforce: false` (dry-run) a deny/ask hit also delegates 鈥?the
    * record keeps the would-be action with `dryRun: true` and the actual
    * downstream outcome. Audit is appended once the final outcome is
    * known, so the recorded `outcome` matches what the waterfall settled
@@ -403,7 +403,7 @@ export class PermissionRulesRuntime {
    * decision (passthrough included unless `audit: 'hits'`), requesting the
    * envelope's `ignorable: true` marker so any harness build can load the
    * log. Hosts whose `Session.append` predates the marker (the rc.6 line)
-   * silently drop it, leaving sessions unresumable on stricter hosts — the
+   * silently drop it, leaving sessions unresumable on stricter hosts 鈥?the
    * runtime therefore detects such hosts BEFORE the first append (peer
    * version) and re-checks after the first append (returned envelope), then
    * degrades: session-log audit is disabled with a one-time warning unless
@@ -477,8 +477,8 @@ export class PermissionRulesRuntime {
 
   /**
    * Resolve the network policy mode. An explicit config mode wins; `auto`
-   * maps the official sandbox preset (`read-only` → deny-all,
-   * `workspace-write` → whitelist, `danger-full-access` → allow-all) with
+   * maps the official sandbox preset (`read-only` 鈫?deny-all,
+   * `workspace-write` 鈫?whitelist, `danger-full-access` 鈫?allow-all) with
    * `network.autoFallback` covering hosts without the sandbox-policy
    * service (rc.6 and friends stay permissive until configured). For web
    * tools the SESSION's resolved mode is used; the proxy resolves without
@@ -627,7 +627,7 @@ export class PermissionRulesRuntime {
       const { mode, sandboxMode } = this.resolveNetworkMode()
       this.ctx.logger.info(`permission-rules: network proxy listening on ${cfg.proxyBind}:${port} (mode ${mode}${sandboxMode !== undefined ? `, sandbox ${sandboxMode}` : ''})`)
     } catch (error: unknown) {
-      this.ctx.logger.warn(`permission-rules: network proxy failed to bind on ${cfg.proxyBind}:${cfg.proxyPort} (${String(error)}) — shell network policy is INACTIVE; file/command rules stay active`)
+      this.ctx.logger.warn(`permission-rules: network proxy failed to bind on ${cfg.proxyBind}:${cfg.proxyPort} (${String(error)}) 鈥?shell network policy is INACTIVE; file/command rules stay active`)
     }
   }
 
@@ -678,7 +678,7 @@ export class PermissionRulesRuntime {
    * The rule-file paths the settings-page editor may read or write: every
    * currently loaded source plus the per-workspace project files and the
    * configured fallback (so a not-yet-existing project file can be
-   * created). The editor never touches arbitrary paths — and the built-in
+   * created). The editor never touches arbitrary paths 鈥?and the built-in
    * baseline is excluded entirely (it is a shipped, read-only baseline,
    * shown via `/rules` attribution instead).
    */
@@ -726,7 +726,7 @@ export class PermissionRulesRuntime {
 
   /**
    * Validate and write one known rule file. The document must parse and
-   * compile (same checks as a load) BEFORE anything is written — an
+   * compile (same checks as a load) BEFORE anything is written 鈥?an
    * invalid edit is rejected with its error and the file stays untouched.
    * After a successful write every cached workspace reloads so the edit
    * is in effect immediately.
@@ -775,7 +775,7 @@ export class PermissionRulesRuntime {
   /** One-time warning that session-log audit was disabled to keep session logs loadable. */
   private warnUnmarkedAuditHost(): void {
     this.ctx.logger.warn(
-      'permission-rules: this host cannot safely persist ignorable-marked audit events (its Session.append predates the marker, or its read path refuses plugin events), which would make sessions unresumable on stricter harness builds — session-log audit is disabled; set allowUnmarkedAudit: true to opt back in, and repair existing logs with scripts/repair-session-logs.mjs (see https://github.com/PerryLink/dsh-permission-rules/issues/2)',
+      'permission-rules: this host cannot safely persist ignorable-marked audit events (its Session.append predates the marker, or its read path refuses plugin events), which would make sessions unresumable on stricter harness builds 鈥?session-log audit is disabled; set allowUnmarkedAudit: true to opt back in, and repair existing logs with scripts/repair-session-logs.mjs (see https://github.com/PerryLink/dsh-permission-rules/issues/2)',
     )
   }
 
@@ -785,7 +785,7 @@ export class PermissionRulesRuntime {
    * [n]` shows the session's audit trail; `/rules test [flags] <tool>
    * <json>` dry-evaluates the rules against a hypothetical call (flags
    * override the workspace, host env, and agent identity). Command output
-   * stays in the UI — nothing here is injected into the model context.
+   * stays in the UI 鈥?nothing here is injected into the model context.
    * @param invocation - the received command invocation.
    * @returns the command result shown to the user.
    */
@@ -969,7 +969,7 @@ export class PermissionRulesRuntime {
   }
 
   /**
-   * Validate deployment-level file references at mount — the earliest
+   * Validate deployment-level file references at mount 鈥?the earliest
    * resolvable point. An absolute `rulesFile` or a configured
    * `fallbackPath` must exist and parse; a missing referent fails the mount
    * loudly instead of silently degrading later.
@@ -1050,8 +1050,7 @@ export class PermissionRulesRuntime {
    * fallback that does not exist) are covered by candidate watchers on
    * their deepest existing ancestor directory, so a file created
    * mid-session is adopted without a manual `/rules reload`. With
-   * `searchUp`, only the immediate cwd-level candidate is watched —
-   * deeper ancestors are discovered on the next load.
+   * `searchUp`, only the immediate cwd-level candidate is watched 鈥?   * deeper ancestors are discovered on the next load.
    */
   private reconcileWatch(cwd: string, sources: readonly string[]): void {
     for (const [watchedSource, entry] of this.watchers) {
@@ -1070,7 +1069,7 @@ export class PermissionRulesRuntime {
 
   /**
    * The rule-file paths a workspace COULD be served by: the project file
-   * (an absolute `rulesFile`, or `<cwd>/<rulesFile>` — the immediate level
+   * (an absolute `rulesFile`, or `<cwd>/<rulesFile>` 鈥?the immediate level
    * only under `searchUp`) plus the configured fallback.
    */
   private candidateSources(cwd: string): string[] {
@@ -1191,7 +1190,7 @@ export class PermissionRulesRuntime {
   /**
    * Debounce watch events into one reload per stability window. A
    * candidate (directory) watcher only reloads a cwd once its expected
-   * file actually exists — unrelated events while the file is absent are
+   * file actually exists 鈥?unrelated events while the file is absent are
    * dropped before any re-read.
    */
   private scheduleReload(source: string): void {
@@ -1235,7 +1234,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     systemPrompt.context({
       name: 'network:policy',
       order: 115,
-      text: 'You are a helpful assistant. Network policy (permission-rules): shell commands reach the network only through a local policy proxy, and web tools are gated the same way — every target is allowed or blocked per the active rules and sandbox mode, and a blocked connection fails with a [network: …] message. Follow the denial messages and do not attempt to bypass the proxy.',
+      text: 'You are a helpful assistant. Network policy (permission-rules): shell commands reach the network only through a local policy proxy, and web tools are gated the same way 鈥?every target is allowed or blocked per the active rules and sandbox mode, and a blocked connection fails with a [network: 鈥 message. Follow the denial messages and do not attempt to bypass the proxy.',
     })
   })
   await ctx.plugin(PermissionRulesRemoteService, { runtime })
@@ -1252,12 +1251,12 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
  * plugin audit events, either because it predates the `ignorable`
  * envelope-marker surface or because its read path refuses out-of-vocabulary
  * event types even when marked:
- * - The released `0.1.0-rc.1`–`0.1.0-rc.7` lines silently drop the marker
+ * - The released `0.1.0-rc.1`鈥揱0.1.0-rc.7` lines silently drop the marker
  *   from `Session.append` options, so audit events written by those builds
  *   land unmarked and break resume on stricter hosts. `0.1.0-rc.8` and
  *   later stamp the marker. The `0.1.1-rc` line regressed the same way
- *   (verified on `0.1.1-rc.2` — the stamping fix exists only on harness
- *   master), so `0.1.1-rc.1`–`0.1.1-rc.7` are treated as unmarked too.
+ *   (verified on `0.1.1-rc.2` 鈥?the stamping fix exists only on harness
+ *   master), so `0.1.1-rc.1`鈥揱0.1.1-rc.7` are treated as unmarked too.
  * - The `0.1.2-alpha` line refuses to interpret logs containing plugin
  *   event types even when the envelope carries `ignorable: true` (verified
  *   on `0.1.2-alpha-1`, reported by @rgw87 in issue #15), so audit events
@@ -1265,12 +1264,12 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
  *   whole alpha line is treated as unsafe; over-refusal is harmless because
  *   `allowUnmarkedAudit: true` opts back in, and
  *   `scripts/repair-session-logs.mjs strip` removes already-written audit
- *   rows for hosts where the marker cannot help. Extend the bound if a
+ *   rows for hosts where the marker cannot help. On 0.1.2-alpha.2 the envelope field is restored for stored-log read compatibility only - its Session.append still cannot stamp the marker, so the gate behavior is unchanged. Extend the bound if a
  *   future alpha/rc line regresses. Non-matching (later rc, stable, or
  *   unresolvable) versions are treated as possibly-marker-aware and
  *   verified by the append probe.
  * @param version - the installed peer version string.
- * @returns true for the known-unsafe rc.1–rc.7 lines of `0.1.0` and
+ * @returns true for the known-unsafe rc.1鈥搑c.7 lines of `0.1.0` and
  *   `0.1.1`, and the `0.1.2-alpha` line.
  */
 export function isUnmarkedHostVersion(version: string): boolean {
@@ -1301,7 +1300,7 @@ function agentCandidates(agent: ToolExecution['agent']): string[] {
 /**
  * Pull the next whitespace-delimited argument from a command tail,
  * honoring single/double quotes (with backslash escapes) so JSON blobs and
- * paths with spaces survive. The remainder is returned verbatim — the JSON
+ * paths with spaces survive. The remainder is returned verbatim 鈥?the JSON
  * argument tail of `/rules test` is never re-tokenized.
  * @param text - the remaining command tail.
  * @returns the token plus the untouched remainder, or undefined when only
