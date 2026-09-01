@@ -2,6 +2,16 @@
 
 All notable changes to dsh-permission-rules are recorded here, newest first.
 
+## Unreleased
+
+### Fixed
+
+- Guard every CONNECT socket error window so a client reset can no longer
+  crash the host process: the raw tunnel socket now gets an explicit `error`
+  handler (log + destroy both peers) before any await or write, covering the
+  decision await, the 400 early return, and the 403 early return paths
+  ([#12](https://github.com/PerryLink/dsh-permission-rules/issues/12)).
+
 ## v0.6.3 — 2026-08-30
 
 ### Fixed

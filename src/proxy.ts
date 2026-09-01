@@ -184,6 +184,18 @@ export class NetworkProxy {
 
   /** CONNECT tunneling (HTTPS and friends): adjudicate, then either 403 or an established TCP tunnel. */
   private async handleConnect(req: IncomingMessage, socket: Duplex, head: Buffer): Promise<void> {
+    // Guard first (issue #12): a CONNECT socket is a raw Duplex handed over
+    // by the HTTP server with no default 'error' handling, so a client reset
+    // in any window — the decision await, the 400 early return, or the 403
+    // early return — would emit an unhandled 'error' and crash the host
+    // process. The handler closes over the tunnel holder so the same guard
+    // doubles as tunnel teardown once an upstream exists.
+    const tunnelHolder: { tunnel?: Duplex } = {}
+    socket.on('error', (error: unknown) => {
+      this.options.logger.warn(`permission-rules: CONNECT socket error: ${String(error)}`)
+      tunnelHolder.tunnel?.destroy()
+      socket.destroy()
+    })
     const target = connectTarget(req.url ?? '')
     if (target === undefined) {
       socket.end('HTTP/1.1 400 Bad Request\r\n\r\n')
@@ -196,22 +208,22 @@ export class NetworkProxy {
       socket.end(`HTTP/1.1 403 Forbidden\r\ncontent-type: text/plain\r\ncontent-length: ${Buffer.byteLength(body)}\r\n\r\n${body}`)
       return
     }
-    const upstream = connect(target.port ?? 443, target.host)
+    const tunnel = connect(target.port ?? 443, target.host)
+    tunnelHolder.tunnel = tunnel
     this.sockets.add(socket)
-    this.sockets.add(upstream)
+    this.sockets.add(tunnel)
     const cleanup = (): void => {
       this.sockets.delete(socket)
-      this.sockets.delete(upstream)
+      this.sockets.delete(tunnel)
     }
     socket.on('close', cleanup)
-    upstream.on('close', cleanup)
-    upstream.on('error', () => socket.destroy())
-    socket.on('error', () => upstream.destroy())
-    upstream.once('connect', () => {
+    tunnel.on('close', cleanup)
+    tunnel.on('error', () => socket.destroy())
+    tunnel.once('connect', () => {
       socket.write('HTTP/1.1 200 Connection Established\r\n\r\n')
-      if (head.length > 0) upstream.write(head)
-      upstream.pipe(socket)
-      socket.pipe(upstream)
+      if (head.length > 0) tunnel.write(head)
+      tunnel.pipe(socket)
+      socket.pipe(tunnel)
     })
   }
 

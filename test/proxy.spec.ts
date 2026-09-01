@@ -9,7 +9,7 @@
 
 import { createServer, request as httpRequest } from 'node:http'
 import type { Server } from 'node:http'
-import { createServer as createNetServer } from 'node:net'
+import { connect as netConnect, createServer as createNetServer } from 'node:net'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { NetworkProxy, injectProxyEnv, NO_PROXY_ENV_NAMES, PROXY_ENV_NAMES } from '../src/proxy.ts'
 import type { NetworkBlockRecord, NetworkProxyOptions } from '../src/proxy.ts'
@@ -97,6 +97,53 @@ function viaConnect(proxyPort: number, authority: string): Promise<{ status: num
 /** A minimal compiled-rule stand-in carrying only the reason the messages read. */
 function reasonRule(reason: string): CompiledRule {
   return { reason, enabled: true } as CompiledRule
+}
+
+/** Poll a condition until it holds (event-loop-friendly assertion support). */
+async function waitFor(predicate: () => boolean, timeoutMs = 2000): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  while (!predicate()) {
+    if (Date.now() > deadline) throw new Error('waitFor: condition not met in time')
+    await new Promise(resolve => setTimeout(resolve, 10))
+  }
+}
+
+// Windows (IOCP) surfaces an idle CONNECT socket's RST as 'close' without an
+// 'error' event; Linux (epoll) emits ECONNRESET — the crash class reported in
+// issue #12 (Ubuntu). CI's ubuntu job asserts the logged-error path; the
+// survival-and-still-serving assertions run everywhere.
+const expectResetErrorLogged = process.platform !== 'win32'
+
+/**
+ * Raw CONNECT whose client sends a real RST as soon as the request line is
+ * written (issue #12's crash trigger: the client-side reset, not the
+ * upstream one — a clean FIN never emits 'error' on the proxy socket).
+ */
+function resetConnect(proxyPort: number, authority: string, delayMs = 0): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const socket = netConnect(proxyPort, '127.0.0.1')
+    let settled = false
+    const settle = (fn: () => void): void => {
+      if (settled) return
+      settled = true
+      fn()
+    }
+    socket.on('error', () => settle(() => reject(new Error('resetConnect: client socket error'))))
+    socket.on('connect', () => {
+      socket.write(`CONNECT ${authority} HTTP/1.1\r\nHost: ${authority}\r\n\r\n`)
+      // Delay the RST so the request is delivered and parsed first —
+      // resetting instantly can kill the connection before the server ever
+      // emits 'connect' and hands the raw socket to handleConnect.
+      setTimeout(() => {
+        socket.resetAndDestroy()
+        settle(resolve)
+      }, delayMs)
+    })
+    socket.setTimeout(2000, () => {
+      socket.destroy()
+      settle(() => reject(new Error('resetConnect: connect timed out')))
+    })
+  })
 }
 
 beforeEach(() => {
@@ -216,6 +263,96 @@ describe('CONNECT tunneling', () => {
       expect(result.status).toBe(200)
       expect(result.echoed).toBe(true)
       expect(proxy.blockStats()).toEqual({ denied: 0, askBlocked: 0 })
+    } finally {
+      await proxy.close()
+      await new Promise<void>(resolve => echo.close(() => resolve()))
+    }
+  })
+})
+
+describe('CONNECT socket reset hardening (issue #12)', () => {
+  it('survives a client reset on the 400 early-return path and keeps serving', async () => {
+    const warnings: string[] = []
+    const proxy = await startProxy(() => ({ action: 'deny', matched: false, mode: 'deny-all' }), { logger: { warn: message => warnings.push(message) } })
+    try {
+      await resetConnect(proxy.port, 'not-an-authority', 100)
+      if (expectResetErrorLogged) {
+        await waitFor(() => warnings.some(message => message.includes('CONNECT socket error')))
+      }
+      const result = await viaConnect(proxy.port, 'blocked.example:443')
+      expect(result.status).toBe(403)
+    } finally {
+      await proxy.close()
+    }
+  })
+
+  it('survives a client reset on the 403 deny path and still records the block', async () => {
+    const warnings: string[] = []
+    const proxy = await startProxy(() => ({ action: 'deny', matched: false, mode: 'deny-all' }), { logger: { warn: message => warnings.push(message) } })
+    try {
+      // IP-literal target: the deny decision resolves without DNS, so the
+      // block record is deterministic (the DNS-await window is covered by
+      // the pending-decision test above).
+      await resetConnect(proxy.port, '127.0.0.1:9', 100)
+      if (expectResetErrorLogged) {
+        await waitFor(() => warnings.some(message => message.includes('CONNECT socket error')))
+      }
+      await waitFor(() => proxy.blockStats().denied === 1)
+      expect(proxy.blockStats()).toEqual({ denied: 1, askBlocked: 0 })
+      const result = await viaConnect(proxy.port, '127.0.0.1:9')
+      expect(result.status).toBe(403)
+    } finally {
+      await proxy.close()
+    }
+  })
+
+  it('survives a client reset while the decision is pending', async () => {
+    let release!: () => void
+    const gate = new Promise<NetworkDecision>(resolve => {
+      release = () => resolve({ action: 'allow', matched: false, mode: 'allow-all' })
+    })
+    const decide = ((): Promise<NetworkDecision> => gate) as unknown as NetworkProxyOptions['decide']
+    const proxy = await startProxy(decide)
+    try {
+      await resetConnect(proxy.port, '127.0.0.1:443')
+      await new Promise(resolve => setTimeout(resolve, 50))
+      release()
+      // The released allow targets a port with no listener; the upstream
+      // refusal must be contained, and the proxy must keep serving.
+      await new Promise(resolve => setTimeout(resolve, 50))
+      const result = await viaConnect(proxy.port, 'not-an-authority')
+      expect(result.status).toBe(400)
+    } finally {
+      await proxy.close()
+    }
+  })
+
+  it('survives a client reset mid-tunnel and keeps serving', async () => {
+    const echo = createNetServer(socket => socket.pipe(socket))
+    await new Promise<void>(resolve => echo.listen(0, '127.0.0.1', resolve))
+    const address = echo.address()
+    if (address === null || typeof address === 'string') throw new Error('echo bind failed')
+    const warnings: string[] = []
+    const proxy = await startProxy(() => ({ action: 'allow', matched: false, mode: 'allow-all' }), { logger: { warn: message => warnings.push(message) } })
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const req = httpRequest({ host: '127.0.0.1', port: proxy.port, method: 'CONNECT', path: `127.0.0.1:${address.port}` })
+        req.on('connect', (_res, socket) => {
+          socket.write('ping')
+          socket.once('data', () => {
+            socket.resetAndDestroy()
+            resolve()
+          })
+        })
+        req.on('error', reject)
+        req.end()
+      })
+      // With active tunnel pipes the reset surfaces as 'error' on every
+      // platform, so the guard's logged teardown is assertable here.
+      await waitFor(() => warnings.some(message => message.includes('CONNECT socket error')))
+      const result = await viaConnect(proxy.port, `127.0.0.1:${address.port}`)
+      expect(result.status).toBe(200)
+      expect(result.echoed).toBe(true)
     } finally {
       await proxy.close()
       await new Promise<void>(resolve => echo.close(() => resolve()))
