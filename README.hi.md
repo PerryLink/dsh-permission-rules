@@ -25,7 +25,7 @@
 
 | Surface | Status |
 |---|---|
-| Harness | DeepSeek Harness `0.1.1-rc.2` |
+| Harness | DeepSeek Harness `0.1.1-rc.2` 0.1.2-alpha.2 (2026-08-31 को अनुकूलित): सत्र लिफ़ाफ़ा अपना ignorable फ़ील्ड केवल संग्रहीत-लॉग पठन संगतता के लिए रखता है - Session.append अभी भी इसे स्टैम्प नहीं कर सकता, इसलिए गेट व्यवहार अपरिवर्तित है। |
 | Node | `^22.19.0 || >=24.0.0` |
 | Platforms | सभी (host + वेब settings क्लाइंट) |
 | Model | कोई भी (deny/ask कारण टूल परिणामों के माध्यम से दिखते हैं) |

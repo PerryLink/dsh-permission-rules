@@ -26,7 +26,7 @@
 
 | Surface | Status |
 |---|---|
-| Harness | DeepSeek Harness `0.1.1-rc.2` |
+| Harness | DeepSeek Harness `0.1.1-rc.2` 0.1.2-alpha.2 (adapted 2026-08-31): the session envelope keeps its ignorable field for stored-log read compatibility only - Session.append still cannot stamp it, so audit-gate behavior is unchanged. |
 | Node | `^22.19.0 || >=24.0.0` |
 | Platforms | All (host + web settings client) |
 | Model | Any (deny/ask reasons surface through tool results) |
