@@ -17,4 +17,4 @@ verifyDepsBeforeRun: false
 # ships with. The committed lockfile records this override (frozen installs
 # read it from the lockfile).
 overrides:
-  '@deepseek-ai/dsh-sandbox': 0.1.2-alpha.2
+  '@deepseek-ai/dsh-sandbox': 0.1.2-alpha.3
