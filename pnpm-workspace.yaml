@@ -10,3 +10,11 @@ allowBuilds:
 # minimum-release-age window; exclude the whole scope so installs resolve.
 minimumReleaseAgeExclude:
   - '@deepseek-ai/*'
+verifyDepsBeforeRun: false
+# The 0.1.2-alpha host line declares transitive ranges like
+# `@deepseek-ai/dsh-sandbox@>=0.1.2 <0.2.0-0` that only prereleases satisfy,
+# so strict range resolution fails; pin the exact alpha release the family
+# ships with. The committed lockfile records this override (frozen installs
+# read it from the lockfile).
+overrides:
+  '@deepseek-ai/dsh-sandbox': 0.1.2-alpha.2
