@@ -2,6 +2,12 @@
 
 All notable changes to dsh-permission-rules are recorded here, newest first.
 
+## [Unreleased]
+
+### Changed
+
+- Align the devDependency pins to the published dsh `0.1.2-alpha.3` line (17 `@deepseek-ai/dsh-*` packages), align `cordis`/`schemastery` to `^4.0.2`/`^3.18.2`, and raise the `dsh-sandbox` override and `dshWorkshop.compatibility.dshVersions` to `0.1.2-alpha.3`. The audit gate classification keeps failing safe on `0.1.2-alpha.3`; the five-language READMEs record the alpha.3 fact. The vendored `dsh-auto-review` 0.6.0 tarball stays frozen.
+
 ## v0.6.4 — 2026-09-01
 
 ### Fixed
