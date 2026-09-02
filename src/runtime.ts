@@ -19,6 +19,7 @@ import chokidar from 'chokidar'
 import type { Context } from '@deepseek-ai/cordis'
 import type { CommandInvocation, CommandResult } from '@deepseek-ai/dsh-commands'
 import type { PreToolDecision, ToolExecution } from '@deepseek-ai/dsh-tools'
+import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import { resolveConfig } from './config.ts'
 import type { Config, ResolvedConfig } from './config.ts'
 import type { CallId } from './call-id.ts'
@@ -28,6 +29,12 @@ import { DESCRIBE_TOKENS, UI_PROSE } from './prose.ts'
 import type { UiProse } from './prose.ts'
 import { blockMessage, decideNetworkTarget, defaultDecision, networkModeForSandbox } from './network.ts'
 import type { NetworkChain, NetworkDecision, NetworkMode } from './network.ts'
+
+/** Session events with an old-host fallback: alpha.5 renamed the getter to snapshotEvents(). */
+function readSessionEvents(session: { snapshotEvents?: () => readonly SessionEvent[]; events?: readonly SessionEvent[] }): readonly SessionEvent[] {
+  if (typeof session.snapshotEvents === 'function') return session.snapshotEvents()
+  return session.events ?? []
+}
 import { injectProxyEnv, NetworkProxy } from './proxy.ts'
 import type { NetworkBlockRecord, ProxyAttribution } from './proxy.ts'
 import { PermissionRulesRemoteService } from './remote-service.ts'
@@ -932,7 +939,7 @@ export class PermissionRulesRuntime {
 
   /** Render the session's `permissionRules/decision` audit trail, newest last. */
   private decisionsCommand(invocation: CommandInvocation, count: number, prose: UiProse): CommandResult {
-    const decisions = invocation.agent.session.events.filter(event => event.type === 'permissionRules/decision')
+    const decisions = readSessionEvents(invocation.agent.session).filter(event => event.type === 'permissionRules/decision')
     const lines: string[] = []
     if (decisions.length === 0) {
       lines.push(prose.noDecisions)

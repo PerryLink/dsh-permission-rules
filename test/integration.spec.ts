@@ -71,23 +71,23 @@ describe('dsh-permission-rules × dsh-auto-review integration', () => {
       expect(harness.subagents.starts).toHaveLength(1)
 
       // Step 3: the audit chain is complete and ordered.
-      const wireTypes = harness.session.events.map(event => (event as { type: string }).type)
+      const wireTypes = harness.session.snapshotEvents().map(event => (event as { type: string }).type)
       const indexOf = (type: string): number => wireTypes.lastIndexOf(type)
       expect(indexOf('permissionRules/decision')).toBeGreaterThanOrEqual(0)
       expect(indexOf('approval/asked')).toBeGreaterThan(indexOf('permissionRules/decision'))
       expect(indexOf('autoReview/verdict')).toBeGreaterThan(indexOf('approval/asked'))
       expect(indexOf('approval/decided')).toBeGreaterThan(indexOf('autoReview/verdict'))
 
-      const decisionEvent = harness.session.events.find(event => event.type === 'permissionRules/decision')
+      const decisionEvent = harness.session.snapshotEvents().find(event => event.type === 'permissionRules/decision')
       expect(decisionEvent?.data).toMatchObject({ toolName: 'bash', callId: 'call-integration', action: 'ask', ruleIndex: 0 })
-      const asked = harness.session.events.find(event => event.type === 'approval/asked')
+      const asked = harness.session.snapshotEvents().find(event => event.type === 'approval/asked')
       expect(asked?.data).toMatchObject({ toolName: 'bash', callId: 'call-integration', reason: '命令执行需要第二模型裁决' })
       // autoReview/verdict is dsh-auto-review's vocabulary: asserted at the
       // wire level (this package does not depend on its type declarations).
-      const wire = harness.session.events as unknown as { type: string; data: Record<string, unknown> }[]
+      const wire = harness.session.snapshotEvents() as unknown as { type: string; data: Record<string, unknown> }[]
       const verdict = wire.find(event => event.type === 'autoReview/verdict')
       expect(verdict?.data).toMatchObject({ approvalId: asked?.data.id, toolName: 'bash', decision: 'allow', reason: 'looks safe', outcome: 'allowed-once' })
-      const decided = harness.session.events.find(event => event.type === 'approval/decided')
+      const decided = harness.session.snapshotEvents().find(event => event.type === 'approval/decided')
       expect(decided?.data).toMatchObject({ id: asked?.data.id, outcome: 'allowed-once' })
     } finally {
       removeWorkspace(cwd)
@@ -126,7 +126,7 @@ describe('dsh-permission-rules × dsh-auto-review integration', () => {
         signal: new AbortController().signal,
       })
       expect(outcome).toBe('rejected')
-      const decided = harness.session.events.findLast(event => event.type === 'approval/decided')
+      const decided = harness.session.snapshotEvents().findLast(event => event.type === 'approval/decided')
       expect(decided?.data).toMatchObject({ outcome: 'rejected' })
     } finally {
       removeWorkspace(cwd)
@@ -154,7 +154,7 @@ describe('dsh-permission-rules × dsh-auto-review integration', () => {
         signal: new AbortController().signal,
       })
       expect(outcome).toBe('unavailable')
-      const decided = harness.session.events.findLast(event => event.type === 'approval/decided')
+      const decided = harness.session.snapshotEvents().findLast(event => event.type === 'approval/decided')
       expect(decided?.data).toMatchObject({ outcome: 'unavailable' })
     } finally {
       removeWorkspace(cwd)

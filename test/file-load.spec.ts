@@ -26,7 +26,7 @@ describe('rule-file loading', () => {
         makeExec({ name: 'bash', arguments: {}, agent: harness.agent }),
       )
       expect(decision).toEqual({ kind: 'deny', reason: 'no bash' })
-      const audit = harness.session.events.find(event => event.type === 'permissionRules/decision')
+      const audit = harness.session.snapshotEvents().find(event => event.type === 'permissionRules/decision')
       expect((audit?.data as { source: string }).source).toBe(join(fallback, 'rules.yaml'))
     } finally {
       removeWorkspace(cwd)
@@ -67,7 +67,7 @@ describe('rule-file loading', () => {
       )
       expect(decision).toEqual({ kind: 'allow' })
       expect(warn.mock.calls.some(([message]) => String(message).includes('action must be one of'))).toBe(true)
-      const audit = harness.session.events.find(event => event.type === 'permissionRules/decision')
+      const audit = harness.session.snapshotEvents().find(event => event.type === 'permissionRules/decision')
       expect((audit?.data as Record<string, unknown>).action).toBe('passthrough')
     } finally {
       warn.mockRestore()
@@ -158,7 +158,7 @@ describe('searchUp hierarchical discovery', () => {
       )
       expect(readDecision).toEqual({ kind: 'allow' })
       // The audit names the matched rule's own file.
-      const bashAudit = harness.session.events.findLast(event => event.type === 'permissionRules/decision' && (event.data as { toolName: string }).toolName === 'bash')
+      const bashAudit = harness.session.snapshotEvents().findLast(event => event.type === 'permissionRules/decision' && (event.data as { toolName: string }).toolName === 'bash')
       expect((bashAudit?.data as { source: string }).source).toBe(join(child, FILE))
     } finally {
       removeWorkspace(parent)

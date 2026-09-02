@@ -51,7 +51,7 @@ describe('audit host-capability degradation', () => {
       await dispatchPreExecute(harness.ctx, makeExec({ name: 'bash', arguments: {}, agent: harness.agent }))
       await dispatchPreExecute(harness.ctx, makeExec({ name: 'glob', arguments: {}, agent: harness.agent }))
       // No audit event ever entered the session log.
-      expect(harness.session.events.filter(event => event.type === 'permissionRules/decision')).toHaveLength(0)
+      expect(harness.session.snapshotEvents().filter(event => event.type === 'permissionRules/decision')).toHaveLength(0)
       // The warning fired exactly once and explains the degradation.
       const unmarkedWarnings = warn.mock.calls.filter(([message]) => String(message).includes('ignorable'))
       expect(unmarkedWarnings).toHaveLength(1)
@@ -69,7 +69,7 @@ describe('audit host-capability degradation', () => {
     const warn = vi.spyOn(harness.ctx.logger, 'warn').mockImplementation(() => undefined)
     try {
       await dispatchPreExecute(harness.ctx, makeExec({ name: 'bash', arguments: {}, agent: harness.agent }))
-      expect(harness.session.events.filter(event => event.type === 'permissionRules/decision')).toHaveLength(1)
+      expect(harness.session.snapshotEvents().filter(event => event.type === 'permissionRules/decision')).toHaveLength(1)
       expect(warn.mock.calls.some(([message]) => String(message).includes('ignorable'))).toBe(false)
     } finally {
       warn.mockRestore()
@@ -93,7 +93,7 @@ describe('audit host-capability degradation', () => {
     try {
       await dispatchPreExecute(harness.ctx, makeExec({ name: 'bash', arguments: {}, agent: harness.agent }))
       await dispatchPreExecute(harness.ctx, makeExec({ name: 'glob', arguments: {}, agent: harness.agent }))
-      expect(harness.session.events.filter(event => event.type === 'permissionRules/decision')).toHaveLength(2)
+      expect(harness.session.snapshotEvents().filter(event => event.type === 'permissionRules/decision')).toHaveLength(2)
       expect(warn.mock.calls.some(([message]) => String(message).includes('ignorable'))).toBe(false)
       expect(appendSpy).toHaveBeenCalledTimes(2)
     } finally {
@@ -115,7 +115,7 @@ describe('audit host-capability degradation', () => {
     const versionSpy = vi.spyOn(runtime as unknown as { peerVersion(): string | null }, 'peerVersion').mockReturnValue('0.1.2-alpha-1')
     try {
       await dispatchPreExecute(harness.ctx, makeExec({ name: 'bash', arguments: {}, agent: harness.agent }))
-      expect(harness.session.events.filter(event => event.type === 'permissionRules/decision')).toHaveLength(0)
+      expect(harness.session.snapshotEvents().filter(event => event.type === 'permissionRules/decision')).toHaveLength(0)
       const unmarkedWarnings = warn.mock.calls.filter(([message]) => String(message).includes('ignorable'))
       expect(unmarkedWarnings).toHaveLength(1)
       expect(String(unmarkedWarnings[0]?.[0])).toContain('allowUnmarkedAudit')

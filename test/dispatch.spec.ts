@@ -53,7 +53,7 @@ describe('tools/pre-execute dispatch', () => {
       )
       expect(decision).toEqual({ kind: 'deny', reason: '禁止 push 到受保护路径' })
       expect(downstreamCalled).toBe(false)
-      const audit = decisionEvents(harness.session.events)
+      const audit = decisionEvents(harness.session.snapshotEvents())
       expect(audit.at(-1)).toMatchObject({
         toolName: 'bash',
         callId: 'call-1',
@@ -83,7 +83,7 @@ describe('tools/pre-execute dispatch', () => {
       )
       expect(decision).toEqual({ kind: 'ask', reason: '写文件需要确认' })
       expect(downstreamCalled).toBe(false)
-      expect(decisionEvents(harness.session.events).at(-1)).toMatchObject({
+      expect(decisionEvents(harness.session.snapshotEvents()).at(-1)).toMatchObject({
         toolName: 'edit',
         action: 'ask',
         outcome: 'ask',
@@ -107,7 +107,7 @@ describe('tools/pre-execute dispatch', () => {
       // The audit names BOTH the rule action (allow) and the final outcome
       // (deny, decided by the downstream listener) — the log never claims a
       // call was allowed when a later listener denied it.
-      expect(decisionEvents(harness.session.events).at(-1)).toMatchObject({
+      expect(decisionEvents(harness.session.snapshotEvents()).at(-1)).toMatchObject({
         toolName: 'read',
         action: 'allow',
         outcome: 'deny',
@@ -133,7 +133,7 @@ describe('tools/pre-execute dispatch', () => {
       )
       expect(decision).toEqual({ kind: 'allow' })
       expect(downstreamCalled).toBe(true)
-      const audit = decisionEvents(harness.session.events).at(-1)
+      const audit = decisionEvents(harness.session.snapshotEvents()).at(-1)
       expect(audit).toMatchObject({ toolName: 'glob', action: 'passthrough', outcome: 'allow' })
       expect(audit).not.toHaveProperty('ruleIndex')
       expect(audit).not.toHaveProperty('reason')
@@ -151,7 +151,7 @@ describe('tools/pre-execute dispatch', () => {
         makeExec({ name: 'bash', arguments: { command: 'ls' }, agent: harness.agent }),
       )
       expect(decision).toEqual({ kind: 'allow' })
-      expect(decisionEvents(harness.session.events).at(-1)).toMatchObject({
+      expect(decisionEvents(harness.session.snapshotEvents()).at(-1)).toMatchObject({
         toolName: 'bash',
         action: 'passthrough',
         outcome: 'allow',
@@ -173,7 +173,7 @@ describe('tools/pre-execute dispatch', () => {
         makeExec({ name: 'bash', arguments: { command: 'git push origin main', cwd: 'secrets/x' } }),
       )
       expect(decision).toEqual({ kind: 'deny', reason: '禁止 push 到受保护路径' })
-      expect(decisionEvents(harness.session.events)).toHaveLength(0)
+      expect(decisionEvents(harness.session.snapshotEvents())).toHaveLength(0)
     } finally {
       removeWorkspace(cwd)
     }
@@ -187,7 +187,7 @@ describe('tools/pre-execute dispatch', () => {
         harness.ctx,
         makeExec({ name: 'write', arguments: { path: 'a.txt' }, callId: CallId('call-42'), agent: harness.agent }),
       )
-      expect(decisionEvents(harness.session.events).at(-1)).toMatchObject({ callId: 'call-42' })
+      expect(decisionEvents(harness.session.snapshotEvents()).at(-1)).toMatchObject({ callId: 'call-42' })
     } finally {
       removeWorkspace(cwd)
     }
@@ -218,12 +218,12 @@ describe('tools/pre-execute dispatch', () => {
         harness.ctx,
         makeExec({ name: 'glob', arguments: { pattern: '*' }, agent: harness.agent }),
       )
-      expect(decisionEvents(harness.session.events)).toHaveLength(0)
+      expect(decisionEvents(harness.session.snapshotEvents())).toHaveLength(0)
       await dispatchPreExecute(
         harness.ctx,
         makeExec({ name: 'bash', arguments: { command: 'git push origin main', cwd: 'src/secrets/app' }, agent: harness.agent }),
       )
-      expect(decisionEvents(harness.session.events).at(-1)).toMatchObject({ action: 'deny', outcome: 'deny' })
+      expect(decisionEvents(harness.session.snapshotEvents()).at(-1)).toMatchObject({ action: 'deny', outcome: 'deny' })
     } finally {
       removeWorkspace(cwd)
     }
@@ -237,7 +237,7 @@ describe('tools/pre-execute dispatch', () => {
         harness.ctx,
         makeExec({ name: 'bash', arguments: { command: 'git push origin main', cwd: 'src/secrets/app' }, agent: harness.agent }),
       )
-      expect(decisionEvents(harness.session.events).at(-1)?.cwd).toBe(cwd)
+      expect(decisionEvents(harness.session.snapshotEvents()).at(-1)?.cwd).toBe(cwd)
     } finally {
       removeWorkspace(cwd)
     }
@@ -261,7 +261,7 @@ describe('tools/pre-execute — dry-run mode (enforce: false)', () => {
       // Dry-run never short-circuits: the downstream decision wins.
       expect(decision).toEqual({ kind: 'allow' })
       expect(downstreamCalled).toBe(true)
-      expect(decisionEvents(harness.session.events).at(-1)).toMatchObject({
+      expect(decisionEvents(harness.session.snapshotEvents()).at(-1)).toMatchObject({
         toolName: 'bash',
         action: 'deny',
         outcome: 'allow',
@@ -283,7 +283,7 @@ describe('tools/pre-execute — dry-run mode (enforce: false)', () => {
         async () => ({ kind: 'deny', reason: 'later listener refused' }),
       )
       expect(decision).toEqual({ kind: 'deny', reason: 'later listener refused' })
-      expect(decisionEvents(harness.session.events).at(-1)).toMatchObject({
+      expect(decisionEvents(harness.session.snapshotEvents()).at(-1)).toMatchObject({
         toolName: 'edit',
         action: 'ask',
         outcome: 'deny',
@@ -307,7 +307,7 @@ describe('tools/pre-execute — dry-run mode (enforce: false)', () => {
         harness.ctx,
         makeExec({ name: 'glob', arguments: { pattern: '*' }, agent: harness.agent }),
       )
-      const events = decisionEvents(harness.session.events)
+      const events = decisionEvents(harness.session.snapshotEvents())
       expect(events.at(-2)).toMatchObject({ action: 'allow', outcome: 'allow' })
       expect(events.at(-2)).not.toHaveProperty('dryRun')
       expect(events.at(-1)).toMatchObject({ action: 'passthrough' })
