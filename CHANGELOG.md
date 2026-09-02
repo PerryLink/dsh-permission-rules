@@ -2,6 +2,13 @@
 
 All notable changes to dsh-permission-rules are recorded here, newest first.
 
+## v0.6.6 - 2026-09-02
+
+### Changed
+
+- Re-verify the adaptation claims against the published dsh `0.1.2-alpha.5` line and refresh the devDependency pins and lockfile for it.
+- Repack the vendored `dsh-auto-review` sibling tarball at `0.10.0` (alpha.5-adapted tree) and repoint the `file:` devDependency; the integration suite stays green (271/271).
+
 ## v0.6.5 - 2026-09-01
 
 ### Changed
