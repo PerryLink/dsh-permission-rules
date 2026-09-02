@@ -1,3 +1,9 @@
+## [0.6.7] - 2026-09-02
+
+### Docs
+
+- Sync the five-language READMEs to the 0.1.2-alpha.5 facts; no behavior change.
+
 # Changelog
 
 All notable changes to dsh-permission-rules are recorded here, newest first.
