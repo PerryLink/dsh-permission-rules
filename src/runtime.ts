@@ -493,7 +493,7 @@ export class PermissionRulesRuntime {
    * @param session - optional session whose override outranks the default.
    * @returns the resolved mode plus the sandbox preset it came from.
    */
-  resolveNetworkMode(session?: { events?: unknown }): { mode: NetworkMode; sandboxMode: string | undefined } {
+  resolveNetworkMode(session?: unknown): { mode: NetworkMode; sandboxMode: string | undefined } {
     const cfg = this.config.network
     if (cfg.mode !== 'auto') return { mode: cfg.mode, sandboxMode: undefined }
     const policy = this.ctx.get('sandboxPolicy') as { defaultMode?: string; resolve?: (request?: { session?: unknown }) => { mode?: string } } | undefined
