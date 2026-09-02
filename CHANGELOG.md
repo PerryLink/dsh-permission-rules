@@ -1,3 +1,15 @@
+## v0.6.8 - 2026-09-03
+
+### Fixed
+
+- Never recursively watch a workspace root for an expected-but-absent rule
+  file (issue #13): candidate watchers are depth-limited to the immediate
+  children of the deepest existing ancestor, ignore `node_modules`/`.git`,
+  upgrade the watch when the missing path component (e.g. `.dsh/`)
+  appears, and close when their watched directory disappears. A missing
+  `.dsh/rules.yaml` used to watch the entire workspace tree — 245k inotify
+  watches, multi-GiB RSS, and stalled tool calls on large workspaces.
+
 ## v0.6.7 - 2026-09-02
 
 ### Docs
