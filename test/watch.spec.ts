@@ -20,16 +20,18 @@ const watchHarness = vi.hoisted(() => ({
 }))
 interface FakeWatcher extends EventEmitter {
   path: string
+  options: { depth?: number; ignored?: (path: string) => boolean } | undefined
   close(): Promise<void>
 }
 const { watchers, closed } = watchHarness
 
 vi.mock('chokidar', () => ({
   default: {
-    watch(path: string): FakeWatcher {
+    watch(path: string, options?: { depth?: number; ignored?: (path: string) => boolean }): FakeWatcher {
       const emitter = new EventEmitter()
       const watcher = emitter as FakeWatcher
       watcher.path = path
+      watcher.options = options
       watcher.close = async () => {
         closed.push(watcher)
       }
@@ -156,6 +158,70 @@ describe('rule-file watching', () => {
     try {
       await dispatchPreExecute(harness.ctx, makeExec({ name: 'bash', arguments: {}, agent: harness.agent }))
       expect(watchers.length).toBe(before)
+    } finally {
+      removeWorkspace(cwd)
+    }
+  })
+
+  it('a missing-parent candidate watcher is depth-limited and ignores heavy directories (issue #13)', async () => {
+    const cwd = tempWorkspace() // no .dsh at all
+    const harness = await mountHarness({ watch: true }, { cwd })
+    try {
+      await dispatchPreExecute(harness.ctx, makeExec({ name: 'bash', arguments: {}, agent: harness.agent }))
+      const candidateWatcher = watchers.at(-1)
+      expect(candidateWatcher?.path.toLowerCase()).toBe(cwd.toLowerCase())
+      // Never recurse from the workspace root, and never watch the heavy dirs.
+      expect(candidateWatcher?.options?.depth).toBe(0)
+      expect(candidateWatcher?.options?.ignored?.(join(cwd, 'node_modules', 'x'))).toBe(true)
+      expect(candidateWatcher?.options?.ignored?.(join(cwd, '.git', 'x'))).toBe(true)
+      expect(candidateWatcher?.options?.ignored?.(join(cwd, 'src', 'x.ts'))).toBe(false)
+    } finally {
+      removeWorkspace(cwd)
+    }
+  })
+
+  it('a .dsh directory created mid-session upgrades the depth-limited watch and adopts the file', async () => {
+    const cwd = tempWorkspace() // no .dsh yet
+    const harness = await mountHarness({ watch: true, watchStabilityThresholdMs: 10 }, { cwd })
+    try {
+      await dispatchPreExecute(harness.ctx, makeExec({ name: 'bash', arguments: {}, agent: harness.agent }))
+      const rootWatcher = watchers.at(-1)
+      expect(rootWatcher?.options?.depth).toBe(0)
+      // The missing .dsh appears: the root-level watcher upgrades to the new level.
+      mkdirSync(join(cwd, '.dsh'), { recursive: true })
+      rootWatcher?.emit('addDir', join(cwd, '.dsh'))
+      const upgradedWatcher = watchers.at(-1)
+      expect(upgradedWatcher).not.toBe(rootWatcher)
+      expect(upgradedWatcher?.path.toLowerCase()).toBe(join(cwd, '.dsh').toLowerCase())
+      // The file created under it is adopted without a manual reload.
+      writeFileSync(join(cwd, '.dsh', 'rules.yaml'), GOOD_1, 'utf8')
+      upgradedWatcher?.emit('add', join(cwd, '.dsh', 'rules.yaml'))
+      await vi.waitFor(async () => {
+        const decision = await dispatchPreExecute(
+          harness.ctx,
+          makeExec({ name: 'bash', arguments: {}, agent: harness.agent }),
+        )
+        expect(decision).toEqual({ kind: 'deny', reason: 'no bash v1' })
+      })
+    } finally {
+      removeWorkspace(cwd)
+    }
+  })
+
+  it('a candidate watcher whose directory disappears closes instead of lingering on a dead path', async () => {
+    const cwd = tempWorkspace() // no .dsh yet
+    const harness = await mountHarness({ watch: true }, { cwd })
+    try {
+      await dispatchPreExecute(harness.ctx, makeExec({ name: 'bash', arguments: {}, agent: harness.agent }))
+      const rootWatcher = watchers.at(-1)
+      mkdirSync(join(cwd, '.dsh'), { recursive: true })
+      rootWatcher?.emit('addDir', join(cwd, '.dsh'))
+      const upgradedWatcher = watchers.at(-1)
+      expect(upgradedWatcher?.path.toLowerCase()).toBe(join(cwd, '.dsh').toLowerCase())
+      // The .dsh directory disappears before the file ever existed.
+      rmSync(join(cwd, '.dsh'), { recursive: true, force: true })
+      upgradedWatcher?.emit('unlinkDir', join(cwd, '.dsh'))
+      expect(closed.includes(upgradedWatcher as FakeWatcher)).toBe(true)
     } finally {
       removeWorkspace(cwd)
     }

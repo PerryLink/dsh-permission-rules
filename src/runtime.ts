@@ -14,7 +14,7 @@
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
-import { dirname, isAbsolute, join, resolve } from 'node:path'
+import { dirname, isAbsolute, join, resolve, sep } from 'node:path'
 import chokidar from 'chokidar'
 import type { Context } from '@deepseek-ai/cordis'
 import type { CommandInvocation, CommandResult } from '@deepseek-ai/dsh-commands'
@@ -1094,10 +1094,22 @@ export class PermissionRulesRuntime {
    * relevant event re-checks existence and only triggers a reload once the
    * candidate actually appeared, so unrelated workspace activity while the
    * file is absent costs a stat, not a reload.
+   *
+   * Candidate watchers never recurse past the immediate children of that
+   * ancestor: when the walk-up landed on the workspace root (the
+   * candidate's parent chain is missing, e.g. no `.dsh/` directory),
+   * recursion would watch the entire workspace tree — issue #13 measured
+   * 245k inotify watches and multi-GiB RSS from exactly this path. The
+   * watcher therefore runs with `depth: 0` plus `node_modules`/`.git`
+   * ignores in that case, and the `addDir` handler upgrades the watch to
+   * the newly appeared ancestor level, preserving mid-session adoption.
+   * A candidate watcher whose directory itself disappears closes instead
+   * of lingering on a dead path.
    */
   private attachCandidateWatch(cwd: string, candidate: string): void {
     if (!this.config.watch) return
-    const dir = this.deepestExistingDir(dirname(candidate))
+    const parent = dirname(candidate)
+    const dir = this.deepestExistingDir(parent)
     const existing = this.watchers.get(dir)
     if (existing !== undefined) {
       existing.cwds.add(cwd)
@@ -1106,13 +1118,43 @@ export class PermissionRulesRuntime {
     }
     const cwds = new Set([cwd])
     const candidates = new Map([[cwd, candidate]])
-    const watcher = chokidar.watch(dir, { persistent: true, ignoreInitial: true })
-    const onEvent = (): void => this.scheduleReload(dir)
-    watcher.on('add', onEvent)
-    watcher.on('addDir', onEvent)
-    watcher.on('change', onEvent)
-    watcher.on('unlink', onEvent)
-    watcher.on('unlinkDir', onEvent)
+    const watchOptions = {
+      persistent: true,
+      ignoreInitial: true,
+      ignored: (path: string): boolean => path.split(sep).includes('node_modules') || path.split(sep).includes('.git'),
+    }
+    const watcher = dir === parent
+      ? chokidar.watch(dir, watchOptions)
+      : chokidar.watch(dir, { ...watchOptions, depth: 0 })
+    // Windows paths may reach the watcher with a different ASCII case than
+    // the header-derived candidate paths (the session layer case-folds the
+    // cache key); compare case-insensitively there or the upgrade/close
+    // handlers silently never fire.
+    const samePath = (a: string, b: string): boolean => (process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b)
+    const startsWithPath = (a: string, b: string): boolean => (process.platform === 'win32' ? a.toLowerCase().startsWith(b.toLowerCase()) : a.startsWith(b))
+    const onEvent = (event: string, path: string): void => {
+      if (event === 'unlinkDir' && samePath(path, dir)) {
+        this.watchers.delete(dir)
+        const timer = this.timers.get(dir)
+        if (timer !== undefined) {
+          clearTimeout(timer)
+          this.timers.delete(dir)
+        }
+        void watcher.close().catch((error: unknown) => {
+          this.ctx.logger.warn(`permission-rules: failed to close watcher on ${dir}: ${String(error)}`)
+        })
+        return
+      }
+      if (dir !== parent && event === 'addDir' && (samePath(path, parent) || startsWithPath(path, parent + sep))) {
+        this.attachCandidateWatch(cwd, candidate)
+      }
+      this.scheduleReload(dir)
+    }
+    watcher.on('add', (path: string) => onEvent('add', path))
+    watcher.on('addDir', (path: string) => onEvent('addDir', path))
+    watcher.on('change', (path: string) => onEvent('change', path))
+    watcher.on('unlink', (path: string) => onEvent('unlink', path))
+    watcher.on('unlinkDir', (path: string) => onEvent('unlinkDir', path))
     watcher.on('error', (error: unknown) => {
       this.ctx.logger.warn(`permission-rules: watcher error on ${dir}: ${String(error)}`)
     })
