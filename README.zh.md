@@ -262,3 +262,7 @@ node scripts/check-readme-sync.mjs   # five-language README sync gate (also in C
 ## License
 
 [Apache License 2.0](LICENSE) © 2026 dsh-permission-rules contributors
+
+### 从 DSH Desktop 市场安装
+
+所有 PerryLink 插件均可在 DSH Desktop 内置市场中浏览：**市场 → 来源 → 添加来源 → 粘贴** `https://perrylink-dsh-catalog.perrylink.workers.dev/catalog-source.json` **→ 选中**。安装仍需通过市场的 npm 身份校验与你的确认。
