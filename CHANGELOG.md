@@ -1,3 +1,10 @@
+## v0.6.9 - 2026-09-03
+
+### Changed
+
+- Vendor the `dsh-auto-review 0.10.2` integration tarball (its runtime dependencies now pin the published dsh `0.1.2-alpha.5` line; `dsh-agent-spine-demo` moved to devDependencies) and update the `file:` devDependency.
+- Dev pins `@deepseek-ai/cordis-plugin-loader ^1.0.3` / `@deepseek-ai/cordis-plugin-include ^1.0.7` aligned with the `cordis 4.0.2` peer ranges.
+
 ## v0.6.8 - 2026-09-03
 
 ### Fixed
