@@ -1307,6 +1307,14 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
  *   later stamp the marker. The `0.1.1-rc` line regressed the same way
  *   (verified on `0.1.1-rc.2` — the stamping fix exists only on harness
  *   master), so `0.1.1-rc.1`–`0.1.1-rc.7` are treated as unmarked too.
+ * - The `0.1.2-rc` line ships the alpha.5 surface: the third
+ *   `Session.append` parameter is `SurfaceIntent` for surface event types
+ *   only, so no rc build in the `0.1.2` minor stamps the marker either
+ *   (verified against the `dsh-v0.1.2-rc.1` tag). The whole rc line is
+ *   treated as unmarked.
+ * - The `0.1.3-alpha` line keeps that surface-only append signature
+ *   (verified against the `dsh-v0.1.3-alpha.1` tag), so its builds stamp
+ *   the marker no more than rc.1 does and the line is treated as unmarked.
  * - The `0.1.2-alpha` line refuses to interpret logs containing plugin
  *   event types even when the envelope carries `ignorable: true` (verified
  *   on `0.1.2-alpha-1`, reported by @rgw87 in issue #15), so audit events
@@ -1314,19 +1322,25 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
  *   whole alpha line is treated as unsafe; over-refusal is harmless because
  *   `allowUnmarkedAudit: true` opts back in, and
  *   `scripts/repair-session-logs.mjs strip` removes already-written audit
- *   rows for hosts where the marker cannot help. On 0.1.2-alpha.2 the envelope field is restored for stored-log read compatibility only - its Session.append still cannot stamp the marker, so the gate behavior is unchanged. Extend the bound if a
- *   future alpha/rc line regresses. Non-matching (later rc, stable, or
- *   unresolvable) versions are treated as possibly-marker-aware and
- *   verified by the append probe.
+ *   rows for hosts where the marker cannot help. On `0.1.2-alpha.2` the
+ *   envelope field is restored for stored-log read compatibility only — its
+ *   `Session.append` still cannot stamp the marker, so the gate behavior is
+ *   unchanged.
+ * - Every rc build in minor 2 and later is treated as unmarked too
+ *   (defensive: a future `0.1.3-rc` line would ship at least the same
+ *   surface, and over-refusal is harmless for the reasons above).
+ *   Non-matching (later stable or unresolvable) versions are treated as
+ *   possibly-marker-aware and verified by the append probe.
  * @param version - the installed peer version string.
  * @returns true for the known-unsafe rc.1–rc.7 lines of `0.1.0` and
- *   `0.1.1`, and the `0.1.2-alpha` line.
+ *   `0.1.1`, every rc build in minor 2 and later, and the `0.1.2-alpha`
+ *   and `0.1.3-alpha` lines.
  */
 export function isUnmarkedHostVersion(version: string): boolean {
   const v = version.trim()
-  const rc = /^0\.1\.[01]-rc\.(\d+)$/.exec(v)
-  if (rc !== null) return Number(rc[1]) <= 7
-  return /^0\.1\.2-alpha[.-]\d+$/.test(v)
+  const rc = /^0\.1\.([0-9]+)-rc\.(\d+)$/.exec(v)
+  if (rc !== null) return Number(rc[1]) >= 2 || Number(rc[2]) <= 7
+  return /^0\.1\.[23]-alpha[.-]\d+$/.test(v)
 }
 
 /**

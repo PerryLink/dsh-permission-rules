@@ -1,7 +1,8 @@
 /**
  * Shared test harness: real Cordis Context + real Session/Commands/
- * ApprovalService from the `0.1.0-rc.8` peers, scripted subagent/tools
- * mocks for the dsh-auto-review integration, and a minimal fake Agent.
+ * ApprovalService from the pinned `0.1.2-rc.1` dev peers, scripted
+ * subagent/tools mocks for the dsh-auto-review integration, and a minimal
+ * fake Agent.
  * @module dsh-permission-rules/test/harness
  */
 
@@ -157,10 +158,12 @@ export async function mountHarness(
   // libuv assertion (src\win\fs-event.c) on Windows + Node 24 when the
   // dirs are removed mid-test, crashing the coverage worker.
   // Session-log audit is opted IN by default for the same reason: the real
-  // rc.8 peers are marker-aware, but most specs assert on the audit events
-  // landing regardless of the host probe timing; the degradation default
-  // itself is covered by test/audit-support.spec.ts (which simulates the
-  // pre-marker rc.6 line through the peer-version seam).
+  // rc.1 peers cannot stamp the envelope marker, but most specs assert on
+  // the audit events landing regardless of host capability, and
+  // `allowUnmarkedAudit: true` skips the version pre-check and the append
+  // probe; the degradation default itself is covered by
+  // test/audit-support.spec.ts (which simulates the unmarked lines through
+  // the peer-version seam).
   await ctx.plugin(plugin as unknown as import('@deepseek-ai/cordis').Plugin, { watch: false, allowUnmarkedAudit: true, network: { enabled: false }, builtin: { enabled: false }, ...pluginConfig })
   const injected: UserMessage[] = []
   const agent = makeAgent(session, injected)
