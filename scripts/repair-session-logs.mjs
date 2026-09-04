@@ -12,11 +12,17 @@
  *
  * `strip` removes the targeted rows entirely. It exists for harness lines
  * whose read path refuses out-of-vocabulary event types even when the
- * envelope is marked (the `0.1.2-alpha` line, verified on `0.1.2-alpha-1` —
- * issue #15): there the marker cannot help, and dropping the log-only audit
- * rows is the only repair. The target vocabulary is reconstruction-safe by
- * construction (never injected into the model context), so removal does not
- * change how the session replays.
+ * envelope is marked — the `0.1.2-alpha` line (verified on `0.1.2-alpha-1`,
+ * issue #15) refuses them directly, and the `0.1.3-alpha.1` v1→v2 migration
+ * gate (`session-format-v1-to-v2/src/migration.ts`) refuses every v1 event
+ * type outside the released v0 vocabulary, audit rows included even when
+ * stamped, so a v1 log containing audit rows blocks the whole session load
+ * on that host: v1 logs must be `strip`ped before a v2 host first opens
+ * them, while v2 logs accept marked plugin rows and only need `repair`.
+ * There the marker cannot help, and dropping the log-only audit rows is the
+ * only repair. The target vocabulary is reconstruction-safe by construction
+ * (never injected into the model context), so removal does not change how
+ * the session replays.
  *
  * It understands both physical encodings of the JSONL backend:
  *   - `session.jsonl.zstd` — a concatenation of checksummed Zstandard frames
@@ -24,6 +30,10 @@
  *     frame is decompressed, filtered, and recompressed independently so
  *     frame boundaries survive.
  *   - `session.jsonl` — plaintext JSONL lines.
+ * v2 hosts (the `0.1.3-alpha` line) write `session.v2.jsonl(.zstd)`; both
+ * log generations are discovered. On a v2 host, strip v1 logs first — its
+ * v1→v2 migration refuses stamped plugin rows too — while v2 logs only
+ * need `repair` stamping.
  *
  * Usage:
  *   node scripts/repair-session-logs.mjs scan [--home DIR]      # report foreign rows, change nothing
@@ -76,6 +86,9 @@ const KNOWN_SESSION_EVENT_TYPES = new Set([
   'approval/asked',
   'approval/decided',
   'approval/policy',
+  // The v2 catalog swapped assistant/chunk for assistant/attempt; both stay
+  // listed so v1 and v2 logs scan clean (v1∪v2 union).
+  'assistant/attempt',
   'assistant/chunk',
   'assistant/message',
   'command/done',
@@ -90,18 +103,25 @@ const KNOWN_SESSION_EVENT_TYPES = new Set([
   'hook/result',
   'llm/retry',
   'llm/retry-started',
+  'model/selection',
   'permission/preset',
   'plan/mode',
   'request/context',
   'request/header',
   'sandbox/mode',
   'schedule/change',
+  'session-log-deepseek/delivery-accepted',
   'session/end-seed',
   'session/title',
   'session/title-llm-request',
   'step/end',
   'step/start',
   'subagent/descriptor',
+  'subagent/model-selection-policy',
+  'team/member',
+  'team/message/delivered',
+  'team/message/queued',
+  'team/task',
   'todo/write',
   'tool-workflow/agent-end',
   'tool-workflow/agent-start',
@@ -230,7 +250,7 @@ function findLogs(root) {
       const full = join(dir, entry)
       const stat = statSync(full)
       if (stat.isDirectory()) walk(full)
-      else if (entry === 'session.jsonl' || entry === 'session.jsonl.zstd') found.push(full)
+      else if (entry === 'session.jsonl' || entry === 'session.jsonl.zstd' || entry === 'session.v2.jsonl' || entry === 'session.v2.jsonl.zstd') found.push(full)
     }
   }
   walk(root)
@@ -340,7 +360,7 @@ for (const path of logs) {
 if (foreignSeen.size > 0) {
   console.log('\nforeign (non-harness) event rows found by type:')
   for (const [type, count] of [...foreignSeen.entries()].sort()) {
-    const action = targetTypes.has(type) ? 'targeted for ignorable repair' : 'NOT targeted — investigate before touching'
+    const action = targetTypes.has(type) ? 'targeted — repair stamps ignorable; strip removes (v1 logs must be stripped before a v2 host loads them)' : 'NOT targeted — investigate before touching'
     console.log(`  ${type}: ${count} rows (${action})`)
   }
 }
