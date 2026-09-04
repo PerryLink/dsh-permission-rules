@@ -1,3 +1,21 @@
+## v0.6.10 - 2026-09-04
+
+### Fixed
+
+- `isUnmarkedHostVersion` now classifies the `0.1.2-rc` line as non-stamping: `0.1.2-rc.1` ships the alpha.5 surface (the third `Session.append` parameter is `SurfaceIntent` for surface event types only, so no rc build in the `0.1.2` minor stamps the marker). Previously `0.1.2-rc.1` fell through both regexes and was probed as marker-aware, so the first decision appended an unmarked event that pollutes the session log before the probe degrades audit.
+- `isUnmarkedHostVersion` now also classifies the `0.1.3-alpha` line as non-stamping (it keeps the same surface-only append signature, verified against the `dsh-v0.1.3-alpha.1` tag) and every rc build in minor 2 and later (defensive; over-refusal is harmless because `allowUnmarkedAudit` opts back in).
+- `scripts/repair-session-logs.mjs` syncs its `KNOWN_SESSION_EVENT_TYPES` copy with the harness catalog (adds `model/selection`, `session-log-deepseek/delivery-accepted`, `subagent/model-selection-policy`, `team/member`, `team/message/delivered`, `team/message/queued`, `team/task`) so `scan` stops misreporting those rows as foreign.
+
+### Changed
+
+- Dev pins move from the published dsh `0.1.2-alpha.5` line to `0.1.2-rc.1` (17 `@deepseek-ai/dsh-*` packages); `dshWorkshop.compatibility.dshVersions` and the compat workflow's CLI/base/headless installs now target `0.1.2-rc.1`.
+- Repack the vendored `dsh-auto-review` sibling tarball at `0.10.3` and repoint the `file:` devDependency.
+- `scripts/repair-session-logs.mjs` discovers v2 log generations (`session.v2.jsonl[.zstd]`, written by the `0.1.3-alpha` line) and carries the `assistant/attempt` type alongside `assistant/chunk` (the harness v2 catalog swapped the two). Its docs now state that v1 logs must be `strip`ped before a v2 host opens them: the v1→v2 migration refuses unknown v1 events even when marked `ignorable: true`, while v2 logs accept `repair`-stamped rows.
+
+### Docs
+
+- Five-language READMEs: the harness compatibility row states `0.1.2-rc.1` and the audit-marker limitation covers the `0.1.2-rc` and `0.1.3-alpha` lines (plus the v1-strip-before-v2-migration guidance); AGENTS.md facts updated (pinned rc.1 dev peers, 0.10.3 tarball, 0.1.3-alpha pre-check, v2 repair semantics).
+
 ## v0.6.9 - 2026-09-03
 
 ### Changed

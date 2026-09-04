@@ -26,7 +26,7 @@
 
 | Surface | Status |
 |---|---|
-| Harness | DeepSeek Harness `0.1.2-alpha.5` (adapted 2026-09-02): the session envelope keeps its ignorable field for stored-log read compatibility only - Session.append still cannot stamp it, so audit-gate behavior is unchanged. |
+| Harness | DeepSeek Harness `0.1.2-rc.1` (adapted 2026-09-04): the session envelope keeps its ignorable field for stored-log read compatibility only - Session.append still cannot stamp it, so audit-gate behavior is unchanged and the `0.1.2-rc` line is pre-checked as unmarked. The `0.1.3-alpha` line (checkout pre-verified 2026-09-04) keeps the same surface-only append signature and is pre-checked as unmarked too; its v1→v2 log migration refuses unknown v1 events even when marked, so strip v1 audit rows before a 0.1.3 host opens the log. |
 | Node | `^22.19.0 || >=24.0.0` |
 | Platforms | All (host + web settings client) |
 | Model | Any (deny/ask reasons surface through tool results) |
@@ -170,7 +170,7 @@ All tunables are Schemastery `Config` fields (changeable from cordis.yml). An id
 
 ## Known limitations
 
-- **Audit marker on pre-marker and refusing hosts.** `permissionRules/decision` is appended with `ignorable: true`; hosts whose `Session.append` predates the marker (the `0.1.0-rc.1`–`rc.7` and `0.1.1-rc.1`–`rc.7` lines) silently drop it, and the `0.1.2-alpha` line refuses plugin events on read even when marked — the runtime detects both before the first append and disables session-log audit with a one-time warning. Set `allowUnmarkedAudit: true` to opt back in; repair already-written logs with `scripts/repair-session-logs.mjs` (its `strip` mode removes audit rows where the marker cannot help).
+- **Audit marker on pre-marker and refusing hosts.** `permissionRules/decision` is appended with `ignorable: true`; hosts whose `Session.append` predates the marker (the `0.1.0-rc.1`–`rc.7` and `0.1.1-rc.1`–`rc.7` lines) silently drop it, the `0.1.2-rc` line ships the alpha.5 surface (no append option writes the marker), the `0.1.2-alpha` line refuses plugin events on read even when marked, and the `0.1.3-alpha` line keeps the same surface-only append signature — the runtime detects all of these before the first append and disables session-log audit with a one-time warning. The `0.1.3-alpha` line's v1→v2 log migration also refuses unknown v1 events even when marked, so `strip` v1 audit rows before a 0.1.3 host opens the log. Set `allowUnmarkedAudit: true` to opt back in; repair already-written logs with `scripts/repair-session-logs.mjs` (its `strip` mode removes audit rows where the marker cannot help).
 - **Path candidates are heuristic.** Only the documented argument keys feed path matching, and workspace-relative matching is ASCII-case-insensitive only when `caseInsensitivePaths` is on.
 - **Globs are a conservative subset.** No brace expansion — write two patterns, or use regex mode.
 - **The regex backtracking guard is structural, not exhaustive.** Prefer glob mode for untrusted files.

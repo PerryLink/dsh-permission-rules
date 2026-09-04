@@ -25,7 +25,7 @@
 
 | Surface | Status |
 |---|---|
-| Harness | DeepSeek Harness `0.1.2-alpha.5` (adaptado em 2026-09-02): o envelope de sessão mantém seu campo ignorable apenas para compatibilidade de leitura de logs armazenados - o Session.append ainda não consegue estampá-lo, então o comportamento da porta não muda. |
+| Harness | DeepSeek Harness `0.1.2-rc.1` (adaptado em 2026-09-04): o envelope de sessão mantém seu campo ignorable apenas para compatibilidade de leitura de logs armazenados - o Session.append ainda não consegue estampá-lo, então o comportamento da porta não muda e a linha `0.1.2-rc` é pré-verificada como não marcada. |
 | Node | `^22.19.0 || >=24.0.0` |
 | Platforms | Todas (host + cliente web de settings) |
 | Model | Qualquer (razões deny/ask aparecem pelos resultados de ferramenta) |
@@ -169,7 +169,7 @@ Todos os parâmetros são campos Schemastery `Config` (alteráveis pelo cordis.y
 
 ## Known limitations
 
-- **Marcador de auditoria em hosts anteriores ao marcador ou que rejeitam eventos.** `permissionRules/decision` é anexado com `ignorable: true`; hosts cujo `Session.append` é anterior ao marcador (as linhas `0.1.0-rc.1`–`rc.7` e `0.1.1-rc.1`–`rc.7`) o descartam silenciosamente, e a linha `0.1.2-alpha` rejeita eventos de plugin na leitura mesmo marcados — o runtime detecta ambos antes do primeiro append e desativa a auditoria de log com um aviso único. Ponha `allowUnmarkedAudit: true` para reativar; repare logs já escritos com `scripts/repair-session-logs.mjs` (seu modo `strip` remove linhas de auditoria onde o marcador não ajuda).
+- **Marcador de auditoria em hosts anteriores ao marcador ou que rejeitam eventos.** `permissionRules/decision` é anexado com `ignorable: true`; hosts cujo `Session.append` é anterior ao marcador (as linhas `0.1.0-rc.1`–`rc.7` e `0.1.1-rc.1`–`rc.7`) o descartam silenciosamente, a linha `0.1.2-rc` traz a superfície alpha.5 (nenhuma opção de append escreve o marcador), a linha `0.1.2-alpha` rejeita eventos de plugin na leitura mesmo marcados, e a linha `0.1.3-alpha` mantém a mesma assinatura de append surface-only — o runtime detecta todas antes do primeiro append e desativa a auditoria de log com um aviso único. A migração de log v1→v2 da linha `0.1.3-alpha` também rejeita eventos v1 desconhecidos mesmo marcados, então aplique `strip` às linhas de auditoria v1 antes de um host 0.1.3 abrir o log. Ponha `allowUnmarkedAudit: true` para reativar; repare logs já escritos com `scripts/repair-session-logs.mjs` (seu modo `strip` remove linhas de auditoria onde o marcador não ajuda).
 - **Candidatos de caminho são heurísticos.** Somente as chaves de argumento documentadas alimentam a correspondência de caminho, e a correspondência relativa ao workspace é insensível a maiúsculas ASCII apenas com `caseInsensitivePaths` ativado.
 - **Globs são um subconjunto conservador.** Sem expansão de chaves — escreva dois padrões, ou use o modo regex.
 - **A guarda de backtracking de regex é estrutural, não exaustiva.** Prefira o modo glob para arquivos não confiáveis.

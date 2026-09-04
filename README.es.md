@@ -25,7 +25,7 @@
 
 | Surface | Status |
 |---|---|
-| Harness | DeepSeek Harness `0.1.2-alpha.5` (adaptado el 2026-09-02): el sobre de sesión conserva su campo ignorable solo para compatibilidad de lectura de logs almacenados - Session.append aún no puede estamparlo, por lo que el comportamiento de la puerta no cambia. |
+| Harness | DeepSeek Harness `0.1.2-rc.1` (adaptado el 2026-09-04): el sobre de sesión conserva su campo ignorable solo para compatibilidad de lectura de logs almacenados - Session.append aún no puede estamparlo, por lo que el comportamiento de la puerta no cambia y la línea `0.1.2-rc` se preverifica como no marcada. |
 | Node | `^22.19.0 || >=24.0.0` |
 | Platforms | Todas (host + cliente web de settings) |
 | Model | Cualquiera (las razones deny/ask se muestran a través de los resultados de herramienta) |
@@ -169,7 +169,7 @@ Todos los parámetros son campos Schemastery `Config` (modificables desde cordis
 
 ## Known limitations
 
-- **Marcador de auditoría en hosts previos al marcador o que rechazan eventos.** `permissionRules/decision` se anexa con `ignorable: true`; los hosts cuyo `Session.append` es anterior al marcador (las líneas `0.1.0-rc.1`–`rc.7` y `0.1.1-rc.1`–`rc.7`) lo descartan silenciosamente, y la línea `0.1.2-alpha` rechaza eventos de plugin al leerlos incluso marcados — el runtime detecta ambos antes del primer append y desactiva la auditoría de registro con una advertencia única. Pon `allowUnmarkedAudit: true` para reactivar; repara registros ya escritos con `scripts/repair-session-logs.mjs` (su modo `strip` elimina filas de auditoría donde el marcador no ayuda).
+- **Marcador de auditoría en hosts previos al marcador o que rechazan eventos.** `permissionRules/decision` se anexa con `ignorable: true`; los hosts cuyo `Session.append` es anterior al marcador (las líneas `0.1.0-rc.1`–`rc.7` y `0.1.1-rc.1`–`rc.7`) lo descartan silenciosamente, la línea `0.1.2-rc` trae la superficie alpha.5 (ninguna opción de append escribe el marcador), la línea `0.1.2-alpha` rechaza eventos de plugin al leerlos incluso marcados, y la línea `0.1.3-alpha` mantiene la misma firma de append surface-only — el runtime detecta todas antes del primer append y desactiva la auditoría de registro con una advertencia única. La migración de registro v1→v2 de la línea `0.1.3-alpha` también rechaza eventos v1 desconocidos incluso marcados, así que aplica `strip` a las filas de auditoría v1 antes de que un host 0.1.3 abra el registro. Pon `allowUnmarkedAudit: true` para reactivar; repara registros ya escritos con `scripts/repair-session-logs.mjs` (su modo `strip` elimina filas de auditoría donde el marcador no ayuda).
 - **Los candidatos de ruta son heurísticos.** Solo las claves de argumento documentadas alimentan el emparejamiento de rutas, y el emparejamiento relativo al workspace es insensible a mayúsculas ASCII solo con `caseInsensitivePaths` activado.
 - **Los globs son un subconjunto conservador.** Sin expansión de llaves — escribe dos patrones, o usa modo regex.
 - **La guardia de backtracking de regex es estructural, no exhaustiva.** Prefiere el modo glob para archivos no confiables.
