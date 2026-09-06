@@ -25,7 +25,7 @@
 
 | Surface | Status |
 |---|---|
-| Harness | DeepSeek Harness `0.1.2-rc.1` (adaptado em 2026-09-04): o envelope de sessão mantém seu campo ignorable apenas para compatibilidade de leitura de logs armazenados - o Session.append ainda não consegue estampá-lo, então o comportamento da porta não muda e a linha `0.1.2-rc` é pré-verificada como não marcada. |
+| Harness | DeepSeek Harness `0.1.2-rc.1` (adaptado em 2026-09-04): o envelope de sessão mantém seu campo ignorable apenas para compatibilidade de leitura de logs armazenados - o Session.append ainda não consegue estampá-lo, então o comportamento da porta não muda e a linha `0.1.2-rc` é pré-verificada como não marcada. A linha `0.1.3-alpha` foi verificada em 2026-09-06 contra o checkout master `dsh-v0.1.3-alpha.1` (cadeia completa de gates + smoke de instalação de profile). |
 | Node | `^22.19.0 || >=24.0.0` |
 | Platforms | Todas (host + cliente web de settings) |
 | Model | Qualquer (razões deny/ask aparecem pelos resultados de ferramenta) |
