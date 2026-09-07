@@ -19,10 +19,13 @@
 import { apply } from './runtime.ts'
 
 export const name = 'permission-rules'
+/** Consumer — the /rules command handler and the tools/pre-execute waterfall listener consume the injected commands/tools services. */
 export const inject = ['commands', 'tools']
 
+/** Service Provider — the runtime registers the tools/pre-execute listener, /rules command, audit events, and ctx.permissionRulesRuntime. */
 export { apply }
 export { PermissionRulesRuntime, isUnmarkedHostVersion } from './runtime.ts'
+/** Service Definition — the public contract: Config schema, rule vocabulary, and the permissionRules/decision session-event type. */
 export * from './config.ts'
 export * from './events.ts'
 export * from './rules.ts'
