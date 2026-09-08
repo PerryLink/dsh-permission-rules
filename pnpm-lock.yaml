@@ -103,8 +103,8 @@ importers:
         specifier: ^3.2.0
         version: 3.2.7(vitest@3.2.7(@types/node@22.20.1)(yaml@2.9.0))
       dsh-auto-review:
-        specifier: file:vendor/dsh-auto-review-0.10.4.tgz
-        version: file:vendor/dsh-auto-review-0.10.4.tgz(c4b233e7838d34f1dd4b25b420b146c0)
+        specifier: file:vendor/dsh-auto-review-0.11.0.tgz
+        version: file:vendor/dsh-auto-review-0.11.0.tgz(c4b233e7838d34f1dd4b25b420b146c0)
       eslint:
         specifier: ^10.8.1
         version: 10.9.0
@@ -1786,9 +1786,9 @@ packages:
     resolution: {integrity: sha512-svtcdpS8CgJyqAjEQIXdb3OjhFVVYjzGAPO8WGCmRbrml64SPw/jJD4GoE98aR7r25A0XcgrK3F02yw9R/vhQw==}
     engines: {node: '>=0.3.1'}
 
-  dsh-auto-review@file:vendor/dsh-auto-review-0.10.4.tgz:
-    resolution: {integrity: sha512-+5vHRnOFePMfYhgSefXgWI3SPhRDOHzC5dQcODAzJRyhzIiVzfi0G+jkuM7uveCBlfdA8qJYsocMEZkPg0Z5sg==, tarball: file:vendor/dsh-auto-review-0.10.4.tgz}
-    version: 0.10.4
+  dsh-auto-review@file:vendor/dsh-auto-review-0.11.0.tgz:
+    resolution: {integrity: sha512-pSSjlPZ3LUiF2+C0xUpMKN15TnN/Hlb+hPVEZWNJRp3Rk4tHGcIp1q0Yr1EXdYge118PjUiUpf/lfcRGHfc76w==, tarball: file:vendor/dsh-auto-review-0.11.0.tgz}
+    version: 0.11.0
     engines: {node: ^22.19.0 || >=24.0.0}
     hasBin: true
     peerDependencies:
@@ -3796,7 +3796,7 @@ snapshots:
 
   diff@9.0.0: {}
 
-  dsh-auto-review@file:vendor/dsh-auto-review-0.10.4.tgz(c4b233e7838d34f1dd4b25b420b146c0):
+  dsh-auto-review@file:vendor/dsh-auto-review-0.11.0.tgz(c4b233e7838d34f1dd4b25b420b146c0):
     dependencies:
       '@deepseek-ai/cordis': 4.0.2(@deepseek-ai/cordis-plugin-include@1.0.7)(@deepseek-ai/cordis-plugin-loader@1.0.3)
       '@deepseek-ai/dsh-agent': 0.1.2-rc.1(39d82dd2b3d764f43d0f11ef35cc8bbe)
