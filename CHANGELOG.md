@@ -1,3 +1,18 @@
+## v0.6.14 - 2026-09-09
+
+### Fixed
+
+- `isUnmarkedHostVersion` now classifies the `0.1.5-alpha` line as non-stamping. On the published `0.1.5-alpha.1` package the envelope keeps its `ignorable` field for stored-log reads only: `Session.append` accepts the third argument and silently drops it, so the first `permissionRules/decision` row landed UNMARKED and the session was then refused by `validateStoredEvents` on the same host. The gate now covers every alpha build in minor 2 and later (`0.1.2-alpha` through `0.1.5-alpha`, `^0\.1\.(?:[2-9]|[1-9]\d)-alpha[.-]\d+$`); over-refusal stays harmless because `allowUnmarkedAudit: true` opts back in and `strip` remains available.
+- `scripts/repair-session-logs.mjs` discovers every generation-addressed log by the canonical `session[.vN].jsonl[.zstd]` form, so the `0.1.5-alpha` line's `session.v3.jsonl` is no longer invisible to the tool; its embedded `KNOWN_SESSION_EVENT_TYPES` copy gains the `0.1.5-alpha.1` catalog additions (`system/message`, `feedback/message-put`, `feedback/message-delete`, `tool/ptc-dispatch`, `tool/ptc-dispatch-start`) while keeping the v1/v2-only spellings, so native v3 logs stop reporting `system/message` as foreign.
+
+### Added
+
+- Regression coverage: `test/audit-support.spec.ts` runs the gate against the real installed `0.1.5-alpha.1` peer (no `peerVersion` mock) and asserts that no audit row is written and the one-time warning fires; `test/repair-session-logs.spec.ts` drives the shipped script on `%TEMP%` fixtures across every log generation (discovery, vocabulary, frame-preserving repair with backups, `strip`).
+
+### Docs
+
+- Five-language READMEs and AGENTS.md: the `0.1.5-alpha` line is documented as non-stamping and pre-checked before the first append, and the session-log repair section documents `strip` plus the per-generation matrix — native v3 logs only need `repair`, v2 logs must be `strip`ped before a `0.1.5-alpha` host migrates them (its v2→v3 gate refuses every unclassified event even when marked), and v1 logs before a 0.1.3-or-later host opens them.
+
 ## v0.6.12 - 2026-09-07
 
 ### Docs
