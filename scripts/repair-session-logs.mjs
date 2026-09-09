@@ -13,27 +13,33 @@
  * `strip` removes the targeted rows entirely. It exists for harness lines
  * whose read path refuses out-of-vocabulary event types even when the
  * envelope is marked — the `0.1.2-alpha` line (verified on `0.1.2-alpha-1`,
- * issue #15) refuses them directly, and the `0.1.3-alpha.1` v1→v2 migration
- * gate (`session-format-v1-to-v2/src/migration.ts`) refuses every v1 event
- * type outside the released v0 vocabulary, audit rows included even when
- * stamped, so a v1 log containing audit rows blocks the whole session load
- * on that host: v1 logs must be `strip`ped before a v2 host first opens
- * them, while v2 logs accept marked plugin rows and only need `repair`.
- * There the marker cannot help, and dropping the log-only audit rows is the
- * only repair. The target vocabulary is reconstruction-safe by construction
- * (never injected into the model context), so removal does not change how
- * the session replays.
+ * issue #15) refuses them directly, and the cross-generation migration gates
+ * refuse unclassified rows no matter how they are marked: the
+ * `0.1.3-alpha.1` v1→v2 gate
+ * (`session-format-v1-to-v2/src/migration.ts`) refuses every v1 event type
+ * outside the released v0 vocabulary, and the `0.1.5-alpha.1` v2→v3 gate
+ * (`session-format-v2-to-v3/src/payload.ts`) refuses every event type
+ * outside the frozen released v2 inventory — audit rows included even when
+ * stamped. A v1 log containing audit rows therefore blocks the whole
+ * session load on a v2 host, and a v2 log containing them blocks the load on
+ * a v3 host: `strip` v1 logs before a `0.1.3-alpha` host first opens them,
+ * and `strip` v2 logs before a `0.1.5-alpha` host does. There the marker
+ * cannot help, and dropping the log-only audit rows is the only repair. The
+ * target vocabulary is reconstruction-safe by construction (never injected
+ * into the model context), so removal does not change how the session
+ * replays.
  *
  * It understands both physical encodings of the JSONL backend:
- *   - `session.jsonl.zstd` — a concatenation of checksummed Zstandard frames
- *     (frame 1 = header line, later frames = durable append batches); each
- *     frame is decompressed, filtered, and recompressed independently so
- *     frame boundaries survive.
- *   - `session.jsonl` — plaintext JSONL lines.
- * v2 hosts (the `0.1.3-alpha` line) write `session.v2.jsonl(.zstd)`; both
- * log generations are discovered. On a v2 host, strip v1 logs first — its
- * v1→v2 migration refuses stamped plugin rows too — while v2 logs only
- * need `repair` stamping.
+ *   - `session[.vN].jsonl.zstd` — a concatenation of checksummed Zstandard
+ *     frames (frame 1 = header line, later frames = durable append batches);
+ *     each frame is decompressed, filtered, and recompressed independently
+ *     so frame boundaries survive.
+ *   - `session[.vN].jsonl` — plaintext JSONL lines.
+ * Every generation-addressed log is discovered by the canonical basename
+ * (`session.jsonl` for v0/v1, `session.v2.jsonl` for the `0.1.3-alpha` line,
+ * `session.v3.jsonl` for the `0.1.5-alpha` line, each optionally
+ * `.zstd`-compressed). Native v3 logs accept marked plugin rows on read, so
+ * they only need `repair` stamping.
  *
  * Usage:
  *   node scripts/repair-session-logs.mjs scan [--home DIR]      # report foreign rows, change nothing
@@ -75,9 +81,13 @@ const STORAGE_ROW_TYPES = new Set([
 
 /**
  * The harness build's generated event vocabulary
- * (`KNOWN_SESSION_EVENT_TYPES`, `packages/core/session/src/known-event-types.ts`).
- * Rows whose type is outside this set are what the read path refuses when the
- * envelope lacks `ignorable: true`; the scan reports them so nothing is missed.
+ * (`KNOWN_SESSION_EVENT_TYPES`, `packages/core/session/src/known-event-types.ts`,
+ * synced with the `0.1.5-alpha.1` catalog), plus the v1/v2-only spellings the
+ * older generations wrote (`assistant/chunk`, `tool/code-dispatch`,
+ * `tool/code-dispatch-start`; V3 renamed the latter two to `tool/ptc-dispatch`
+ * and `tool/ptc-dispatch-start`), so every generation scans clean. Rows whose
+ * type is outside this set are what the read path refuses when the envelope
+ * lacks `ignorable: true`; the scan reports them so nothing is missed.
  * Regenerate this list from the harness checkout when it changes.
  */
 const KNOWN_SESSION_EVENT_TYPES = new Set([
@@ -97,6 +107,8 @@ const KNOWN_SESSION_EVENT_TYPES = new Set([
   'compaction/prune',
   'compaction/start',
   'compaction/summary',
+  'feedback/message-delete',
+  'feedback/message-put',
   'feedback/record',
   'goal/change',
   'hook/invoked',
@@ -118,6 +130,7 @@ const KNOWN_SESSION_EVENT_TYPES = new Set([
   'step/start',
   'subagent/descriptor',
   'subagent/model-selection-policy',
+  'system/message',
   'team/member',
   'team/message/delivered',
   'team/message/queued',
@@ -130,6 +143,8 @@ const KNOWN_SESSION_EVENT_TYPES = new Set([
   'tool/call',
   'tool/code-dispatch',
   'tool/code-dispatch-start',
+  'tool/ptc-dispatch',
+  'tool/ptc-dispatch-start',
   'tool/result',
   'turn/end',
   'turn/start',
@@ -242,6 +257,13 @@ function filterFrame(text, targetTypes, foreignSeen, strip) {
   return { text: out.join('\n') + '\n', changed }
 }
 
+/**
+ * Canonical generation-addressed log basenames (`session-format/src/filename.ts`):
+ * `session.jsonl` for format v0/v1, `session.vN.jsonl` for every later
+ * generation, each optionally `.zstd`-compressed.
+ */
+const LOG_FILENAME = /^session(?:\.v([1-9]\d*))?\.jsonl(?:\.zstd)?$/
+
 /** Find every session artifact under a sessions root. */
 function findLogs(root) {
   const found = []
@@ -250,7 +272,7 @@ function findLogs(root) {
       const full = join(dir, entry)
       const stat = statSync(full)
       if (stat.isDirectory()) walk(full)
-      else if (entry === 'session.jsonl' || entry === 'session.jsonl.zstd' || entry === 'session.v2.jsonl' || entry === 'session.v2.jsonl.zstd') found.push(full)
+      else if (LOG_FILENAME.test(entry)) found.push(full)
     }
   }
   walk(root)
@@ -360,7 +382,7 @@ for (const path of logs) {
 if (foreignSeen.size > 0) {
   console.log('\nforeign (non-harness) event rows found by type:')
   for (const [type, count] of [...foreignSeen.entries()].sort()) {
-    const action = targetTypes.has(type) ? 'targeted — repair stamps ignorable; strip removes (v1 logs must be stripped before a v2 host loads them)' : 'NOT targeted — investigate before touching'
+    const action = targetTypes.has(type) ? 'targeted — repair stamps ignorable; strip removes (strip v1 logs before a 0.1.3+ host loads them, and v2 logs before a 0.1.5-alpha host migrates them)' : 'NOT targeted — investigate before touching'
     console.log(`  ${type}: ${count} rows (${action})`)
   }
 }
