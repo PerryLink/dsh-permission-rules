@@ -25,7 +25,7 @@
 
 | Surface | Status |
 |---|---|
-| Harness | DeepSeek Harness `dsh-v0.1.5-alpha.1` (adaptado em 2026-09-09): o envelope de sessão mantém seu campo ignorable apenas para compatibilidade de leitura de logs armazenados - o Session.append ainda não consegue estampá-lo, então o comportamento da porta não muda e a linha `0.1.2-rc` é pré-verificada como não marcada. A linha `0.1.3-alpha` foi verificada em 2026-09-09 contra o checkout master `dsh-v0.1.5-alpha.1` (cadeia completa de gates + smoke de instalação de profile). |
+| Harness | DeepSeek Harness `dsh-v0.1.5-alpha.1` (adaptado em 2026-09-09, cadeia completa de gates + smoke de instalação de profile): o `Session.append` ainda não consegue estampar o marcador `ignorable` — verificado no pacote publicado `0.1.5-alpha.1`, onde o terceiro argumento é descartado silenciosamente e o campo do envelope só sobrevive para a leitura de logs armazenados —, então toda a linha `0.1.5-alpha` é pré-verificada como não marcada e a auditoria do log de sessão fica desativada por padrão. A linha `0.1.3-alpha` mantém a mesma assinatura de append surface-only. As migrações de log de ambas as linhas recusam eventos de plugin não classificados mesmo marcados: aplique `strip` nas linhas de auditoria v1 antes de um host `0.1.3-alpha` abrir o log e nas v2 antes de um host `0.1.5-alpha` migrá-lo (logs v3 nativos só precisam de `repair`). |
 | Node | `^22.19.0 || >=24.0.0` |
 | Platforms | Todas (host + cliente web de settings) |
 | Model | Qualquer (razões deny/ask aparecem pelos resultados de ferramenta) |
@@ -169,7 +169,7 @@ Todos os parâmetros são campos Schemastery `Config` (alteráveis pelo cordis.y
 
 ## Known limitations
 
-- **Marcador de auditoria em hosts anteriores ao marcador ou que rejeitam eventos.** `permissionRules/decision` é anexado com `ignorable: true`; hosts cujo `Session.append` é anterior ao marcador (as linhas `0.1.0-rc.1`–`rc.7` e `0.1.1-rc.1`–`rc.7`) o descartam silenciosamente, a linha `0.1.2-rc` traz a superfície alpha.5 (nenhuma opção de append escreve o marcador), a linha `0.1.2-alpha` rejeita eventos de plugin na leitura mesmo marcados, e a linha `0.1.3-alpha` mantém a mesma assinatura de append surface-only — o runtime detecta todas antes do primeiro append e desativa a auditoria de log com um aviso único. A migração de log v1→v2 da linha `0.1.3-alpha` também rejeita eventos v1 desconhecidos mesmo marcados, então aplique `strip` às linhas de auditoria v1 antes de um host 0.1.3 abrir o log. Ponha `allowUnmarkedAudit: true` para reativar; repare logs já escritos com `scripts/repair-session-logs.mjs` (seu modo `strip` remove linhas de auditoria onde o marcador não ajuda).
+- **Marcador de auditoria em hosts anteriores ao marcador ou que rejeitam eventos.** `permissionRules/decision` é anexado com `ignorable: true`; hosts cujo `Session.append` é anterior ao marcador (as linhas `0.1.0-rc.1`–`rc.7` e `0.1.1-rc.1`–`rc.7`) o descartam silenciosamente, a linha `0.1.2-rc` traz a superfície alpha.5 (nenhuma opção de append escreve o marcador), a linha `0.1.2-alpha` rejeita eventos de plugin na leitura mesmo marcados, e as linhas `0.1.3-alpha` e `0.1.5-alpha` mantêm a mesma assinatura de append surface-only (verificado nos pacotes publicados `0.1.3-alpha.1`/`0.1.5-alpha.1`) — o runtime pré-verifica todas elas antes do primeiro append e desativa a auditoria de log com um aviso único. A migração entre gerações também rejeita linhas de auditoria marcadas: a porta v1→v2 da `0.1.3-alpha` rejeita eventos v1 desconhecidos, e a porta v2→v3 da `0.1.5-alpha` rejeita todo evento não classificado (seu inventário é congelado ao vocabulário v2 publicado), então aplique `strip` nas linhas v1 antes de um host 0.1.3 abrir o log e nas v2 antes de atualizar para um host 0.1.5. Logs v3 nativos aceitam linhas de plugin marcadas, então só precisam de `repair`. Defina `allowUnmarkedAudit: true` para reativar; repare logs já escritos com `scripts/repair-session-logs.mjs` (seu modo `strip` remove linhas de auditoria onde o marcador não ajuda).
 - **Candidatos de caminho são heurísticos.** Somente as chaves de argumento documentadas alimentam a correspondência de caminho, e a correspondência relativa ao workspace é insensível a maiúsculas ASCII apenas com `caseInsensitivePaths` ativado.
 - **Globs são um subconjunto conservador.** Sem expansão de chaves — escreva dois padrões, ou use o modo regex.
 - **A guarda de backtracking de regex é estrutural, não exaustiva.** Prefira o modo glob para arquivos não confiáveis.
@@ -187,9 +187,14 @@ Logs de sessão escritos antes de o marcador `ignorable` existir podem ser recus
 ```sh
 node scripts/repair-session-logs.mjs scan [--home DIR]      # relata linhas estranhas, não muda nada
 node scripts/repair-session-logs.mjs repair [--home DIR] [--dry-run]
+node scripts/repair-session-logs.mjs strip [--home DIR] [--dry-run]
 ```
 
-`--home` por padrão é `$DSH_HOME/sessions` (ou `~/.dsh/sessions`).
+`--home` por padrão é `$DSH_HOME/sessions` (ou `~/.dsh/sessions`). Ele descobre cada log pelo nome canônico da geração — `session.jsonl`, `session.v2.jsonl`, `session.v3.jsonl`, cada um opcionalmente comprimido em `.zstd` — então escolha o modo pela geração:
+
+- **v3 (`session.v3.jsonl`, escrito nativamente pela linha `0.1.5-alpha`)** — o caminho de leitura aceita linhas de plugin marcadas, então `repair` basta.
+- **v2 (`session.v2.jsonl`, escrito pela linha `0.1.3-alpha`)** — `repair` o abre no host que o escreveu, mas a migração v2→v3 da `0.1.5-alpha` rejeita todo evento não classificado mesmo marcado: execute `strip` nos logs v2 **antes** de atualizar para um host `0.1.5-alpha`.
+- **v1 (`session.jsonl`)** — a migração v1→v2 da `0.1.3-alpha` rejeita eventos v1 desconhecidos mesmo marcados: execute `strip` antes de um host 0.1.3 ou posterior abrir o log pela primeira vez.
 
 ## Development
 
@@ -197,7 +202,7 @@ node scripts/repair-session-logs.mjs repair [--home DIR] [--dry-run]
 pnpm install            # node ^22.19 || >=24
 pnpm run typecheck      # tsc, src + tests
 pnpm run lint           # eslint, src + tests + scripts
-pnpm test               # vitest: 236 tests, 20 files
+pnpm test               # vitest: 280 tests, 23 files
 pnpm run test:coverage  # coverage gate (90/80/90/90)
 pnpm run build          # tsc declarations + tsdown bundles (lib/)
 pnpm run pack:check     # build + pack (the published artifact)

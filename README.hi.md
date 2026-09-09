@@ -25,7 +25,7 @@
 
 | Surface | Status |
 |---|---|
-| Harness | DeepSeek Harness `dsh-v0.1.5-alpha.1` (2026-09-09 को अनुकूलित): सत्र लिफ़ाफ़ा अपना ignorable फ़ील्ड केवल संग्रहीत-लॉग पठन संगतता के लिए रखता है - Session.append अभी भी इसे स्टैम्प नहीं कर सकता, इसलिए गेट व्यवहार अपरिवर्तित है और `0.1.2-rc` पंक्ति की पहले append से पहले ही अनमार्क्ड के रूप में पूर्व-जाँच होती है। `0.1.3-alpha` पंक्ति 2026-09-09 को `dsh-v0.1.5-alpha.1` master checkout के विरुद्ध सत्यापित की गई (पूर्ण gates शृंखला + profile इंस्टॉल smoke)। |
+| Harness | DeepSeek Harness `dsh-v0.1.5-alpha.1` (2026-09-09 को अनुकूलित, पूर्ण gates शृंखला + profile इंस्टॉल smoke): इसका `Session.append` अभी भी `ignorable` मार्कर स्टैम्प नहीं कर सकता — प्रकाशित `0.1.5-alpha.1` पैकेज पर सत्यापित, जहाँ तीसरा आर्ग्युमेंट चुपचाप छोड़ दिया जाता है और लिफ़ाफ़ा फ़ील्ड केवल संग्रहीत-लॉग पठन के लिए बचता है — इसलिए पूरी `0.1.5-alpha` पंक्ति पहले append से पहले ही अनमार्क्ड के रूप में पूर्व-जाँची जाती है और सत्र-लॉग ऑडिट डिफ़ॉल्ट रूप से बंद रहता है। `0.1.3-alpha` पंक्ति वही surface-only append हस्ताक्षर रखती है। दोनों पंक्तियों का लॉग प्रवासन चिह्नित अन-क्लासिफ़ाइड प्लगइन घटनाओं को भी अस्वीकारता है: `0.1.3-alpha` host के लॉग खोलने से पहले v1 ऑडिट पंक्तियाँ और `0.1.5-alpha` host के प्रवासन से पहले v2 पंक्तियाँ `strip` करें (v3 मूल लॉग के लिए केवल `repair` चाहिए)। |
 | Node | `^22.19.0 || >=24.0.0` |
 | Platforms | सभी (host + वेब settings क्लाइंट) |
 | Model | कोई भी (deny/ask कारण टूल परिणामों के माध्यम से दिखते हैं) |
@@ -169,7 +169,7 @@ dsh --profile web --dump-config | grep -A4 'id: permission-rules'
 
 ## Known limitations
 
-- **पूर्व-मार्कर hosts और घटना-अस्वीकार hosts पर ऑडिट मार्कर।** `permissionRules/decision` `ignorable: true` से जोड़ा जाता है; जिन hosts का `Session.append` मार्कर से पहले का है (`0.1.0-rc.1`–`rc.7` और `0.1.1-rc.1`–`rc.7` पंक्तियाँ) वे इसे चुपचाप छोड़ देते हैं, `0.1.2-rc` पंक्ति alpha.5 सतह लाती है (append का कोई विकल्प मार्कर नहीं लिखता), `0.1.2-alpha` पंक्ति पढ़ने पर चिह्नित प्लगइन घटनाओं को भी अस्वीकारती है, और `0.1.3-alpha` पंक्ति वही surface-only append हस्ताक्षर रखती है — runtime पहले append से पहले इन सबका पता लगाकर एक बार की चेतावनी से सत्र-लॉग ऑडिट अक्षम कर देता है। `0.1.3-alpha` पंक्ति का v1→v2 लॉग प्रवासन चिह्नित अज्ञात v1 घटनाओं को भी अस्वीकारता है, इसलिए 0.1.3 host के लॉग खोलने से पहले v1 ऑडिट पंक्तियों को `strip` करें। पुनः सक्षम के लिए `allowUnmarkedAudit: true`; पहले से लिखे लॉग `scripts/repair-session-logs.mjs` से मरम्मत करें (जहाँ मार्कर मदद नहीं करता वहाँ इसका `strip` मोड ऑडिट पंक्तियाँ हटाता है)।
+- **पूर्व-मार्कर hosts और घटना-अस्वीकार hosts पर ऑडिट मार्कर।** `permissionRules/decision` `ignorable: true` से जोड़ा जाता है; जिन hosts का `Session.append` मार्कर से पहले का है (`0.1.0-rc.1`–`rc.7` और `0.1.1-rc.1`–`rc.7` पंक्तियाँ) वे इसे चुपचाप छोड़ देते हैं, `0.1.2-rc` पंक्ति alpha.5 सतह लाती है (append का कोई विकल्प मार्कर नहीं लिखता), `0.1.2-alpha` पंक्ति पढ़ने पर चिह्नित प्लगइन घटनाओं को भी अस्वीकारती है, और `0.1.3-alpha` तथा `0.1.5-alpha` पंक्तियाँ वही surface-only append हस्ताक्षर रखती हैं (प्रकाशित `0.1.3-alpha.1`/`0.1.5-alpha.1` पैकेजों पर सत्यापित) — runtime पहले append से पहले इन सबकी पूर्व-जाँच कर एक बार की चेतावनी से सत्र-लॉग ऑडिट अक्षम कर देता है। पीढ़ी-पार प्रवासन चिह्नित ऑडिट पंक्तियों को भी अस्वीकारता है: `0.1.3-alpha` का v1→v2 द्वार अज्ञात v1 घटनाओं को अस्वीकारता है, और `0.1.5-alpha` का v2→v3 द्वार हर अन-क्लासिफ़ाइड घटना को (उसकी सूची प्रकाशित v2 शब्दावली पर स्थिर है), इसलिए 0.1.3 host के लॉग खोलने से पहले v1 पंक्तियाँ और 0.1.5 host पर अपग्रेड से पहले v2 पंक्तियाँ `strip` करें। v3 मूल लॉग चिह्नित प्लगइन पंक्तियाँ स्वीकारते हैं, इसलिए उन्हें केवल `repair` चाहिए। पुनः सक्षम के लिए `allowUnmarkedAudit: true`; पहले से लिखे लॉग `scripts/repair-session-logs.mjs` से मरम्मत करें (जहाँ मार्कर मदद नहीं करता वहाँ इसका `strip` मोड ऑडिट पंक्तियाँ हटाता है)।
 - **पथ उम्मीदवार अनुमानी हैं।** केवल दस्तावेज़ित तर्क कुंजियाँ पथ मिलान को खिलाती हैं, और कार्यक्षेत्र-सापेक्ष मिलान केवल `caseInsensitivePaths` चालू होने पर ASCII-केस-असंवेदी है।
 - **globs एक रूढ़िवादी उपसमुच्चय हैं।** कोई ब्रेस विस्तार नहीं — दो पैटर्न लिखें, या regex मोड उपयोग करें।
 - **regex बैकट्रैकिंग गार्ड संरचनात्मक है, संपूर्ण नहीं।** अविश्वसनीय फ़ाइलों के लिए glob मोड पसंद करें।
@@ -187,9 +187,14 @@ dsh --profile web --dump-config | grep -A4 'id: permission-rules'
 ```sh
 node scripts/repair-session-logs.mjs scan [--home DIR]      # विदेशी पंक्तियों की रिपोर्ट, कुछ नहीं बदलता
 node scripts/repair-session-logs.mjs repair [--home DIR] [--dry-run]
+node scripts/repair-session-logs.mjs strip [--home DIR] [--dry-run]
 ```
 
-`--home` डिफ़ॉल्ट रूप से `$DSH_HOME/sessions` (या `~/.dsh/sessions`)।
+`--home` डिफ़ॉल्ट रूप से `$DSH_HOME/sessions` (या `~/.dsh/sessions`)। यह हर पीढ़ी के लॉग को उसके विहित नाम से खोजता है — `session.jsonl`, `session.v2.jsonl`, `session.v3.jsonl`, प्रत्येक वैकल्पिक रूप से `.zstd`-संपीड़ित — इसलिए पीढ़ी के अनुसार मोड चुनें:
+
+- **v3 (`session.v3.jsonl`, `0.1.5-alpha` पंक्ति द्वारा मूल रूप से लिखा)** — पठन पथ चिह्नित प्लगइन पंक्तियाँ स्वीकारता है, इसलिए `repair` पर्याप्त है।
+- **v2 (`session.v2.jsonl`, `0.1.3-alpha` पंक्ति द्वारा लिखा)** — `repair` इसे लिखने वाले host पर खोल देता है, पर `0.1.5-alpha` का v2→v3 प्रवासन चिह्नित अन-क्लासिफ़ाइड घटनाओं को भी अस्वीकारता है: `0.1.5-alpha` host पर अपग्रेड करने से **पहले** v2 लॉग पर `strip` चलाएँ।
+- **v1 (`session.jsonl`)** — `0.1.3-alpha` का v1→v2 प्रवासन चिह्नित अज्ञात v1 घटनाओं को भी अस्वीकारता है: 0.1.3 या बाद के host द्वारा लॉग पहली बार खोलने से पहले `strip` चलाएँ।
 
 ## Development
 
@@ -197,7 +202,7 @@ node scripts/repair-session-logs.mjs repair [--home DIR] [--dry-run]
 pnpm install            # node ^22.19 || >=24
 pnpm run typecheck      # tsc, src + tests
 pnpm run lint           # eslint, src + tests + scripts
-pnpm test               # vitest: 236 tests, 20 files
+pnpm test               # vitest: 280 tests, 23 files
 pnpm run test:coverage  # coverage gate (90/80/90/90)
 pnpm run build          # tsc declarations + tsdown bundles (lib/)
 pnpm run pack:check     # build + pack (the published artifact)

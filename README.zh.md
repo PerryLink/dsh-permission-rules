@@ -25,7 +25,7 @@
 
 | Surface | Status |
 |---|---|
-| Harness | DeepSeek Harness `dsh-v0.1.5-alpha.1`（2026-09-09 已适配）：会话信封保留 ignorable 字段但仅用于存量日志读取兼容——Session.append 仍无法盖章，门控行为不变，`0.1.2-rc` 线在首次追加前即被预检为未盖章。`0.1.3-alpha` 线已于 2026-09-09 对照 `dsh-v0.1.5-alpha.1` master checkout 完成核验（完整门禁链 + profile 安装冒烟）。 |
+| Harness | DeepSeek Harness `dsh-v0.1.5-alpha.1`（2026-09-09 已适配，完整门禁链 + profile 安装冒烟）：其 `Session.append` 仍无法盖章 `ignorable` 标记——已在已发布的 `0.1.5-alpha.1` 包上实测，第三参数被静默丢弃，信封字段仅用于存量日志读取——故整条 `0.1.5-alpha` 线在首次追加前即被预检为未盖章，会话日志审计默认停用。`0.1.3-alpha` 线同样沿用 surface-only 追加签名。两条线的日志迁移连已标记的未分类插件事件也拒绝：在 `0.1.3-alpha` 宿主打开日志前 `strip` 掉 v1 审计行，在 `0.1.5-alpha` 宿主迁移前 `strip` 掉 v2 审计行（v3 原生日志只需 `repair`）。 |
 | Node | `^22.19.0 || >=24.0.0` |
 | Platforms | 全部（host + Web 设置客户端） |
 | Model | 任意（deny/ask 原因经工具结果呈现） |
@@ -169,7 +169,7 @@ dsh --profile web --dump-config | grep -A4 'id: permission-rules'
 
 ## Known limitations
 
-- **前标记宿主与拒绝型宿主上的审计标记。** `permissionRules/decision` 以 `ignorable: true` 追加；`Session.append` 早于该标记的宿主（`0.1.0-rc.1`–`rc.7` 与 `0.1.1-rc.1`–`rc.7` 线）静默丢弃它，`0.1.2-rc` 线沿用 alpha.5 表面（append 无任何选项能写该标记），`0.1.2-alpha` 线在读取时连已标记的插件事件也拒绝，`0.1.3-alpha` 线同样沿用 surface-only 追加签名——运行时在首次追加前检测这些线并以一次性警告禁用会话日志审计。`0.1.3-alpha` 线的 v1→v2 日志迁移连已标记的未知 v1 事件也拒绝，故在 0.1.3 宿主打开日志前需先 `strip` 掉 v1 审计行。设 `allowUnmarkedAudit: true` 重新启用；用 `scripts/repair-session-logs.mjs` 修复已写日志（标记无济于事的宿主用其 `strip` 模式移除审计行）。
+- **前标记宿主与拒绝型宿主上的审计标记。** `permissionRules/decision` 以 `ignorable: true` 追加；`Session.append` 早于该标记的宿主（`0.1.0-rc.1`–`rc.7` 与 `0.1.1-rc.1`–`rc.7` 线）静默丢弃它，`0.1.2-rc` 线沿用 alpha.5 表面（append 无任何选项能写该标记），`0.1.2-alpha` 线在读取时连已标记的插件事件也拒绝，`0.1.3-alpha` 与 `0.1.5-alpha` 线同样沿用 surface-only 追加签名（已在已发布的 `0.1.3-alpha.1`/`0.1.5-alpha.1` 包上核验）——运行时在首次追加前即预检这些线并以一次性警告禁用会话日志审计。跨代迁移同样拒绝已标记的审计行：`0.1.3-alpha` 的 v1→v2 门拒绝未知 v1 事件，`0.1.5-alpha` 的 v2→v3 门拒绝一切未分类事件（其清单冻结为已发布 v2 词汇），故在 0.1.3 宿主打开日志前 `strip` v1 行、在升级到 0.1.5 宿主前 `strip` v2 行。v3 原生日志接受已标记的插件行，只需 `repair`。设 `allowUnmarkedAudit: true` 重新启用；用 `scripts/repair-session-logs.mjs` 修复已写日志（标记无济于事的宿主用其 `strip` 模式移除审计行）。
 - **路径候选是启发式的。** 只有文档化的参数键参与路径匹配，且工作区相对匹配仅在 `caseInsensitivePaths` 开启时忽略 ASCII 大小写。
 - **glob 是保守子集。** 无花括号展开——写两个模式，或用正则模式。
 - **正则回溯守卫是结构性的、非穷尽的。** 对不可信文件优先用 glob 模式。
@@ -187,9 +187,14 @@ dsh --profile web --dump-config | grep -A4 'id: permission-rules'
 ```sh
 node scripts/repair-session-logs.mjs scan [--home DIR]      # 报告外来行，不改任何内容
 node scripts/repair-session-logs.mjs repair [--home DIR] [--dry-run]
+node scripts/repair-session-logs.mjs strip [--home DIR] [--dry-run]
 ```
 
-`--home` 默认 `$DSH_HOME/sessions`（或 `~/.dsh/sessions`）。
+`--home` 默认 `$DSH_HOME/sessions`（或 `~/.dsh/sessions`）。工具按规范基名发现每一代日志——`session.jsonl`、`session.v2.jsonl`、`session.v3.jsonl`，各自可选 `.zstd` 压缩——请按世代选择模式：
+
+- **v3（`session.v3.jsonl`，`0.1.5-alpha` 线原生写出）** —— 读取路径接受已标记的插件行，`repair` 即可。
+- **v2（`session.v2.jsonl`，`0.1.3-alpha` 线写出）** —— `repair` 可让写出它的宿主打开日志，但 `0.1.5-alpha` 的 v2→v3 迁移连已标记的未分类事件也拒绝：请在升级到 `0.1.5-alpha` 宿主**之前**对 v2 日志执行 `strip`。
+- **v1（`session.jsonl`）** —— `0.1.3-alpha` 的 v1→v2 迁移连已标记的未知 v1 事件也拒绝：请在 0.1.3 或更新宿主首次打开日志前执行 `strip`。
 
 ## Development
 
@@ -197,7 +202,7 @@ node scripts/repair-session-logs.mjs repair [--home DIR] [--dry-run]
 pnpm install            # node ^22.19 || >=24
 pnpm run typecheck      # tsc, src + tests
 pnpm run lint           # eslint, src + tests + scripts
-pnpm test               # vitest: 236 tests, 20 files
+pnpm test               # vitest: 280 tests, 23 files
 pnpm run test:coverage  # coverage gate (90/80/90/90)
 pnpm run build          # tsc declarations + tsdown bundles (lib/)
 pnpm run pack:check     # build + pack (the published artifact)

@@ -26,7 +26,7 @@
 
 | Surface | Status |
 |---|---|
-| Harness | DeepSeek Harness `dsh-v0.1.5-alpha.1` (adapted 2026-09-09): the session envelope keeps its ignorable field for stored-log read compatibility only - Session.append still cannot stamp it, so audit-gate behavior is unchanged and the `0.1.2-rc` line is pre-checked as unmarked. The `0.1.3-alpha` line (verified 2026-09-09 against the dsh-v0.1.5-alpha.1 master checkout — full gate chain + profile install smoke) keeps the same surface-only append signature and is pre-checked as unmarked too; its v1→v2 log migration refuses unknown v1 events even when marked, so strip v1 audit rows before a 0.1.3 host opens the log. |
+| Harness | DeepSeek Harness `dsh-v0.1.5-alpha.1` (adapted 2026-09-09, full gate chain + profile install smoke): its `Session.append` still cannot stamp the `ignorable` marker — verified on the published `0.1.5-alpha.1` package, where the third argument is silently dropped and the envelope field survives for stored-log reads only — so the whole `0.1.5-alpha` line is pre-checked as unmarked and session-log audit stays disabled by default. The `0.1.3-alpha` line keeps the same surface-only append signature. Both lines' log migrations refuse unclassified plugin events even when marked, so `strip` v1 audit rows before a `0.1.3-alpha` host opens the log and v2 audit rows before a `0.1.5-alpha` host migrates it (native v3 logs only need `repair`). |
 | Node | `^22.19.0 || >=24.0.0` |
 | Platforms | All (host + web settings client) |
 | Model | Any (deny/ask reasons surface through tool results) |
@@ -170,7 +170,7 @@ All tunables are Schemastery `Config` fields (changeable from cordis.yml). An id
 
 ## Known limitations
 
-- **Audit marker on pre-marker and refusing hosts.** `permissionRules/decision` is appended with `ignorable: true`; hosts whose `Session.append` predates the marker (the `0.1.0-rc.1`–`rc.7` and `0.1.1-rc.1`–`rc.7` lines) silently drop it, the `0.1.2-rc` line ships the alpha.5 surface (no append option writes the marker), the `0.1.2-alpha` line refuses plugin events on read even when marked, and the `0.1.3-alpha` line keeps the same surface-only append signature — the runtime detects all of these before the first append and disables session-log audit with a one-time warning. The `0.1.3-alpha` line's v1→v2 log migration also refuses unknown v1 events even when marked, so `strip` v1 audit rows before a 0.1.3 host opens the log. Set `allowUnmarkedAudit: true` to opt back in; repair already-written logs with `scripts/repair-session-logs.mjs` (its `strip` mode removes audit rows where the marker cannot help).
+- **Audit marker on pre-marker and refusing hosts.** `permissionRules/decision` is appended with `ignorable: true`; hosts whose `Session.append` predates the marker (the `0.1.0-rc.1`–`rc.7` and `0.1.1-rc.1`–`rc.7` lines) silently drop it, the `0.1.2-rc` line ships the alpha.5 surface (no append option writes the marker), the `0.1.2-alpha` line refuses plugin events on read even when marked, and the `0.1.3-alpha` and `0.1.5-alpha` lines keep the same surface-only append signature (verified on the published `0.1.3-alpha.1`/`0.1.5-alpha.1` packages) — the runtime pre-checks all of these before the first append and disables session-log audit with a one-time warning. Cross-generation migration refuses marked audit rows too: the `0.1.3-alpha` v1→v2 gate refuses unknown v1 events, and the `0.1.5-alpha` v2→v3 gate refuses every unclassified event (its inventory is frozen to the released v2 vocabulary), so `strip` v1 rows before a 0.1.3 host opens the log and v2 rows before upgrading to a 0.1.5 host. Native v3 logs accept marked plugin rows, so they only need `repair`. Set `allowUnmarkedAudit: true` to opt back in; repair already-written logs with `scripts/repair-session-logs.mjs` (its `strip` mode removes audit rows where the marker cannot help).
 - **Path candidates are heuristic.** Only the documented argument keys feed path matching, and workspace-relative matching is ASCII-case-insensitive only when `caseInsensitivePaths` is on.
 - **Globs are a conservative subset.** No brace expansion — write two patterns, or use regex mode.
 - **The regex backtracking guard is structural, not exhaustive.** Prefer glob mode for untrusted files.
@@ -188,9 +188,14 @@ Session logs written before the `ignorable` marker existed can be refused by new
 ```sh
 node scripts/repair-session-logs.mjs scan [--home DIR]      # report foreign rows, change nothing
 node scripts/repair-session-logs.mjs repair [--home DIR] [--dry-run]
+node scripts/repair-session-logs.mjs strip [--home DIR] [--dry-run]
 ```
 
-`--home` defaults to `$DSH_HOME/sessions` (or `~/.dsh/sessions`).
+`--home` defaults to `$DSH_HOME/sessions` (or `~/.dsh/sessions`). Every generation-addressed log is discovered by its canonical basename — `session.jsonl`, `session.v2.jsonl`, `session.v3.jsonl`, each optionally `.zstd`-compressed — so pick the mode by generation:
+
+- **v3 (`session.v3.jsonl`, written natively by the `0.1.5-alpha` line)** — the read path accepts marked plugin rows, so `repair` is enough.
+- **v2 (`session.v2.jsonl`, written by the `0.1.3-alpha` line)** — `repair` opens it on the host that wrote it, but the `0.1.5-alpha` v2→v3 migration refuses every unclassified event even when marked: run `strip` on v2 logs **before** upgrading to a `0.1.5-alpha` host.
+- **v1 (`session.jsonl`)** — the `0.1.3-alpha` v1→v2 migration refuses unknown v1 events even when marked: run `strip` before a 0.1.3-or-later host first opens the log.
 
 ## Development
 
@@ -198,7 +203,7 @@ node scripts/repair-session-logs.mjs repair [--home DIR] [--dry-run]
 pnpm install            # node ^22.19 || >=24
 pnpm run typecheck      # tsc, src + tests
 pnpm run lint           # eslint, src + tests + scripts
-pnpm test               # vitest: 236 tests, 20 files
+pnpm test               # vitest: 280 tests, 23 files
 pnpm run test:coverage  # coverage gate (90/80/90/90)
 pnpm run build          # tsc declarations + tsdown bundles (lib/)
 pnpm run pack:check     # build + pack (the published artifact)
