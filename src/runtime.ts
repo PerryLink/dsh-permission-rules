@@ -410,10 +410,12 @@ export class PermissionRulesRuntime {
    * decision (passthrough included unless `audit: 'hits'`), requesting the
    * envelope's `ignorable: true` marker so any harness build can load the
    * log. Hosts whose `Session.append` predates the marker (the rc.6 line)
-   * silently drop it, leaving sessions unresumable on stricter hosts — the
-   * runtime therefore detects such hosts BEFORE the first append (peer
-   * version) and re-checks after the first append (returned envelope), then
-   * degrades: session-log audit is disabled with a one-time warning unless
+   * or keeps the later surface-only signature (the `0.1.2-rc`, `0.1.3-alpha`
+   * and `0.1.5-alpha` lines) silently drop the options bag, leaving the
+   * event unmarked and sessions unresumable on stricter hosts — the runtime
+   * therefore detects such hosts BEFORE the first append (peer version) and
+   * re-checks after the first append (returned envelope), then degrades:
+   * session-log audit is disabled with a one-time warning unless
    * `allowUnmarkedAudit: true` opts back in. The `0.1.2-alpha` line refuses
    * plugin event types on read even when marked, so its version gate
    * disables audit the same way (see `isUnmarkedHostVersion`). `source`
@@ -1315,6 +1317,12 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
  * - The `0.1.3-alpha` line keeps that surface-only append signature
  *   (verified against the `dsh-v0.1.3-alpha.1` tag), so its builds stamp
  *   the marker no more than rc.1 does and the line is treated as unmarked.
+ * - The `0.1.5-alpha` line drops the third `Session.append` argument the
+ *   same way (verified on the published `0.1.5-alpha.1` package: the
+ *   returned envelope carries no `ignorable` field, and the field survives
+ *   only on the stored-log READ path), so its builds append unmarked audit
+ *   rows and the whole line is treated as unmarked too. Every later
+ *   `0.1.N-alpha` line shares that surface until proven otherwise.
  * - The `0.1.2-alpha` line refuses to interpret logs containing plugin
  *   event types even when the envelope carries `ignorable: true` (verified
  *   on `0.1.2-alpha-1`, reported by @rgw87 in issue #15), so audit events
@@ -1328,19 +1336,22 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
  *   unchanged.
  * - Every rc build in minor 2 and later is treated as unmarked too
  *   (defensive: a future `0.1.3-rc` line would ship at least the same
- *   surface, and over-refusal is harmless for the reasons above).
+ *   surface, and over-refusal is harmless for the reasons above), and so is
+ *   every alpha build in minor 2 and later (`0.1.2-alpha` through
+ *   `0.1.5-alpha` and any later line: the marker surface was reintroduced
+ *   for stored-log reads, never for `Session.append`).
  *   Non-matching (later stable or unresolvable) versions are treated as
  *   possibly-marker-aware and verified by the append probe.
  * @param version - the installed peer version string.
  * @returns true for the known-unsafe rc.1–rc.7 lines of `0.1.0` and
- *   `0.1.1`, every rc build in minor 2 and later, and the `0.1.2-alpha`
- *   and `0.1.3-alpha` lines.
+ *   `0.1.1`, every rc build in minor 2 and later, and every alpha build in
+ *   minor 2 and later (`0.1.2-alpha` through `0.1.5-alpha`).
  */
 export function isUnmarkedHostVersion(version: string): boolean {
   const v = version.trim()
   const rc = /^0\.1\.([0-9]+)-rc\.(\d+)$/.exec(v)
   if (rc !== null) return Number(rc[1]) >= 2 || Number(rc[2]) <= 7
-  return /^0\.1\.[23]-alpha[.-]\d+$/.test(v)
+  return /^0\.1\.(?:[2-9]|[1-9]\d)-alpha[.-]\d+$/.test(v)
 }
 
 /**

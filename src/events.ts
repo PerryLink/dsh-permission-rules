@@ -20,9 +20,12 @@
  * {@link AuditAppend}). Harness builds that honor the marker (post-rc.6)
  * stamp it on the envelope and skip unknown ignorable records when loading,
  * so the audit can never refuse a session. Builds whose `Session.append`
- * predates the marker — the `0.1.0-rc.6` line — silently DROP the options
- * bag: the event then lands UNMARKED and makes the session unresumable on
- * hosts with required-on-read semantics (`SessionFormatUnsupportedError`).
+ * predates the marker (the `0.1.0-rc.6` line) or keeps the later
+ * surface-only signature (the `0.1.2-rc`, `0.1.3-alpha` and `0.1.5-alpha`
+ * lines — verified on the published `0.1.5-alpha.1` package, whose envelope
+ * field survives for stored-log reads only) silently DROP the options bag:
+ * the event then lands UNMARKED and makes the session unresumable on hosts
+ * with required-on-read semantics (`SessionFormatUnsupportedError`).
  * The runtime detects this at first use (peer version pre-check plus a
  * probe of the appended envelope) and disables session-log audit on such
  * hosts with a one-time warning; `allowUnmarkedAudit: true` opts back in,
@@ -130,11 +133,12 @@ export interface AuditNetworkBlock {
 /**
  * `Session.append` narrowed to this plugin's audit event. The options bag
  * exists only on host builds that expose the `ignorable` envelope-marker
- * surface (post-rc.6 `@deepseek-ai/dsh-session`); an rc.6 host accepts the
- * call but silently drops the third argument — the event is appended
- * WITHOUT the marker, which is exactly what breaks later resume on stricter
- * hosts. The runtime treats the marker as optional-but-probed: see
- * {@link isMarkedAuditEvent}.
+ * surface (post-rc.6 `@deepseek-ai/dsh-session`); an rc.6 host — and, since
+ * the alpha.5 surface, every `0.1.2-rc`, `0.1.3-alpha` and `0.1.5-alpha`
+ * build — accepts the call but silently drops the third argument: the event
+ * is appended WITHOUT the marker, which is exactly what breaks later resume
+ * on stricter hosts. The runtime treats the marker as optional-but-probed:
+ * see {@link isMarkedAuditEvent}.
  */
 export type AuditAppend = (
   type: 'permissionRules/decision',
