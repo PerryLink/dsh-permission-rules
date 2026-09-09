@@ -1,6 +1,6 @@
 {
   "name": "dsh-permission-rules",
-  "version": "0.6.12",
+  "version": "0.6.13",
   "description": "Declarative Claude Code-style permission rules plus a Codex-style process-level network policy for DeepSeek Harness: ordered allow/deny/ask rules with tool-name, argument (glob/regex), workspace-path, and network-target (domain/ip/port/scheme) matching on the tools/pre-execute waterfall, a built-in local HTTP/CONNECT proxy governing shell subprocess traffic, three network modes mapped onto the official sandbox presets, full session-log audit, HMR rule reload, and a settings page with a rule editor, block counters, and recent interception lists.",
   "private": false,
   "type": "module",
@@ -76,9 +76,7 @@
       "network:outbound"
     ],
     "compatibility": {
-      "dshVersions": [
-        "0.1.2-rc.1"
-      ]
+      "dshVersions": ["0.1.2-rc.1","0.1.5-alpha.1"]
     },
     "capability": {
       "id": "rules",
@@ -120,18 +118,18 @@
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.2",
-    "@deepseek-ai/dsh-agent": ">=0.1.2-rc.1 <0.2.0",
-    "@deepseek-ai/dsh-commands": ">=0.1.2-rc.1 <0.2.0",
-    "@deepseek-ai/dsh-llm": ">=0.1.2-rc.1 <0.2.0",
-    "@deepseek-ai/dsh-session": ">=0.1.2-rc.1 <0.2.0",
-    "@deepseek-ai/dsh-tools": ">=0.1.2-rc.1 <0.2.0",
-    "@deepseek-ai/dsh-typert-protocol": ">=0.1.2-rc.1 <0.2.0",
+    "@deepseek-ai/dsh-agent": ">=0.1.2-rc.1 <0.2.0 || >=0.1.5-alpha.1 <0.2.0",
+    "@deepseek-ai/dsh-commands": ">=0.1.2-rc.1 <0.2.0 || >=0.1.5-alpha.1 <0.2.0",
+    "@deepseek-ai/dsh-llm": ">=0.1.2-rc.1 <0.2.0 || >=0.1.5-alpha.1 <0.2.0",
+    "@deepseek-ai/dsh-session": ">=0.1.2-rc.1 <0.2.0 || >=0.1.5-alpha.1 <0.2.0",
+    "@deepseek-ai/dsh-tools": ">=0.1.2-rc.1 <0.2.0 || >=0.1.5-alpha.1 <0.2.0",
+    "@deepseek-ai/dsh-typert-protocol": ">=0.1.2-rc.1 <0.2.0 || >=0.1.5-alpha.1 <0.2.0",
     "@deepseek-ai/schemastery": "^3.18.2",
     "react": "^18.2.0",
-    "@deepseek-ai/dsh-client-connection": ">=0.1.2-rc.1 <0.2.0",
-    "@deepseek-ai/dsh-client-locale": ">=0.1.2-rc.1 <0.2.0",
-    "@deepseek-ai/dsh-client-ui-settings": ">=0.1.2-rc.1 <0.2.0",
-    "@deepseek-ai/dsh-client-web": ">=0.1.2-rc.1 <0.2.0"
+    "@deepseek-ai/dsh-client-connection": ">=0.1.2-rc.1 <0.2.0 || >=0.1.5-alpha.1 <0.2.0",
+    "@deepseek-ai/dsh-client-locale": ">=0.1.2-rc.1 <0.2.0 || >=0.1.5-alpha.1 <0.2.0",
+    "@deepseek-ai/dsh-client-ui-settings": ">=0.1.2-rc.1 <0.2.0 || >=0.1.5-alpha.1 <0.2.0",
+    "@deepseek-ai/dsh-client-web": ">=0.1.2-rc.1 <0.2.0 || >=0.1.5-alpha.1 <0.2.0"
   },
   "peerDependenciesMeta": {
     "@deepseek-ai/dsh-client-connection": {
@@ -156,26 +154,26 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@deepseek-ai/dsh-attachment": "0.1.2-rc.1",
+    "@deepseek-ai/dsh-attachment": "0.1.5-alpha.1",
     "@deepseek-ai/cordis": "^4.0.2",
     "@deepseek-ai/cordis-plugin-include": "^1.0.7",
     "@deepseek-ai/cordis-plugin-loader": "^1.0.3",
-    "@deepseek-ai/dsh-agent": "0.1.2-rc.1",
-    "@deepseek-ai/dsh-brand": "0.1.2-rc.1",
-    "@deepseek-ai/dsh-client-connection": "0.1.2-rc.1",
-    "@deepseek-ai/dsh-client-locale": "0.1.2-rc.1",
-    "@deepseek-ai/dsh-client-ui-settings": "0.1.2-rc.1",
-    "@deepseek-ai/dsh-client-ui-slots": "0.1.2-rc.1",
-    "@deepseek-ai/dsh-client-web": "0.1.2-rc.1",
-    "@deepseek-ai/dsh-commands": "0.1.2-rc.1",
-    "@deepseek-ai/dsh-invariants": "0.1.2-rc.1",
-    "@deepseek-ai/dsh-llm": "0.1.2-rc.1",
-    "@deepseek-ai/dsh-session": "0.1.2-rc.1",
-    "@deepseek-ai/dsh-session-projection": "0.1.2-rc.1",
-    "@deepseek-ai/dsh-subagent": "0.1.2-rc.1",
-    "@deepseek-ai/dsh-tools": "0.1.2-rc.1",
-    "@deepseek-ai/dsh-typert-protocol": "0.1.2-rc.1",
-    "@deepseek-ai/dsh-user-approval": "0.1.2-rc.1",
+    "@deepseek-ai/dsh-agent": "0.1.5-alpha.1",
+    "@deepseek-ai/dsh-brand": "0.1.5-alpha.1",
+    "@deepseek-ai/dsh-client-connection": "0.1.5-alpha.1",
+    "@deepseek-ai/dsh-client-locale": "0.1.5-alpha.1",
+    "@deepseek-ai/dsh-client-ui-settings": "0.1.5-alpha.1",
+    "@deepseek-ai/dsh-client-ui-slots": "0.1.5-alpha.1",
+    "@deepseek-ai/dsh-client-web": "0.1.5-alpha.1",
+    "@deepseek-ai/dsh-commands": "0.1.5-alpha.1",
+    "@deepseek-ai/dsh-invariants": "0.1.5-alpha.1",
+    "@deepseek-ai/dsh-llm": "0.1.5-alpha.1",
+    "@deepseek-ai/dsh-session": "0.1.5-alpha.1",
+    "@deepseek-ai/dsh-session-projection": "0.1.5-alpha.1",
+    "@deepseek-ai/dsh-subagent": "0.1.5-alpha.1",
+    "@deepseek-ai/dsh-tools": "0.1.5-alpha.1",
+    "@deepseek-ai/dsh-typert-protocol": "0.1.5-alpha.1",
+    "@deepseek-ai/dsh-user-approval": "0.1.5-alpha.1",
     "@deepseek-ai/schemastery": "^3.18.2",
     "@eslint/js": "^10.0.1",
     "@types/node": "^22.19.0",

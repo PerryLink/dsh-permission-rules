@@ -26,7 +26,7 @@
 
 | Surface | Status |
 |---|---|
-| Harness | DeepSeek Harness `dsh-v0.1.3-alpha.1` (adapted 2026-09-04): the session envelope keeps its ignorable field for stored-log read compatibility only - Session.append still cannot stamp it, so audit-gate behavior is unchanged and the `0.1.2-rc` line is pre-checked as unmarked. The `0.1.3-alpha` line (verified 2026-09-06 against the dsh-v0.1.3-alpha.1 master checkout — full gate chain + profile install smoke) keeps the same surface-only append signature and is pre-checked as unmarked too; its v1→v2 log migration refuses unknown v1 events even when marked, so strip v1 audit rows before a 0.1.3 host opens the log. |
+| Harness | DeepSeek Harness `dsh-v0.1.5-alpha.1` (adapted 2026-09-09): the session envelope keeps its ignorable field for stored-log read compatibility only - Session.append still cannot stamp it, so audit-gate behavior is unchanged and the `0.1.2-rc` line is pre-checked as unmarked. The `0.1.3-alpha` line (verified 2026-09-09 against the dsh-v0.1.5-alpha.1 master checkout — full gate chain + profile install smoke) keeps the same surface-only append signature and is pre-checked as unmarked too; its v1→v2 log migration refuses unknown v1 events even when marked, so strip v1 audit rows before a 0.1.3 host opens the log. |
 | Node | `^22.19.0 || >=24.0.0` |
 | Platforms | All (host + web settings client) |
 | Model | Any (deny/ask reasons surface through tool results) |
