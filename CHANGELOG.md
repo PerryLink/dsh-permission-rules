@@ -1,3 +1,13 @@
+## v0.6.15 - 2026-09-09
+
+### Changed
+
+- Vendor integration tarball updated to `dsh-auto-review` 0.12.1 (`vendor/dsh-auto-review-0.12.1.tgz`, packed from the sibling repo's `0.12.1` release source; the packed `files` are identical to tag `v0.12.1`), with the devDependency `file:` specifier and `pnpm-lock.yaml` refreshed. The sibling's runtime `@deepseek-ai/dsh-*` pins now follow the `0.1.5-alpha.1` host line, matching this repo's dev peers. The five historical vendor tarballs (`0.9.0`–`0.11.0`) stay in the tree.
+
+### Tests
+
+- `test/integration.spec.ts` (3 tests) re-run unchanged against the 0.12.1 tarball: the `ask` rule → official approval seam → scripted `autoReview/verdict` → `approval/decided` audit chain stays green, so no source adaptation was needed. The full gate chain (`typecheck`, `test` 23 files / 280 tests, `build`, `verify:self-contained`) passes with the new vendor artifact installed.
+
 ## v0.6.14 - 2026-09-09
 
 ### Fixed
