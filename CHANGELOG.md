@@ -1,3 +1,13 @@
+## v0.6.16 - 2026-09-09
+
+### Security
+
+- **Fixed: an IPv4-mapped IPv6 literal bypassed `ips` rules.** `isIpLiteral()` classifies any host containing `:` as an IPv6 literal, while `ipMatches()` compared literal patterns by exact string equality and CIDR patterns with an IPv4 dotted-quad regex. A target spelled `::ffff:169.254.169.254` (or the hex form `::ffff:a9fe:a9fe`, or the full form `0:0:0:0:0:ffff:a9fe:a9fe`) therefore matched neither an IPv4 literal nor an IPv4 CIDR rule, even though Node routes the connection to that IPv4 destination — a sandboxed caller could reach an address the rules intended to block (for example a cloud metadata endpoint). Both sides now normalize through `unmapIpv4`: candidates and patterns are mapped back to their dotted IPv4 form before matching, a mapped pattern also covers the plain IPv4 spelling, and mapped globs keep their IPv4 remainder (`::ffff:10.0.*.*` → `10.0.*.*`). Reported by the maintainer during a network-rule audit; the shipped `docs/rules-format.md` / `.en.md` `ips` row documents the normalization.
+
+### Tests
+
+- `test/network.spec.ts` gains a regression case: mapped dotted / mapped hex / full-form mapped literals against both literal and CIDR `ips` rules, the normalized `parseUrlTarget` candidate, the mapped-pattern direction, and an unrelated-IPv6 negative.
+
 ## v0.6.15 - 2026-09-09
 
 ### Changed

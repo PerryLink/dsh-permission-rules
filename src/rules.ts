@@ -1087,9 +1087,31 @@ function normalizeHost(host: string): string {
   return out
 }
 
-/** The literal IP of a host, or `[]` when the host is a name. */
+/**
+ * Map an IPv4-mapped IPv6 literal (dotted or hex form) back to its dotted IPv4
+ * quad. Node routes `::ffff:169.254.169.254` and `::ffff:a9fe:a9fe` to the same
+ * IPv4 destination as `169.254.169.254`, so both spellings must compare as that
+ * address: without this normalization an `ips` rule written in IPv4 terms never
+ * matches the mapped spelling and the deny is bypassed.
+ * @param host - lowercased, unbracketed host or pattern.
+ * @returns the IPv4 dotted quad when the input is IPv4-mapped, else the input.
+ */
+function unmapIpv4(host: string): string {
+  const lower = host.toLowerCase()
+  const dotted = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/.exec(lower)
+  if (dotted !== null && dotted[1] !== undefined) return dotted[1]
+  const hex = /^(?:(?:0{0,4}:){5}|::)ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(lower)
+  if (hex !== null && hex[1] !== undefined && hex[2] !== undefined) {
+    const high = Number.parseInt(hex[1], 16)
+    const low = Number.parseInt(hex[2], 16)
+    return `${high >> 8}.${high & 0xff}.${low >> 8}.${low & 0xff}`
+  }
+  return lower
+}
+
+/** The literal IP of a host, or `[]` when the host is a name. Mapped literals normalize to IPv4. */
 function literalIpOf(host: string): readonly string[] {
-  return isIpLiteral(host) ? [host.toLowerCase()] : []
+  return isIpLiteral(host) ? [unmapIpv4(host.toLowerCase())] : []
 }
 
 /** Whether a host string is an IP literal (IPv4 or IPv6). */
@@ -1139,19 +1161,36 @@ function compilePortPattern(pattern: string): CompiledPortRange {
   return { min: low, max: high }
 }
 
+/**
+ * Normalize an IP pattern's spelling: a mapped literal becomes its IPv4 quad,
+ * and a mapped glob keeps its IPv4 remainder (`::ffff:10.0.*.*` → `10.0.*.*`),
+ * so IPv4 patterns cover mapped spellings too.
+ * @param pattern - the raw pattern.
+ * @returns the normalized, lowercased pattern.
+ */
+function unmapIpv4Pattern(pattern: string): string {
+  const lower = pattern.toLowerCase()
+  const mapped = unmapIpv4(lower)
+  if (mapped !== lower) return mapped
+  const dottedPrefix = /^::ffff:(.+)$/.exec(lower)
+  if (dottedPrefix !== null && dottedPrefix[1] !== undefined) return dottedPrefix[1]
+  return lower
+}
+
 /** Compile one IP pattern: CIDR first, then glob; exact literals glob-compile to themselves. */
 function compileIpPattern(pattern: string, maxGlobStars: number): CompiledIpPattern {
-  const cidr = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\/(\d{1,2})$/.exec(pattern)
+  const normalized = unmapIpv4Pattern(pattern)
+  const cidr = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\/(\d{1,2})$/.exec(normalized)
   if (cidr !== null) {
     const octets = cidr.slice(1, 5).map(Number) as [number, number, number, number]
     const prefix = Number(cidr[5])
     const network = ((octets[0] << 24) | (octets[1] << 16) | (octets[2] << 8) | octets[3]) >>> 0
     return { cidr: { network, prefix } }
   }
-  if (!/[[*?]/.test(pattern) && !pattern.includes(':')) {
-    return { literal: pattern.toLowerCase() }
+  if (!/[[*?]/.test(normalized) && !normalized.includes(':')) {
+    return { literal: normalized }
   }
-  return { regex: compileGlob(pattern, { segments: false, maxStars: maxGlobStars, caseInsensitive: true }) }
+  return { regex: compileGlob(normalized, { segments: false, maxStars: maxGlobStars, caseInsensitive: true }) }
 }
 
 /**
@@ -1226,9 +1265,9 @@ export function targetMatchesNetwork(target: NetworkTarget, network: CompiledNet
   return true
 }
 
-/** Whether one compiled IP pattern matches one candidate address (lowercased, unbracketed). */
+/** Whether one compiled IP pattern matches one candidate address (lowercased, unbracketed, mapped IPv4 unmapped). */
 function ipMatches(pattern: CompiledIpPattern, candidate: string): boolean {
-  const normalized = normalizeHost(candidate)
+  const normalized = unmapIpv4(normalizeHost(candidate))
   if (pattern.cidr !== undefined) {
     const parts = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(normalized)
     if (parts === null) return false

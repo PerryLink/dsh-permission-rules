@@ -95,6 +95,25 @@ describe('network compilation and target matching', () => {
     expect(targetMatchesNetwork(target('https://internal.example'), network)).toBe(false)
   })
 
+  it('normalizes IPv4-mapped IPv6 literals so IPv4 ips rules cannot be bypassed', () => {
+    const literal = networkOf('rules:\n  - match: { network: { ips: [127.0.0.2] } }\n    action: deny\n    reason: x')
+    const cidr = networkOf('rules:\n  - match: { network: { ips: [127.0.0.0/8] } }\n    action: deny\n    reason: x')
+    // A mapped literal reaches the same IPv4 destination, so IPv4 rules must match it.
+    expect(targetMatchesNetwork(target('http://[::ffff:127.0.0.2]'), literal)).toBe(true)
+    expect(targetMatchesNetwork(target('http://[::ffff:127.0.0.2]'), cidr)).toBe(true)
+    expect(targetMatchesNetwork(target('http://[::ffff:7f00:2]'), literal)).toBe(true)
+    expect(targetMatchesNetwork(target('http://[::ffff:7f00:2]'), cidr)).toBe(true)
+    expect(targetMatchesNetwork(target('http://[0:0:0:0:0:ffff:7f00:2]'), literal)).toBe(true)
+    // parseUrlTarget supplies the normalized candidate for a literal host; the
+    // WHATWG URL parser canonicalizes the mapped dotted form to the hex form.
+    expect(parseUrlTarget('http://[::ffff:127.0.0.2]/')).toMatchObject({ host: '::ffff:7f00:2', ips: ['127.0.0.2'] })
+    // A mapped pattern also covers the plain IPv4 spelling (fail closed both ways).
+    const mappedPattern = networkOf('rules:\n  - match: { network: { ips: ["::ffff:127.0.0.2"] } }\n    action: deny\n    reason: x')
+    expect(targetMatchesNetwork(target('http://127.0.0.2'), mappedPattern)).toBe(true)
+    // Unrelated IPv6 stays unmatched by an IPv4 rule.
+    expect(targetMatchesNetwork(target('http://[::1]'), literal)).toBe(false)
+  })
+
   it('matches port ranges and schemes against the effective port', () => {
     const network = networkOf('rules:\n  - match: { network: { ports: ["8000-9000"], schemes: [http] } }\n    action: deny\n    reason: x')
     expect(targetMatchesNetwork(target('http://dev.example:8080'), network)).toBe(true)
