@@ -1,14 +1,16 @@
 /**
  * Host-capability degradation for the audit envelope's `ignorable` marker:
  * hosts whose `Session.append` predates the marker (the released rc.1–rc.7
- * lines) or ships the alpha.5 surface (the `0.1.2-rc` and `0.1.3-alpha`
- * lines) write audit events UNMARKED, which makes sessions unresumable on
- * stricter harness builds. The runtime must detect such hosts BEFORE the first append (peer
+ * lines) or ships the alpha.5 surface (the `0.1.2-rc` line and every
+ * `0.1.N-alpha` line from `0.1.2` through `0.1.5`) write audit events
+ * UNMARKED, which makes sessions unresumable on stricter harness builds. The
+ * runtime must detect such hosts BEFORE the first append (peer
  * version) and re-check the first append's returned envelope, then disable
  * session-log audit with a one-time warning unless
- * `allowUnmarkedAudit: true` opts back in. The pinned rc.1 peers cannot
- * stamp the marker, so the degradation tests simulate the version lines
- * through the runtime's `peerVersion` seam instead of mounting them.
+ * `allowUnmarkedAudit: true` opts back in. The pinned `0.1.5-alpha.1` peers
+ * cannot stamp the marker either, so the real-mount regression below
+ * exercises the gate against the actual installed peer; the other lines are
+ * simulated through the runtime's `peerVersion` seam.
  * @module dsh-permission-rules/test/audit-support.spec
  */
 
@@ -18,11 +20,11 @@ import { isUnmarkedHostVersion } from '../src/runtime.ts'
 import type { PermissionRulesRuntime } from '../src/runtime.ts'
 import { dispatchPreExecute, makeExec, mountHarness, removeWorkspace, tempWorkspace } from './harness.ts'
 
-/** Version-line classification for the known-unmarked rc.1–rc.7 peers of the 0.1.0 and 0.1.1 lines, the non-stamping 0.1.2-rc and 0.1.3-alpha lines (plus every defensive rc build in minor 2+), and the read-path-refusing 0.1.2-alpha line. */
+/** Version-line classification for the known-unmarked rc.1–rc.7 peers of the 0.1.0 and 0.1.1 lines, every rc build in minor 2+, every alpha build in minor 2+ (the read-path-refusing 0.1.2-alpha line through the non-stamping 0.1.5-alpha line), and nothing else. */
 describe('isUnmarkedHostVersion', () => {
-  it('flags the 0.1.0/0.1.1 rc.1–rc.7 lines, the 0.1.2-rc/0.1.3-alpha lines, later rc minors, and the 0.1.2-alpha line, and nothing else', () => {
-    for (const version of ['0.1.0-rc.1', '0.1.0-rc.6', '0.1.0-rc.7', '0.1.1-rc.1', '0.1.1-rc.2', '0.1.1-rc.7', '0.1.2-rc.1', '0.1.2-rc.2', '0.1.3-rc.1', '0.1.10-rc.1', '0.1.2-alpha-1', '0.1.2-alpha.1', '0.1.2-alpha.2', '0.1.3-alpha.1', '0.1.3-alpha.2']) expect(isUnmarkedHostVersion(version)).toBe(true)
-    for (const version of ['0.1.0-rc.8', '0.1.0-rc.10', '0.1.1-rc.8', '0.1.1-rc.10', '0.1.0', '0.2.0', '0.1.0-rc.6-pre', '0.1.2-alpha', '0.1.2-beta.1', '0.1.2', '0.1.3-alpha', '0.1.3-beta.1', '0.1.3', '0.1.4-alpha.1', 'garbage']) expect(isUnmarkedHostVersion(version)).toBe(false)
+  it('flags the 0.1.0/0.1.1 rc.1–rc.7 lines, later rc minors, and every alpha line from 0.1.2 through 0.1.5, and nothing else', () => {
+    for (const version of ['0.1.0-rc.1', '0.1.0-rc.6', '0.1.0-rc.7', '0.1.1-rc.1', '0.1.1-rc.2', '0.1.1-rc.7', '0.1.2-rc.1', '0.1.2-rc.2', '0.1.3-rc.1', '0.1.10-rc.1', '0.1.2-alpha-1', '0.1.2-alpha.1', '0.1.2-alpha.2', '0.1.3-alpha.1', '0.1.3-alpha.2', '0.1.4-alpha.1', '0.1.5-alpha.1', '0.1.5-alpha.2', '0.1.10-alpha.1']) expect(isUnmarkedHostVersion(version)).toBe(true)
+    for (const version of ['0.1.0-rc.8', '0.1.0-rc.10', '0.1.1-rc.8', '0.1.1-rc.10', '0.1.0', '0.2.0', '0.1.0-rc.6-pre', '0.1.2-alpha', '0.1.2-beta.1', '0.1.2', '0.1.3-alpha', '0.1.3-beta.1', '0.1.3', '0.1.4-alpha', '0.1.4', '0.1.5', '0.1.5-alpha', 'garbage']) expect(isUnmarkedHostVersion(version)).toBe(false)
   })
 })
 
@@ -72,6 +74,33 @@ describe('audit host-capability degradation', () => {
       await dispatchPreExecute(harness.ctx, makeExec({ name: 'bash', arguments: {}, agent: harness.agent }))
       expect(harness.session.snapshotEvents().filter(event => event.type === 'permissionRules/decision')).toHaveLength(1)
       expect(warn.mock.calls.some(([message]) => String(message).includes('ignorable'))).toBe(false)
+    } finally {
+      warn.mockRestore()
+      removeWorkspace(cwd)
+    }
+  })
+
+  it('the installed unmarked peer (0.1.5-alpha.1) writes NO audit row: the version pre-check fires before the first append', async () => {
+    const cwd = tempWorkspace()
+    // No peerVersion mock — this is the real pinned peer, whose
+    // Session.append accepts the third argument and silently drops it (the
+    // returned envelope carries no `ignorable`). That is exactly the host the
+    // pre-check must classify as unmarked, or the first decision would land
+    // an unmarked row and make the session unresumable.
+    const harness = await mountHarness({ allowUnmarkedAudit: false }, { cwd })
+    const runtime = harness.ctx.get('permissionRulesRuntime') as PermissionRulesRuntime
+    const peer = (runtime as unknown as { peerVersion(): string | null }).peerVersion()
+    expect(peer).not.toBeNull()
+    expect(isUnmarkedHostVersion(peer as string)).toBe(true)
+    const warn = vi.spyOn(harness.ctx.logger, 'warn').mockImplementation(() => undefined)
+    try {
+      expect((await dispatchPreExecute(harness.ctx, makeExec({ name: 'bash', arguments: {}, agent: harness.agent }))).kind).toBe('allow')
+      expect((await dispatchPreExecute(harness.ctx, makeExec({ name: 'glob', arguments: {}, agent: harness.agent }))).kind).toBe('allow')
+      // No audit event ever entered the session log.
+      expect(harness.session.snapshotEvents().filter(event => event.type === 'permissionRules/decision')).toHaveLength(0)
+      const unmarkedWarnings = warn.mock.calls.filter(([message]) => String(message).includes('ignorable'))
+      expect(unmarkedWarnings).toHaveLength(1)
+      expect(String(unmarkedWarnings[0]?.[0])).toContain('allowUnmarkedAudit')
     } finally {
       warn.mockRestore()
       removeWorkspace(cwd)
