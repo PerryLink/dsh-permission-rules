@@ -149,7 +149,7 @@
               "items": { "type": "string", "minLength": 1 }
             },
             "ips": {
-              "description": "IP literals, globs, or IPv4 CIDRs; ANY matching the target address satisfies the dimension.",
+              "description": "IP literals, globs, or IPv4 CIDRs; an IPv4-mapped IPv6 literal (::ffff:169.254.169.254, ::ffff:a9fe:a9fe) is unmapped to its dotted IPv4 form before matching, and a mapped pattern also covers the plain IPv4 spelling; ANY matching the target address satisfies the dimension.",
               "type": "array",
               "items": { "type": "string", "minLength": 1 }
             },

@@ -21,7 +21,7 @@ import { connect } from 'node:net'
 import { lookup } from 'node:dns/promises'
 import type { AddressInfo } from 'node:net'
 import type { Duplex } from 'node:stream'
-import type { Server, IncomingMessage, ServerResponse } from 'node:http'
+import type { Server, IncomingMessage, RequestOptions, ServerResponse } from 'node:http'
 import type { CallId } from './call-id.ts'
 import type { NetworkDecision, NetworkMode } from './network.ts'
 import { blockMessage } from './network.ts'
@@ -163,23 +163,65 @@ export class NetworkProxy {
       res.end('permission-rules proxy: only absolute-form proxy requests are served here\n')
       return
     }
-    await this.forwardOrBlock(res, target, () => {
-      const upstream = new URL(req.url as string)
-      const send = upstream.protocol === 'https:' ? httpsRequest : httpRequest
-      const proxyReq = send(upstream, { method: req.method, headers: req.headers }, proxyRes => {
-        res.writeHead(proxyRes.statusCode ?? 502, proxyRes.headers)
-        proxyRes.pipe(res)
-      })
-      proxyReq.on('error', (error: unknown) => {
-        if (!res.headersSent) {
-          res.writeHead(502, { 'content-type': 'text/plain' })
-          res.end(`[network: upstream error] ${String(error)}\n`)
-        } else {
-          res.destroy()
-        }
-      })
-      req.pipe(proxyReq)
+    const { decision, target: adjudicated } = await this.decideWithResolution(target)
+    if (decision.action !== 'allow') {
+      this.recordBlock(decision, target)
+      const body = blockMessage(decision)
+      res.writeHead(403, { 'content-type': 'text/plain; charset=utf-8', 'content-length': Buffer.byteLength(body) })
+      res.end(body)
+      return
+    }
+    const upstream = new URL(req.url as string)
+    const send = upstream.protocol === 'https:' ? httpsRequest : httpRequest
+    // The forwarded connection is pinned to the addresses the decision was made
+    // on, so a hostname that re-resolves between adjudication and connect
+    // (DNS rebinding) cannot reach an address the rules never approved.
+    const pinned = pinnedAddresses(adjudicated)
+    const options: RequestOptions = {
+      method: req.method,
+      headers: req.headers,
+      ...(pinned.length === 0 ? {} : { lookup: pinnedLookup(pinned) }),
+    }
+    const proxyReq = send(upstream, options, proxyRes => {
+      res.writeHead(proxyRes.statusCode ?? 502, proxyRes.headers)
+      proxyRes.pipe(res)
     })
+    proxyReq.on('error', (error: unknown) => {
+      if (!res.headersSent) {
+        res.writeHead(502, { 'content-type': 'text/plain' })
+        res.end(`[network: upstream error] ${String(error)}\n`)
+      } else {
+        res.destroy()
+      }
+    })
+    req.pipe(proxyReq)
+  }
+
+  /**
+   * Connect to the first adjudicated address that accepts, so the tunnel lands
+   * on an address the decision approved; a hostname target with no resolution
+   * keeps the historical hostname connect. Each candidate is tried in order so
+   * a multi-address host does not lose its fallback.
+   */
+  private async connectUpstream(target: NetworkTarget, port: number): Promise<Duplex> {
+    const pinned = pinnedAddresses(target)
+    if (pinned.length === 0) return connect(port, target.host)
+    let lastError: unknown
+    for (const address of pinned) {
+      try {
+        return await new Promise<Duplex>((resolve, reject) => {
+          const socket = connect(port, address)
+          socket.once('connect', () => resolve(socket))
+          socket.once('error', (error: unknown) => {
+            socket.destroy()
+            reject(error instanceof Error ? error : new Error(String(error)))
+          })
+        })
+      } catch (error) {
+        lastError = error
+      }
+    }
+    throw lastError instanceof Error ? lastError : new Error('no adjudicated address accepted the connection')
   }
 
   /** CONNECT tunneling (HTTPS and friends): adjudicate, then either 403 or an established TCP tunnel. */
@@ -201,14 +243,21 @@ export class NetworkProxy {
       socket.end('HTTP/1.1 400 Bad Request\r\n\r\n')
       return
     }
-    const decision = await this.decideWithResolution(target)
+    const { decision, target: adjudicated } = await this.decideWithResolution(target)
     if (decision.action !== 'allow') {
       this.recordBlock(decision, target)
       const body = blockMessage(decision)
       socket.end(`HTTP/1.1 403 Forbidden\r\ncontent-type: text/plain\r\ncontent-length: ${Buffer.byteLength(body)}\r\n\r\n${body}`)
       return
     }
-    const tunnel = connect(target.port ?? 443, target.host)
+    let tunnel: Duplex
+    try {
+      tunnel = await this.connectUpstream(adjudicated, target.port ?? 443)
+    } catch (error) {
+      this.options.logger.warn(`permission-rules: upstream connect failed for ${target.host}: ${String(error)}`)
+      socket.end('HTTP/1.1 502 Bad Gateway\r\n\r\n')
+      return
+    }
     tunnelHolder.tunnel = tunnel
     this.sockets.add(socket)
     this.sockets.add(tunnel)
@@ -219,39 +268,27 @@ export class NetworkProxy {
     socket.on('close', cleanup)
     tunnel.on('close', cleanup)
     tunnel.on('error', () => socket.destroy())
-    tunnel.once('connect', () => {
-      socket.write('HTTP/1.1 200 Connection Established\r\n\r\n')
-      if (head.length > 0) tunnel.write(head)
-      tunnel.pipe(socket)
-      socket.pipe(tunnel)
-    })
-  }
-
-  /** Adjudicate one plain-HTTP request; deny/ask blocks with a structured 403 before any forwarding. */
-  private async forwardOrBlock(res: ServerResponse, target: NetworkTarget, forward: () => void): Promise<void> {
-    const decision = await this.decideWithResolution(target)
-    if (decision.action !== 'allow') {
-      this.recordBlock(decision, target)
-      const body = blockMessage(decision)
-      res.writeHead(403, { 'content-type': 'text/plain; charset=utf-8', 'content-length': Buffer.byteLength(body) })
-      res.end(body)
-      return
-    }
-    forward()
+    socket.write('HTTP/1.1 200 Connection Established\r\n\r\n')
+    if (head.length > 0) tunnel.write(head)
+    tunnel.pipe(socket)
+    socket.pipe(tunnel)
   }
 
   /** Resolve a hostname once so `ips`-scoped rules see the real addresses, then decide. */
-  private async decideWithResolution(target: NetworkTarget): Promise<NetworkDecision> {
+  private async decideWithResolution(target: NetworkTarget): Promise<{ decision: NetworkDecision; target: NetworkTarget }> {
     if (!isIpLiteral(target.host)) {
       try {
         const addresses = await lookup(target.host, { all: true, verbatim: true })
         const resolved = addresses.map(entry => entry.address)
-        if (resolved.length > 0) return this.options.decide({ ...target, ips: [...target.ips, ...resolved] })
+        if (resolved.length > 0) {
+          const effective: NetworkTarget = { ...target, ips: [...target.ips, ...resolved] }
+          return { decision: await this.options.decide(effective), target: effective }
+        }
       } catch {
         // Unresolvable target: decide on the literal name (ip-scoped rules simply cannot fire).
       }
     }
-    return this.options.decide(target)
+    return { decision: await this.options.decide(target), target }
   }
 
   /** Record a block: counters, recent ring, and the runtime hook (logger + session audit). */
@@ -293,6 +330,32 @@ function connectTarget(authority: string): NetworkTarget | undefined {
   const port = Number(authority.slice(colon + 1))
   if (host.length === 0 || !Number.isInteger(port) || port < 1 || port > 65535) return undefined
   return { scheme: 'https', host, port, ips: isIpLiteral(host) ? [host] : [] }
+}
+
+/**
+ * The literal addresses a connection may use — everything the decision was
+ * made on. Returning them keeps the connection on an adjudicated address
+ * instead of letting a second DNS lookup pick a different one.
+ * @param target - the adjudicated target.
+ * @returns the adjudicated literal addresses, in decision order.
+ */
+function pinnedAddresses(target: NetworkTarget): readonly string[] {
+  return target.ips.filter(candidate => isIpLiteral(candidate))
+}
+
+/**
+ * A `lookup` that answers from the adjudicated address list without a second
+ * DNS query. Node's happy-eyeballs path asks with `all: true` and tries the
+ * returned addresses in order, so a multi-address host keeps its fallbacks.
+ * @param addresses - the adjudicated literal addresses.
+ * @returns the lookup function handed to `http(s).request`.
+ */
+function pinnedLookup(addresses: readonly string[]): NonNullable<RequestOptions['lookup']> {
+  const resolved = addresses.map(address => ({ address, family: address.includes(':') ? 6 : 4 }))
+  return (_hostname, options, callback) => {
+    if (options.all === true) callback(null, resolved)
+    else callback(null, resolved[0]!.address, resolved[0]!.family)
+  }
 }
 
 /**

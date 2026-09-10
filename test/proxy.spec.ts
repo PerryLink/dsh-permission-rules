@@ -13,21 +13,37 @@ import { connect as netConnect, createServer as createNetServer } from 'node:net
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { NetworkProxy, injectProxyEnv, NO_PROXY_ENV_NAMES, PROXY_ENV_NAMES } from '../src/proxy.ts'
 import type { NetworkBlockRecord, NetworkProxyOptions } from '../src/proxy.ts'
+import { compileRules, parseRulesDocument, targetMatchesNetwork } from '../src/rules.ts'
 import type { CompiledRule } from '../src/rules.ts'
 import type { NetworkDecision } from '../src/network.ts'
 
 const warn = (): void => {}
 
 /** One quick local HTTP origin for passthrough tests. */
-async function origin(): Promise<{ server: Server; port: number; close: () => Promise<void> }> {
+async function origin(bind = '127.0.0.1'): Promise<{ server: Server; port: number; close: () => Promise<void> }> {
   const server = createServer((req, res) => {
     res.writeHead(200, { 'content-type': 'text/plain' })
     res.end(`origin:${req.url ?? ''}`)
   })
-  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
+  await new Promise<void>(resolve => server.listen(0, bind, resolve))
   const address = server.address()
   if (address === null || typeof address === 'string') throw new Error('origin bind failed')
   return { server, port: address.port, close: () => new Promise<void>(resolve => server.close(() => resolve())) }
+}
+
+/**
+ * One local HTTP origin reachable by NAME on hosts whose `localhost` answers
+ * with either family: binding `::` accepts IPv4 and IPv6 on the same port
+ * (Node's default `ipv6Only: false`), with an IPv4-only fallback for runners
+ * without IPv6 — the pinned lookup hands Node every adjudicated address, so
+ * either answer reaches this server.
+ */
+async function originByName(): Promise<{ server: Server; port: number; close: () => Promise<void> }> {
+  try {
+    return await origin('::')
+  } catch {
+    return await origin('127.0.0.1')
+  }
 }
 
 /** Start a policy proxy whose decisions come from the given function. */
@@ -367,5 +383,86 @@ describe('proxy lifecycle', () => {
     expect(port).toBeGreaterThan(0)
     await proxy.close()
     await expect(viaProxy(port, 'http://example.com/')).rejects.toThrow()
+  })
+})
+
+/**
+ * End-to-end guards for the mapped-literal bypass class and for connecting on
+ * the adjudicated address. Before the fix an IPv4-mapped IPv6 literal matched
+ * neither an IPv4 literal nor an IPv4 CIDR `ips` rule, while Node still routed
+ * the connection to the denied IPv4 destination — so a mapped target passed the
+ * rule and reached the address it was meant to block.
+ */
+describe('mapped IPv6 targets and adjudicated-address pinning', () => {
+  const COMPILE = { patternMode: 'glob', maxRules: 64, maxGlobStars: 4, caseInsensitivePaths: true } as const
+
+  /** A decide built from the REAL matcher over one `ips` deny rule. */
+  function ipsDenyDecide(ipPatterns: readonly string[]): NetworkProxyOptions['decide'] {
+    const yaml = `rules:\n  - action: deny\n    reason: mapped-target guard\n    match:\n      network:\n        ips: [${ipPatterns.join(', ')}]\n`
+    const network = compileRules(parseRulesDocument(yaml), COMPILE).rules[0]?.network
+    if (network === undefined) throw new Error('expected a compiled network block')
+    return target => (targetMatchesNetwork(target, network)
+      ? { action: 'deny', matched: true, mode: 'allow-all', source: '/ws/rules.yaml', rule: reasonRule('mapped-target guard') }
+      : { action: 'allow', matched: false, mode: 'allow-all' })
+  }
+
+  it('denies a plain-HTTP target spelled as an IPv4-mapped IPv6 literal (literal rule)', async () => {
+    const upstream = await origin('127.0.0.2')
+    const proxy = await startProxy(ipsDenyDecide(['127.0.0.2']))
+    try {
+      expect((await viaProxy(proxy.port, `http://127.0.0.2:${upstream.port}/x`)).status).toBe(403)
+      expect((await viaProxy(proxy.port, `http://[::ffff:127.0.0.2]:${upstream.port}/x`)).status).toBe(403)
+      expect(proxy.blockStats().denied).toBe(2)
+    } finally {
+      await proxy.close()
+      await upstream.close()
+    }
+  })
+
+  it('denies the mapped spelling under an IPv4 CIDR rule as well', async () => {
+    const upstream = await origin('127.0.0.2')
+    const proxy = await startProxy(ipsDenyDecide(['127.0.0.0/8']))
+    try {
+      expect((await viaProxy(proxy.port, `http://127.0.0.2:${upstream.port}/x`)).status).toBe(403)
+      expect((await viaProxy(proxy.port, `http://[::ffff:127.0.0.2]:${upstream.port}/x`)).status).toBe(403)
+    } finally {
+      await proxy.close()
+      await upstream.close()
+    }
+  })
+
+  it('denies a CONNECT tunnel to an IPv4-mapped IPv6 target', async () => {
+    const echo = createNetServer(socket => socket.pipe(socket))
+    await new Promise<void>(resolve => echo.listen(0, '127.0.0.2', resolve))
+    const address = echo.address()
+    if (address === null || typeof address === 'string') throw new Error('echo bind failed')
+    const proxy = await startProxy(ipsDenyDecide(['127.0.0.2']))
+    try {
+      expect((await viaConnect(proxy.port, `127.0.0.2:${address.port}`)).status).toBe(403)
+      expect((await viaConnect(proxy.port, `[::ffff:127.0.0.2]:${address.port}`)).status).toBe(403)
+    } finally {
+      await proxy.close()
+      await new Promise<void>(resolve => echo.close(() => resolve()))
+    }
+  })
+
+  it('forwards a named target through the addresses the decision saw', async () => {
+    const upstream = await originByName()
+    const adjudicated: string[][] = []
+    const proxy = await startProxy(target => {
+      adjudicated.push([...target.ips])
+      return { action: 'allow', matched: false, mode: 'allow-all' }
+    })
+    try {
+      const result = await viaProxy(proxy.port, `http://localhost:${upstream.port}/pin`)
+      expect(result.status).toBe(200)
+      expect(result.body).toBe('origin:/pin')
+      // The decision resolved the name, and the connection reused that address
+      // list instead of resolving a second time.
+      expect(adjudicated[0]?.length ?? 0).toBeGreaterThan(0)
+    } finally {
+      await proxy.close()
+      await upstream.close()
+    }
   })
 })
