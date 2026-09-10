@@ -604,7 +604,10 @@ export class PermissionRulesRuntime {
    * connection is then judged exactly as before, against the loaded workspace
    * chains). It is not watched either: the session-less window is the boot
    * window, and the first tool call of any session takes over with the normal
-   * per-workspace chain, which is watched.
+   * per-workspace chain, which is watched. An EXPLICIT reload still drops this
+   * cache ({@link invalidateHostChain}) — `/rules reload`, the settings-page
+   * reload and a settings save all reach it — because during the boot window a
+   * corrected rule otherwise had no effect short of restarting the process.
    * @returns the configured chain, or undefined when it cannot be loaded (the mode default then applies).
    */
   private hostChain(): NetworkChain | undefined {
@@ -622,6 +625,19 @@ export class PermissionRulesRuntime {
       }
     }
     return { ruleset: this.hostLoaded.compiled, sources: this.hostLoaded.sources }
+  }
+
+  /**
+   * Drop the cached session-less chain so the next proxy decision re-reads it,
+   * and re-arm the one-shot warning so a file that has since become loadable
+   * can report a failure again. Without this the cache was permanent: the
+   * session-less chain is deliberately not a `byCwd` member and is not watched,
+   * so neither `reloadAll()` nor a settings save ever reached it and a
+   * corrected rule needed a process restart (issue #18 follow-up).
+   */
+  private invalidateHostChain(): void {
+    this.hostLoaded = undefined
+    this.hostChainWarned = false
   }
 
   /** Mark one delegated shell execution as in-flight (newest attribution wins). */
@@ -744,6 +760,9 @@ export class PermissionRulesRuntime {
    */
   async onNetworkConfigChanged(): Promise<void> {
     if (!this.config.network.enabled) return
+    // The chain inputs (rulesFile, fallbackPath, …) may have changed with the
+    // config, so the session-less chain must be re-read rather than reused.
+    this.invalidateHostChain()
     await this.networkProxy?.close()
     this.envRestore?.()
     this.envRestore = undefined
@@ -824,8 +843,15 @@ export class PermissionRulesRuntime {
     return undefined
   }
 
-  /** Re-read every cached workspace chain (the settings-page reload action). */
+  /**
+   * Re-read every cached workspace chain and drop the session-less host chain
+   * (the settings-page reload action). The host chain matters here because the
+   * settings page is a web-client surface: it can be used while no session has
+   * run a tool call, which is exactly the window in which the host chain is
+   * what judges traffic.
+   */
   reloadAll(): void {
+    this.invalidateHostChain()
     for (const cwd of [...this.byCwd.keys()]) this.reload(cwd)
   }
 
@@ -860,6 +886,7 @@ export class PermissionRulesRuntime {
       return { ok: false, error: error instanceof Error ? error.message : String(error) }
     }
     let reloaded = 0
+    this.invalidateHostChain()
     for (const cwd of [...this.byCwd.keys()]) {
       this.reload(cwd)
       reloaded += 1

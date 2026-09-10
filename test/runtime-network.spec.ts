@@ -235,6 +235,33 @@ describe('session-less host-level connections (issue #18)', () => {
       removeWorkspace(otherWorkspace)
     }
   })
+
+  it('re-reads the configured chain after an explicit reload, so a corrected rule needs no restart', async () => {
+    const upstream = await origin()
+    const rulesDir = tempWorkspace('sessionless-reload')
+    const rulesFilePath = join(rulesDir, 'rules.yaml')
+    // Boot with a rule that does NOT cover the target.
+    writeFileSync(rulesFilePath, 'rules:\n  - action: allow\n    reason: some other host\n    match: { network: { domains: [allowed.example] } }\n', 'utf8')
+    const harness = await mountWithConfiguredRules(rulesFilePath)
+    try {
+      const runtime = runtimeOf(harness)
+      const port = runtime.networkSnapshot().proxyPort
+      const target = `http://127.0.0.1:${upstream.port}/catalog.json`
+      expect((await proxyGet(port, target)).status).toBe(403)
+      // The operator corrects the rule file — or the settings page writes it.
+      writeFileSync(rulesFilePath, `rules:\n  - action: allow\n    reason: pinned local origin\n    match:\n      network:\n        ips: [127.0.0.1]\n        ports: [${upstream.port}]\n`, 'utf8')
+      // Still the boot-time chain: the session-less chain is cached, is not a
+      // `byCwd` member, and is not watched, so nothing had re-read it yet.
+      expect((await proxyGet(port, target)).status).toBe(403)
+      // An explicit reload (the settings-page action, usable with no session)
+      // must reach it, so the fix does not require a process restart.
+      runtime.reloadAll()
+      expect((await proxyGet(port, target)).status).toBe(200)
+    } finally {
+      await upstream.close()
+      removeWorkspace(rulesDir)
+    }
+  })
 })
 
 describe('/rules network command', () => {
