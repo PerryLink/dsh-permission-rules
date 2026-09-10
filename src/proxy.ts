@@ -199,13 +199,22 @@ export class NetworkProxy {
 
   /**
    * Connect to the first adjudicated address that accepts, so the tunnel lands
-   * on an address the decision approved; a hostname target with no resolution
-   * keeps the historical hostname connect. Each candidate is tried in order so
-   * a multi-address host does not lose its fallback.
+   * on an address the decision approved. Each candidate is tried in order so a
+   * multi-address host does not lose its fallback.
+   *
+   * A target whose adjudication resolved no address FAILS here instead of
+   * dialing the hostname (issue #21): dialing the name would be a second DNS
+   * resolution — the answer could differ from the one the rules were evaluated
+   * against — and it is the one remaining path where Node's happy-eyeballs
+   * race applies, with its 250 ms `autoSelectFamilyAttemptTimeout` default
+   * that kills any endpoint further away than that. Dialing an already-
+   * resolved literal skips that algorithm entirely (net.js connects an IP
+   * without a lookup), so the tunnel only ever reaches an adjudicated
+   * address; the client's retry resolves and adjudicates again.
    */
   private async connectUpstream(target: NetworkTarget, port: number): Promise<Duplex> {
     const pinned = pinnedAddresses(target)
-    if (pinned.length === 0) return connect(port, target.host)
+    if (pinned.length === 0) throw new Error(`no adjudicated address for ${target.host}`)
     let lastError: unknown
     for (const address of pinned) {
       try {

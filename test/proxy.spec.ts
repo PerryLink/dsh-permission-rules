@@ -10,12 +10,33 @@
 import { createServer, request as httpRequest } from 'node:http'
 import type { Server } from 'node:http'
 import { connect as netConnect, createServer as createNetServer } from 'node:net'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { NetworkProxy, injectProxyEnv, NO_PROXY_ENV_NAMES, PROXY_ENV_NAMES } from '../src/proxy.ts'
 import type { NetworkBlockRecord, NetworkProxyOptions } from '../src/proxy.ts'
 import { compileRules, parseRulesDocument, targetMatchesNetwork } from '../src/rules.ts'
 import type { CompiledRule } from '../src/rules.ts'
 import type { NetworkDecision } from '../src/network.ts'
+
+/**
+ * Resolver control for the no-adjudicated-address case (issue #21): the real
+ * `node:dns/promises` is kept for every other test, and flipping `fail` makes
+ * the proxy's adjudication resolution fail while the name stays genuinely
+ * resolvable — the only way to observe whether the tunnel then dials the NAME
+ * (a second resolution with Node's 250 ms happy-eyeballs budget) or fails
+ * closed.
+ */
+const dnsControl = vi.hoisted(() => ({ fail: false }))
+
+vi.mock('node:dns/promises', async importOriginal => {
+  const actual = await importOriginal<typeof import('node:dns/promises')>()
+  return {
+    ...actual,
+    lookup: async (...args: Parameters<typeof actual.lookup>) => {
+      if (dnsControl.fail) throw new Error('EAI_AGAIN transient resolver failure')
+      return actual.lookup(...args)
+    },
+  }
+})
 
 const warn = (): void => {}
 
@@ -466,6 +487,60 @@ describe('mapped IPv6 targets and adjudicated-address pinning', () => {
     } finally {
       await proxy.close()
       await upstream.close()
+    }
+  })
+})
+
+/**
+ * Issue #21: the CONNECT tunnel used to fall back to `connect(port, host)`
+ * whenever the adjudication had produced no address. That is a SECOND DNS
+ * resolution — the answer may differ from the one the rules were evaluated
+ * against (DNS rebinding) — and it is the one remaining path where Node's
+ * happy-eyeballs race applies: with the default 250 ms
+ * `autoSelectFamilyAttemptTimeout`, any endpoint more than ~250 ms away fails
+ * or thrashes through the proxy while a direct client is fine. A tunnel with
+ * no adjudicated address must fail closed instead.
+ */
+describe('CONNECT without an adjudicated address fails closed (issue #21)', () => {
+  it('answers 502 instead of dialing the hostname when the adjudication resolved nothing', async () => {
+    const echo = createNetServer(socket => socket.pipe(socket))
+    await new Promise<void>(resolve => echo.listen(0, '127.0.0.1', resolve))
+    const address = echo.address()
+    if (address === null || typeof address === 'string') throw new Error('echo bind failed')
+    const warnings: string[] = []
+    const proxy = await startProxy(() => ({ action: 'allow', matched: false, mode: 'allow-all' }), { logger: { warn: message => warnings.push(message) } })
+    dnsControl.fail = true
+    try {
+      // `localhost` is reachable by name: before the fix the tunnel dialed it
+      // and answered 200 (a second resolution the rules never saw).
+      const result = await viaConnect(proxy.port, `localhost:${address.port}`)
+      expect(result.status).toBe(502)
+      expect(result.echoed).toBe(false)
+      expect(warnings.some(message => message.includes('no adjudicated address for localhost'))).toBe(true)
+    } finally {
+      dnsControl.fail = false
+      await proxy.close()
+      await new Promise<void>(resolve => echo.close(() => resolve()))
+    }
+  })
+
+  it('still tunnels an adjudicated literal address', async () => {
+    const echo = createNetServer(socket => socket.pipe(socket))
+    await new Promise<void>(resolve => echo.listen(0, '127.0.0.1', resolve))
+    const address = echo.address()
+    if (address === null || typeof address === 'string') throw new Error('echo bind failed')
+    const proxy = await startProxy(() => ({ action: 'allow', matched: false, mode: 'allow-all' }))
+    dnsControl.fail = true
+    try {
+      // An IP-literal target needs no resolution, so the resolver failure is
+      // irrelevant: the tunnel dials the adjudicated address.
+      const result = await viaConnect(proxy.port, `127.0.0.1:${address.port}`)
+      expect(result.status).toBe(200)
+      expect(result.echoed).toBe(true)
+    } finally {
+      dnsControl.fail = false
+      await proxy.close()
+      await new Promise<void>(resolve => echo.close(() => resolve()))
     }
   })
 })
