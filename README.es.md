@@ -78,6 +78,7 @@ Una **política de red a nivel de proceso** estilo Codex: el tráfico de subproc
 
 - **Emparejamiento** — `match.network` con `domains` / `ips` / `ports` / `schemes` (globs, comodines, CIDR, rangos de puertos; se aceptan puertos YAML numéricos). La extracción de candidatos URL en la ruta caliente `tools/pre-execute` se dispara sobre argumentos de herramientas web y URLs embebidas en texto de comandos bash/pwsh; los destinos de loopback pueden cortocircuitar reglas según la política `loopback`. Los literales IPv6 mapeados a IPv4 se normalizan a su forma IPv4 antes de comparar, y el proxy se conecta a las direcciones con las que se tomó la decisión, sin una segunda resolución DNS.
 - **Auditoría** — las conexiones denegadas anexan `permissionRules/network` a la sesión propietaria (la misma puerta adaptativa `ignorable`), con contadores de bloqueo e intercepciones recientes en `/rules network` y la página de settings.
+- **Diagnóstico** — las conexiones bloqueadas llevan un mensaje `[network: …]`, y una llamada al modelo que falla mientras el proxy bloqueó un destino (el entorno de proxy inyectado también alcanza al transporte LLM del host) nombra ese destino y la solución en el texto del fallo, en lugar de quedar como un error de transporte desnudo.
 
 ## Quick start
 
@@ -174,6 +175,7 @@ Todos los parámetros son campos Schemastery `Config` (modificables desde cordis
 - **Los candidatos de ruta son heurísticos.** Solo las claves de argumento documentadas alimentan el emparejamiento de rutas, y el emparejamiento relativo al workspace es insensible a mayúsculas ASCII solo con `caseInsensitivePaths` activado.
 - **Los globs son un subconjunto conservador.** Sin expansión de llaves — escribe dos patrones, o usa modo regex.
 - **La guardia de backtracking de regex es estructural, no exhaustiva.** Prefiere el modo glob para archivos no confiables.
+- **Los endpoints del proveedor LLM necesitan una regla allow.** El entorno de proxy inyectado es de proceso completo, así que en modo whitelist el propio transporte del modelo del host se adjudica como cualquier otra conexión, y el plugin no puede enumerar los endpoints que llamará un adaptador (las rutas de proveedor exponen ids, y las base URL configuradas viven en los settings de cada adaptador). Añade una regla allow para el endpoint del proveedor, o pon `network.injectEnv: false` para dejar el proceso del host fuera del proxy.
 
 ## Collaborating with dsh-auto-review
 

@@ -79,6 +79,7 @@ A Codex-style **process-level network policy**: shell subprocess traffic flows t
 
 - **Matching** — `match.network` with `domains` / `ips` / `ports` / `schemes` (globs, wildcards, CIDRs, port ranges; numeric YAML ports are accepted). URL-candidate extraction on the `tools/pre-execute` hot path fires on web-tool arguments and URLs embedded in bash/pwsh command text; loopback targets can short-circuit rules per `loopback` policy. IPv4-mapped IPv6 literals are normalized to their IPv4 form before matching, and the proxy connects on the addresses the decision was made on — never a second DNS resolution.
 - **Audit** — denied connections append `permissionRules/network` to the owning session (same adaptive `ignorable` gate), with block counters and recent interceptions in `/rules network` and the settings page.
+- **Diagnosis** — blocked connections carry a `[network: …]` message, and a model call that fails while the proxy blocked a target (the injected proxy environment also reaches the host's LLM transport) names that target and the remediation in its failure text instead of failing as a bare transport error.
 
 ## Quick start
 
@@ -175,6 +176,7 @@ All tunables are Schemastery `Config` fields (changeable from cordis.yml). An id
 - **Path candidates are heuristic.** Only the documented argument keys feed path matching, and workspace-relative matching is ASCII-case-insensitive only when `caseInsensitivePaths` is on.
 - **Globs are a conservative subset.** No brace expansion — write two patterns, or use regex mode.
 - **The regex backtracking guard is structural, not exhaustive.** Prefer glob mode for untrusted files.
+- **LLM provider endpoints need an allow rule.** The injected proxy environment is process-wide, so in whitelist mode the host's own model transport is adjudicated like any other connection, and the plugin cannot enumerate the endpoints an adapter will call (provider routes expose ids, and configured base URLs live in adapter-owned settings). Add an allow rule for the provider endpoint, or set `network.injectEnv: false` to keep the host process out of the proxy.
 
 ## Collaborating with dsh-auto-review
 

@@ -78,6 +78,7 @@ Codex 风格的**进程级网络策略**：shell 子进程流量经内置本地 
 
 - **匹配** —— `match.network` 用 `domains` / `ips` / `ports` / `schemes`（glob、通配符、CIDR、端口范围；数值型 YAML 端口可接受）。`tools/pre-execute` 热路径上的 URL 候选抽取作用于 web 工具参数与嵌入 bash/pwsh 命令文本的 URL；回环目标可按 `loopback` 策略短路规则。IPv4 映射的 IPv6 字面量在匹配前归一化为 IPv4 形式；代理按裁决到的地址建连，不做二次 DNS 解析。
 - **审计** —— 被拒连接向所属会话追加 `permissionRules/network`（同样的自适应 `ignorable` 门），块计数器与近期拦截在 `/rules network` 与设置页展示。
+- **诊断** —— 被拦截的连接带 `[network: …]` 消息；若模型调用失败时代理恰好拦截了某个目标（注入的代理环境同样作用于宿主的 LLM 传输），失败文本会点名该目标与处置办法，而不再只是一个裸的传输错误。
 
 ## Quick start
 
@@ -174,6 +175,7 @@ dsh --profile web --dump-config | grep -A4 'id: permission-rules'
 - **路径候选是启发式的。** 只有文档化的参数键参与路径匹配，且工作区相对匹配仅在 `caseInsensitivePaths` 开启时忽略 ASCII 大小写。
 - **glob 是保守子集。** 无花括号展开——写两个模式，或用正则模式。
 - **正则回溯守卫是结构性的、非穷尽的。** 对不可信文件优先用 glob 模式。
+- **LLM 供应商端点需要显式允许规则。** 注入的代理环境是进程级的，因此白名单模式下宿主自身的模型传输与其他连接一样被裁决，而插件无法枚举某个适配器将要调用的端点（供应商路由只暴露 id，配置的 base URL 存在各适配器自己的设置里）。请为供应商端点添加 allow 规则，或设 `network.injectEnv: false` 让宿主进程不经过该代理。
 
 ## Collaborating with dsh-auto-review
 

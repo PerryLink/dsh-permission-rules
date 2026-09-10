@@ -78,6 +78,7 @@ Uma **política de rede em nível de processo** estilo Codex: o tráfego de subp
 
 - **Correspondência** — `match.network` com `domains` / `ips` / `ports` / `schemes` (globs, curingas, CIDR, faixas de porta; portas YAML numéricas são aceitas). A extração de candidatos URL na rota quente `tools/pre-execute` dispara sobre argumentos de ferramentas web e URLs embutidas em texto de comando bash/pwsh; destinos de loopback podem curto-circuitar regras conforme a política `loopback`. Literais IPv6 mapeados em IPv4 são normalizados para a forma IPv4 antes da comparação, e o proxy conecta nos endereços usados na decisão, sem uma segunda resolução DNS.
 - **Auditoria** — conexões negadas anexam `permissionRules/network` à sessão proprietária (a mesma porta adaptativa `ignorable`), com contadores de bloqueio e intercepções recentes em `/rules network` e na página de settings.
+- **Diagnóstico** — conexões bloqueadas trazem uma mensagem `[network: …]`, e uma chamada ao modelo que falha enquanto o proxy bloqueou um destino (o ambiente de proxy injetado também alcança o transporte LLM do host) nomeia esse destino e a solução no texto da falha, em vez de ficar como um erro de transporte cru.
 
 ## Quick start
 
@@ -174,6 +175,7 @@ Todos os parâmetros são campos Schemastery `Config` (alteráveis pelo cordis.y
 - **Candidatos de caminho são heurísticos.** Somente as chaves de argumento documentadas alimentam a correspondência de caminho, e a correspondência relativa ao workspace é insensível a maiúsculas ASCII apenas com `caseInsensitivePaths` ativado.
 - **Globs são um subconjunto conservador.** Sem expansão de chaves — escreva dois padrões, ou use o modo regex.
 - **A guarda de backtracking de regex é estrutural, não exaustiva.** Prefira o modo glob para arquivos não confiáveis.
+- **Os endpoints do provedor LLM precisam de uma regra allow.** O ambiente de proxy injetado é do processo inteiro, então no modo whitelist o próprio transporte do modelo do host é adjudicado como qualquer outra conexão, e o plugin não consegue enumerar os endpoints que um adaptador vai chamar (as rotas de provedor expõem apenas ids, e as base URLs configuradas ficam nos settings de cada adaptador). Adicione uma regra allow para o endpoint do provedor, ou defina `network.injectEnv: false` para manter o processo do host fora do proxy.
 
 ## Collaborating with dsh-auto-review
 
