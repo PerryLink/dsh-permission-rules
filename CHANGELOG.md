@@ -347,6 +347,16 @@ All notable changes to dsh-permission-rules are recorded here, newest first.
 - Per-workspace rule discovery (`<cwd>/.dsh/rules.yaml`), `fallbackPath`, Chokidar HMR with debounce, `/rules` session command.
 - Fail-loud loading: invalid YAML, unknown fields/actions, bad globs/regexes, and rule counts over `maxRules` fail the load.
 
+## [Unreleased]
+
+### Changed
+
+- Pin the `@deepseek-ai/dsh-*` dev/test dependencies to the published `0.1.5-rc.1` line and record `0.1.5-rc.1` in `dshWorkshop.compatibility.dshVersions`; the monthly Compat workflow now runs against `0.1.5-rc.1`. The peer range `>=0.1.2-rc.1 <0.2.0 || >=0.1.5-alpha.1 <0.2.0` is unchanged, so no supported host line is dropped.
+
+### Docs
+
+- Refresh the five-language README compatibility baseline to `dsh-v0.1.5-rc.1` (verified 2026-09-10).
+
 ## [0.6.13] - 2026-09-09
 
 ### Changed
