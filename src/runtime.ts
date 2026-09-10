@@ -18,7 +18,6 @@ import { dirname, isAbsolute, join, resolve, sep } from 'node:path'
 import chokidar from 'chokidar'
 import type { Context } from '@deepseek-ai/cordis'
 import type { CommandInvocation, CommandResult } from '@deepseek-ai/dsh-commands'
-import type { GenerateOptions, StreamChunk } from '@deepseek-ai/dsh-llm'
 import type { PreToolDecision, ToolExecution } from '@deepseek-ai/dsh-tools'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import { resolveConfig } from './config.ts'
@@ -81,14 +80,6 @@ const WEB_TOOLS: readonly string[] = ['web_fetch', 'web_search']
 
 /** Stale in-flight entries are dropped after this many milliseconds (attribution is best-effort). */
 const IN_FLIGHT_TTL_MS = 10 * 60 * 1000
-
-/**
- * Clock slack for attributing a proxy block to a model call: a block recorded
- * within this window before the call started still counts, so millisecond
- * granularity or a listener ordering between the retry middleware and this
- * waterfall cannot hide the block that caused the failure.
- */
-const LLM_BLOCK_SKEW_MS = 1000
 
 /**
  * Chokidar polling interval used when the watched path lives on a filesystem
@@ -631,60 +622,6 @@ export class PermissionRulesRuntime {
       }
     }
     return { ruleset: this.hostLoaded.compiled, sources: this.hostLoaded.sources }
-  }
-
-  /**
-   * The `llm/stream` waterfall listener (issue #22). The proxy environment
-   * this plugin injects for shell subprocesses is process-wide, so it is also
-   * visible to the harness's own LLM transport; a provider endpoint that the
-   * policy blocks then surfaces as a bare transport failure ("Connection
-   * error. / TRANSPORT" after the retry budget) with nothing pointing at the
-   * policy. This wrapper is transparent for every call: it only ENRICHES a
-   * failure whose window contains a proxy block, so no turn fails silently on
-   * a policy decision the user cannot see.
-   * @param next - the downstream chain (the resolved adapter's stream).
-   * @returns the same chunks, with any failure carrying the policy diagnosis.
-   */
-  llmStream(next: () => AsyncIterable<StreamChunk>): AsyncIterable<StreamChunk> {
-    return this.diagnosedLlmStream(next)
-  }
-
-  /** Delegate one model call and enrich its failure with the proxy diagnosis, if any. */
-  private async *diagnosedLlmStream(next: () => AsyncIterable<StreamChunk>): AsyncGenerator<StreamChunk> {
-    const startedAt = Date.now()
-    try {
-      yield* next()
-    } catch (error: unknown) {
-      const diagnosis = this.llmFailureDiagnosis(startedAt)
-      if (diagnosis !== undefined) {
-        this.ctx.logger.warn(`permission-rules: ${diagnosis}`)
-        // Keep the original error object (its class, code, and retry facts)
-        // and only extend the message, so the failure taxonomy is unchanged.
-        if (error instanceof Error && !error.message.includes('[network:')) error.message = `${error.message} — ${diagnosis}`
-      }
-      throw error
-    }
-  }
-
-  /**
-   * The policy diagnosis for one failed model call, or undefined when the
-   * proxy blocked nothing while it ran. The newest block in the window names
-   * the target and the mode, and the remediation is the honest one: allow the
-   * endpoint or stop injecting the policy environment into the host process.
-   */
-  private llmFailureDiagnosis(since: number): string | undefined {
-    const proxy = this.networkProxy
-    if (proxy === undefined) return undefined
-    const blocks = proxy.recentBlocks().filter(record => record.time >= since - LLM_BLOCK_SKEW_MS)
-    const newest = blocks[0]
-    if (newest === undefined) return undefined
-    const target = `${newest.scheme ?? 'https'}://${newest.domain}${newest.port !== undefined ? `:${newest.port}` : ''}`
-    const marker = newest.action === 'ask' ? '[network: blocked pending approval]' : '[network: denied]'
-    const rule = newest.matched
-      ? `, rule ${(newest.ruleIndex ?? 0) + 1}${newest.source !== '' ? ` (${newest.source})` : ''}`
-      : ', no matching allow rule'
-    const more = blocks.length > 1 ? ` (and ${blocks.length - 1} more block${blocks.length > 2 ? 's' : ''} in the same window)` : ''
-    return `${marker} the local policy proxy blocked ${target} during this model call (mode ${newest.mode}${rule})${more} — the host process inherits the policy proxy environment (network.injectEnv), so the model transport is adjudicated like any other connection; add an allow rule for the provider endpoint or set network.injectEnv: false`
   }
 
   /** Mark one delegated shell execution as in-flight (newest attribution wins). */
@@ -1455,14 +1392,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     return next()
   })
   attachSettingsSection(ctx, runtime, config)
-  if (resolved.network.enabled) {
-    await runtime.attachNetworkProxy()
-    // Issue #22: the injected proxy environment is process-wide, so the
-    // harness's own model transport is adjudicated here too. Keep a model-call
-    // failure attributable to the policy instead of leaving it a bare
-    // transport error.
-    ctx.on('llm/stream', (_options: GenerateOptions, next: () => AsyncIterable<StreamChunk>) => runtime.llmStream(next))
-  }
+  if (resolved.network.enabled) await runtime.attachNetworkProxy()
   ctx.inject(['systemPrompt'], (scope) => {
     const systemPrompt = scope.get('systemPrompt') as { context?: (entry: { name: string; order?: number; text: string }) => void } | undefined
     if (systemPrompt?.context === undefined) return
