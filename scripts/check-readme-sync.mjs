@@ -14,7 +14,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
-const files = ['README.md', 'README.zh.md', 'README.es.md', 'README.pt.md', 'README.hi.md']
+const files = ['README.md', 'README-zh.md', 'README-es.md', 'README-pt.md', 'README-hi.md']
 const texts = new Map(files.map(file => [file, readFileSync(join(root, file), 'utf8')]))
 
 const sectionCount = text => (text.match(/^## /gm) ?? []).length

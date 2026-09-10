@@ -42,7 +42,7 @@ Standalone DeepSeek Harness plugin repository (`dsh-permission-rules`). Developm
 
 ## Docs
 
-- Five-language READMEs (`README.md`, `README.zh.md`, `README.es.md`, `README.pt.md`, `README.hi.md`) — keep all five in sync; the English file is the source of truth. `scripts/check-readme-sync.mjs` (CI) enforces section structure, config-table keys, and `/rules` command docs.
+- Five-language READMEs (`README.md`, `README-zh.md`, `README-es.md`, `README-pt.md`, `README-hi.md`) — keep all five in sync; the English file is the source of truth. `scripts/check-readme-sync.mjs` (CI) enforces section structure, config-table keys, and `/rules` command docs.
 - `docs/rules-format.md` is the Chinese reference for the rule vocabulary; `docs/rules-format.en.md` is its English twin — update both together, plus `docs/rules-format.schema.json` whenever the vocabulary changes.
 - When the repo is published on GitHub, set topics `dsh`, `dsh-plugin`, `deepseek-harness`, `deepseek`, `cordis`, `permission`, `approval`, `ai-safety` (the ecosystem's visibility channel is the `dsh-plugin` topic; see dsh-plugin-guide §9).
 - License is Apache-2.0 (`LICENSE` + the package.json `license` field).
