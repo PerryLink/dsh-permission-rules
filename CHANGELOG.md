@@ -1,3 +1,23 @@
+## v0.6.19 - 2026-09-10
+
+### Security
+
+- A CONNECT tunnel refuses to dial a hostname when the adjudication resolved no address: `connectUpstream` now fails closed (logged, 502 to the client) instead of falling back to `connect(port, target.host)` — a second DNS resolution whose answer the rules never saw, and the one remaining path governed by Node's 250 ms `autoSelectFamilyAttemptTimeout`. The reported path itself was already fixed in 0.6.17 (`connect` dials the addresses `decideWithResolution` returned, and an IP literal skips the family race entirely); this closes the residual (issue #21).
+
+### Fixed
+
+- Session-less host-level traffic is judged against the CONFIGURED chain instead of an empty map. `proxyChains()` consulted only `byCwd`, which `rulesFor(cwd)` populates from a session or tool call, so at boot the harness's own host-level fetches met the whitelist default and were blocked as `[network: blocked pending approval]` even with a matching allow rule already configured. `hostChain()` loads the chain for the host process's own working directory (project file → absolute `rulesFile` → configured fallback → shipped baseline) while no per-cwd chain is loaded; it never becomes a `byCwd` member, so a session workspace chain always outranks it, and an unusable configured chain warns once and degrades to the mode default (issue #18).
+- Rule files are normalized before parsing: CRLF maps onto LF, a stray CR inside a line is dropped, and every CR is a line separator in a CR-only file. A lone CR is not a line break to the YAML parser in every position — it survived into the scalar it terminated (`domains: [registry.npmjs.org\r]`, or a final line ending in a bare CR), compiling a pattern that silently never matched its target (issue #19 item 4).
+- Rule-file watches poll on WSL drvfs mounts: `watchPollingFor` switches a watch to `usePolling` (300 ms interval) when the watched rule file is under `/mnt/<drive>` or `/proc/version` reports a Microsoft kernel, because chokidar's native change events are unreliable on drvfs/9p and a rule edit otherwise stopped hot-reloading silently with no error. Detection is per watch, so every other host keeps the native watcher, and `/rules reload` stays the manual fallback (issue #19 item 1).
+
+### Added
+
+- A failing model call now names the policy. The injected proxy environment is process-wide, so the harness's own LLM transport is adjudicated by this policy too, and a blocked provider endpoint surfaced as a bare `Connection error. / TRANSPORT`. A transparent `llm/stream` listener appends the `[network: …]` marker — blocked target, mode/rule, remediation — to the ORIGINAL error object (its class, code and retry facts stay intact) and logs it, so a turn can be attributed to the policy rather than reading as a provider outage. It registers only when `network.enabled`. It does NOT auto-allow provider endpoints: the two other resolutions the issue offers are not reachable from a plugin (`ctx.llm.listProviders()` exposes provider ids/names only, configured base URLs are adapter-owned, and there is no per-spawn environment seam for shell children), which the five READMEs record as a known limitation (issue #22).
+
+### Tests
+
+- Gate chain green: 23 files / 302 tests, coverage 92.27% statements / 87.29% branches / 93.62% functions.
+
 ## v0.6.18 - 2026-09-10
 
 ### Docs
