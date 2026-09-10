@@ -1100,8 +1100,17 @@ function tryParseHttpUrl(text: string): NetworkTarget | undefined {
   return { scheme: url.protocol === 'https:' ? 'https' : 'http', host, port, ips: literalIpOf(host) }
 }
 
-/** Lowercase, strip IPv6 brackets, strip one trailing dot. */
-function normalizeHost(host: string): string {
+/**
+ * Lowercase, strip IPv6 brackets, strip one trailing dot.
+ *
+ * Exported because the settings-page allow action must normalize a blocked
+ * host EXACTLY the way target parsing does, or a rule generated from a block
+ * record could name a different host than the connection that was blocked
+ * (`Example.COM.` and `example.com` are the same target).
+ * @param host - a host name or IP literal as it arrived on the wire.
+ * @returns the canonical spelling.
+ */
+export function normalizeHost(host: string): string {
   let out = host.toLowerCase().replace(/^\[|\]$/g, '')
   while (out.endsWith('.')) out = out.slice(0, -1)
   return out

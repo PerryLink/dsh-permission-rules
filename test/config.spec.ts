@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { resolveConfig } from '../src/config.ts'
+import { Config, resolveConfig } from '../src/config.ts'
 
 describe('resolveConfig', () => {
   it('fills every default (case-insensitivity follows the platform)', () => {
@@ -137,5 +137,27 @@ describe('network.upstreamProxy (issue #19 item 2)', () => {
       expect(() => resolveConfig({ network: { upstreamProxy: value } })).toThrow(/upstreamProxy/)
     }
     expect(() => resolveConfig({ network: { upstreamProxy: 42 as never } })).toThrow(/upstreamProxy/)
+  })
+})
+
+describe('network.allowHostAction (issue #19 item 3)', () => {
+  it('defaults to true and preserves an explicit value', () => {
+    expect(resolveConfig().network.allowHostAction).toBe(true)
+    expect(resolveConfig({ network: {} }).network.allowHostAction).toBe(true)
+    expect(resolveConfig({ network: { allowHostAction: false } }).network.allowHostAction).toBe(false)
+    expect(resolveConfig({ network: { allowHostAction: true } }).network.allowHostAction).toBe(true)
+  })
+
+  it('fails loud on a non-boolean (plain-JS mounts)', () => {
+    expect(() => resolveConfig({ network: { allowHostAction: 'yes' as never } })).toThrow(/network.allowHostAction/)
+    expect(() => resolveConfig({ network: { allowHostAction: 0 as never } })).toThrow(/network.allowHostAction/)
+  })
+
+  it('carries the same default in the Schemastery schema the loader uses', () => {
+    // A mount through the settings/loader path must agree with a plain-JS mount.
+    const viaSchema = Config({ network: {} }) as { network: { allowHostAction: boolean } }
+    expect(viaSchema.network.allowHostAction).toBe(true)
+    const off = Config({ network: { allowHostAction: false } }) as { network: { allowHostAction: boolean } }
+    expect(off.network.allowHostAction).toBe(false)
   })
 })

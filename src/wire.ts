@@ -33,6 +33,12 @@ export interface NetworkBlockView {
   source: string
   ruleIndex: number | null
   reason: string | null
+  /**
+   * The workspace of the agent the block was attributed to, or null when the
+   * connection carried no session attribution (a host-level fetch). The
+   * allow-host action needs it to pick the rule file it writes.
+   */
+  cwd: string | null
 }
 
 /** One rule file the editor may read/write (a known rule source only). */
@@ -65,6 +71,11 @@ export interface PermissionRulesSnapshot {
     chained: number
   }
   sources: readonly RuleSourceView[]
+  /**
+   * Whether the settings page may run its per-block "allow this host" action
+   * (`network.allowHostAction`); false hides the button.
+   */
+  allowHostAction: boolean
 }
 
 /** Strict wire schema for {@link PermissionRulesSnapshot}. */
@@ -90,12 +101,14 @@ export const PERMISSION_RULES_SNAPSHOT_SCHEMA = z.object({
     source: z.string(),
     ruleIndex: z.number().int().nullable(),
     reason: z.string().nullable(),
+    cwd: z.string().nullable(),
   })),
   sources: z.array(z.object({
     path: z.string(),
     exists: z.boolean(),
     cwd: z.string().nullable(),
   })),
+  allowHostAction: z.boolean(),
   upstream: z.object({
     mode: z.union([z.literal('off'), z.literal('inherit'), z.literal('url')]),
     http: z.string().nullable(),
@@ -144,6 +157,68 @@ export interface RulesReloadResult {
 /** Strict wire schema for {@link RulesReloadResult}. */
 export const RULES_RELOAD_SCHEMA = z.object({
   ok: z.boolean(),
+  error: z.string().nullable(),
+})
+
+/**
+ * The `permissionRules/allowHost` request: the blocked target exactly as the
+ * block view reported it, plus the workspace the rule belongs in (`null` for
+ * a host-level block). The action never accepts a PATH — the runtime maps the
+ * cwd onto its own known rule sources, so the wire cannot widen the write set.
+ */
+export interface AllowHostRequest {
+  /** The blocked host (host name or IP literal). */
+  host: string
+  /** The blocked scheme, or null when the block record had none. */
+  scheme: 'http' | 'https' | null
+  /** The blocked port, or null when the block record had none. */
+  port: number | null
+  /** The workspace whose rule file should receive the rule, or null. */
+  cwd: string | null
+}
+
+/** Strict wire schema for {@link AllowHostRequest}. */
+export const ALLOW_HOST_REQUEST_SCHEMA = z.object({
+  host: z.string(),
+  scheme: z.union([z.literal('http'), z.literal('https'), z.null()]),
+  port: z.number().int().nullable(),
+  cwd: z.string().nullable(),
+})
+
+/**
+ * The `permissionRules/allowHost` result. `ok` reports whether the WRITE
+ * succeeded; `outcome` is the decision recomputed after it, so a page can
+ * never claim success while the connection is still blocked.
+ */
+export interface AllowHostResult {
+  ok: boolean
+  /** The rule file written, or null when nothing was written. */
+  path: string | null
+  /** Whether the file did not exist before this action created it. */
+  created: boolean
+  /**
+   * Rule chains that were re-read (the per-workspace chains, plus the
+   * session-less host chain when one was cached and had to be dropped).
+   */
+  reloaded: number
+  /** The decision for the target AFTER the action, or null when nothing was written. */
+  outcome: 'allow' | 'deny' | 'ask' | null
+  /**
+   * Nothing was written because the target was already allowed by the current
+   * decision, or because the file already leads with this exact allow rule.
+   */
+  alreadyAllowed: boolean
+  error: string | null
+}
+
+/** Strict wire schema for {@link AllowHostResult}. */
+export const ALLOW_HOST_RESULT_SCHEMA = z.object({
+  ok: z.boolean(),
+  path: z.string().nullable(),
+  created: z.boolean(),
+  reloaded: z.number().int(),
+  outcome: z.union([z.literal('allow'), z.literal('deny'), z.literal('ask'), z.null()]),
+  alreadyAllowed: z.boolean(),
   error: z.string().nullable(),
 })
 
@@ -242,6 +317,34 @@ export const RULES_RELOAD_DESCRIPTOR = Object.freeze({
 } as const) satisfies InvocationDescriptor
 
 /**
+ * The `permissionRules/allowHost` invocation descriptor: one request object in,
+ * one result object out.
+ */
+export const ALLOW_HOST_DESCRIPTOR = Object.freeze({
+  id: 'dsh-permission-rules#permissionRules/allowHost',
+  service: 'permissionRules',
+  namespace: 'permissionRules',
+  method: 'allowHost',
+  invocation: Object.freeze({ kind: 'direct' }),
+  parameters: Object.freeze([Object.freeze({
+    name: 'request',
+    wire: 'request',
+    source: 'json',
+    codec: Object.freeze({
+      mode: 'strict',
+      typeSymbol: 'dsh-permission-rules/types#AllowHostRequest',
+      schema: ALLOW_HOST_REQUEST_SCHEMA,
+    }),
+  } satisfies InvocationDescriptor['parameters'][number])]),
+  result: Object.freeze({
+    mode: 'strict',
+    typeSymbol: 'dsh-permission-rules/types#AllowHostResult',
+    schema: ALLOW_HOST_RESULT_SCHEMA,
+  }),
+  sourceLocation: Object.freeze({ file: 'src/wire.ts', line: 1, column: 1 }),
+} as const) satisfies InvocationDescriptor
+
+/**
  * The canonical invocation list both Typert faces register — the host
  * manifest and the client contribution share these exact descriptor
  * objects, so the two wire codecs can never drift apart.
@@ -251,4 +354,5 @@ export const PERMISSION_RULES_INVOCATIONS = Object.freeze([
   RULES_READ_DESCRIPTOR,
   RULES_SAVE_DESCRIPTOR,
   RULES_RELOAD_DESCRIPTOR,
+  ALLOW_HOST_DESCRIPTOR,
 ])

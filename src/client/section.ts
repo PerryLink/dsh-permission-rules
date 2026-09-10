@@ -11,8 +11,9 @@
 
 import * as React from 'react'
 import type { ReactElement } from 'react'
+import { allowHostNotice, allowHostWorkspaces } from '../allow-host.ts'
 import type { PermissionRulesLocaleKey } from './locales.ts'
-import type { PermissionRulesSnapshot, RulesReadResult, RulesReloadResult, RulesSaveResult } from '../wire.ts'
+import type { AllowHostRequest, AllowHostResult, NetworkBlockView, PermissionRulesSnapshot, RulesReadResult, RulesReloadResult, RulesSaveResult } from '../wire.ts'
 
 /** Functions the registration injects (wired to the Remote namespace in `./index.ts`). */
 export interface PermissionRulesSectionInjected {
@@ -24,6 +25,8 @@ export interface PermissionRulesSectionInjected {
   rulesSave: (path: string, text: string) => Promise<RulesSaveResult>
   /** Re-read every cached workspace chain. */
   reload: () => Promise<RulesReloadResult>
+  /** Write one minimal allow rule for one blocked host. */
+  allowHost: (request: AllowHostRequest) => Promise<AllowHostResult>
   /** The locale-bound translator. */
   t: T
 }
@@ -53,6 +56,11 @@ const NOTICE_ERR: React.CSSProperties = { fontSize: 13, color: 'var(--dsh-color-
 const TABLE: React.CSSProperties = { width: '100%', borderCollapse: 'collapse', fontSize: 12 }
 const CELL: React.CSSProperties = { borderBottom: '1px solid var(--dsh-color-border, #ddd)', padding: '4px 6px', textAlign: 'left', verticalAlign: 'top' }
 
+/** The stable identity of one block row (the same key the table uses). */
+function blockKey(block: NetworkBlockView): string {
+  return `${block.time}-${block.domain}`
+}
+
 /** The settings section component. */
 export function PermissionRulesSection({ close, t, ...injected }: PermissionRulesSectionProps): ReactElement {
   void close
@@ -63,6 +71,10 @@ export function PermissionRulesSection({ close, t, ...injected }: PermissionRule
   const [text, setText] = React.useState('')
   const [dirty, setDirty] = React.useState(false)
   const [notice, setNotice] = React.useState<{ ok: boolean; text: string } | undefined>(undefined)
+  // The allow action renders its own notice next to the block list (the editor
+  // notice above is only visible once a rule file is selected).
+  const [allowNotice, setAllowNotice] = React.useState<{ ok: boolean; text: string } | undefined>(undefined)
+  const [allowPick, setAllowPick] = React.useState<Record<string, string>>({})
 
   const refresh = React.useCallback(() => {
     void injected.status().then(next => {
@@ -118,6 +130,24 @@ export function PermissionRulesSection({ close, t, ...injected }: PermissionRule
     })
   }, [injected, t, refresh])
 
+  /**
+   * Run the per-block allow action. The runtime recomputes the decision for
+   * the target before returning, so the notice reports the REAL outcome: a
+   * successful write whose target stays blocked reads as a failure, never as
+   * a success.
+   */
+  const allowHost = React.useCallback((block: NetworkBlockView, cwd: string | null) => {
+    setAllowNotice(undefined)
+    const request: AllowHostRequest = { host: block.domain, scheme: block.scheme, port: block.port, cwd }
+    void injected.allowHost(request).then(result => {
+      const mapped = allowHostNotice(result)
+      setAllowNotice({ ok: mapped.ok, text: t(mapped.key, mapped.vars) })
+      if (result.ok) refresh()
+    }).catch((error: unknown) => {
+      setAllowNotice({ ok: false, text: t('allowHostFailed', { error: error instanceof Error ? error.message : String(error) }) })
+    })
+  }, [injected, t, refresh])
+
   const picker = React.createElement('select', {
     style: { ...MONO, maxWidth: 420 },
     value: selected ?? '',
@@ -160,17 +190,54 @@ export function PermissionRulesSection({ close, t, ...injected }: PermissionRule
   if (snapshot === undefined || snapshot.recent.length === 0) {
     children.push(React.createElement('div', { key: 'no-blocks', style: VALUE }, t('noBlocks')))
   } else {
-    const rows = snapshot.recent.map(block => React.createElement('tr', { key: `${block.time}-${block.domain}` },
-      React.createElement('td', { style: CELL }, new Date(block.time).toLocaleTimeString()),
-      React.createElement('td', { style: CELL }, block.tool + (block.attributed ? '' : ` (${t('blockUnattributed')})`)),
-      React.createElement('td', { style: CELL }, `${block.scheme ?? '?'}://${block.domain}${block.port === null ? '' : `:${block.port}`}`),
-      React.createElement('td', { style: CELL }, block.matched
-        ? t('blockBy', { index: (block.ruleIndex ?? 0) + 1 })
-        : t('blockDefault')),
-      React.createElement('td', { style: CELL }, block.action),
-      React.createElement('td', { style: CELL }, block.reason ?? '')))
+    const choices = allowHostWorkspaces(snapshot.sources)
+    const allowEnabled = snapshot.allowHostAction !== false
+    const rows = snapshot.recent.map(block => {
+      const key = blockKey(block)
+      const picked = allowPick[key] ?? ''
+      // A block with no cwd is judged by the session-less host chain, which any
+      // loaded workspace chain outranks; with several sources the operator must
+      // pick the workspace the rule belongs in before the action can run.
+      const needsPick = block.cwd === null && snapshot.sources.length > 1 && choices.length > 0
+      const cwd = block.cwd ?? (needsPick ? (picked === '' ? null : picked) : null)
+      const decide = (): void => allowHost(block, cwd)
+      const action: React.ReactNode = !allowEnabled
+        ? React.createElement('span', { style: LABEL }, t('allowHostDisabled'))
+        : React.createElement('span', { style: ROW },
+          needsPick
+            ? React.createElement('select', {
+              style: MONO,
+              value: picked,
+              onChange: (event: React.ChangeEvent<HTMLSelectElement>) => {
+                const value = event.target.value
+                setAllowPick(current => ({ ...current, [key]: value }))
+              },
+            }, [
+              React.createElement('option', { key: '', value: '' }, t('allowHostPickWorkspace')),
+              ...choices.map(choice => React.createElement('option', { key: choice, value: choice }, choice)),
+            ])
+            : null,
+          React.createElement('button', {
+            type: 'button',
+            disabled: needsPick && (picked === '' || cwd === null),
+            onClick: decide,
+          }, t('allowHost')))
+      return React.createElement('tr', { key },
+        React.createElement('td', { style: CELL }, new Date(block.time).toLocaleTimeString()),
+        React.createElement('td', { style: CELL }, block.tool + (block.attributed ? '' : ` (${t('blockUnattributed')})`)),
+        React.createElement('td', { style: CELL }, `${block.scheme ?? '?'}://${block.domain}${block.port === null ? '' : `:${block.port}`}`),
+        React.createElement('td', { style: CELL }, block.matched
+          ? t('blockBy', { index: (block.ruleIndex ?? 0) + 1 })
+          : t('blockDefault')),
+        React.createElement('td', { style: CELL }, block.action),
+        React.createElement('td', { style: CELL }, block.reason ?? ''),
+        React.createElement('td', { style: CELL }, action))
+    })
     children.push(React.createElement('table', { key: 'recent-table', style: TABLE },
       React.createElement('tbody', undefined, rows)))
+    if (allowNotice !== undefined) {
+      children.push(React.createElement('div', { key: 'allow-notice', style: allowNotice.ok ? NOTICE_OK : NOTICE_ERR }, allowNotice.text))
+    }
   }
 
   // Rule editor.

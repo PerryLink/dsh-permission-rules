@@ -19,7 +19,7 @@ import { PERMISSION_RULES_REMOTE } from './remote.ts'
 import { PermissionRulesSection } from './section.ts'
 import type { PermissionRulesSectionInjected } from './section.ts'
 import { en, zh, type PermissionRulesLocaleKey } from './locales.ts'
-import type { PermissionRulesSnapshot, RulesReadResult, RulesReloadResult, RulesSaveResult } from '../wire.ts'
+import type { AllowHostRequest, AllowHostResult, PermissionRulesSnapshot, RulesReadResult, RulesReloadResult, RulesSaveResult } from '../wire.ts'
 
 /** Dictionary namespace owned by this plugin. */
 export const NS = 'settings.permissionRules'
@@ -74,6 +74,7 @@ export async function apply(ctx: Context): Promise<void> {
       rulesRead: (path: string) => Promise<RemoteResult<RulesReadResult>>
       rulesSave: (path: string, text: string) => Promise<RemoteResult<RulesSaveResult>>
       reload: () => Promise<RemoteResult<RulesReloadResult>>
+      allowHost: (request: AllowHostRequest) => Promise<RemoteResult<AllowHostResult>>
     } | undefined
     if (bridge === undefined) return
     const injected = (): PermissionRulesSectionInjected => ({
@@ -95,6 +96,11 @@ export async function apply(ctx: Context): Promise<void> {
       reload: async () => {
         const result = await bridge.reload()
         if (!result.ok) throw new Error(`reload failed: ${result.error.code}: ${result.error.message}`)
+        return result.value
+      },
+      allowHost: async (request) => {
+        const result = await bridge.allowHost(request)
+        if (!result.ok) throw new Error(`allowHost failed: ${result.error.code}: ${result.error.message}`)
         return result.value
       },
       t,

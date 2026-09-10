@@ -23,6 +23,9 @@ import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import { resolveConfig } from './config.ts'
 import type { Config, ResolvedConfig } from './config.ts'
 import type { CallId } from './call-id.ts'
+import { insertAllowRule, isWritableHost, normalizeAllowHost, resolveAllowHostTarget } from './allow-host.ts'
+import type { AllowHostInsertion } from './allow-host.ts'
+import type { AllowHostRequest, AllowHostResult } from './wire.ts'
 import { compileRules, compileSourceRules, describeRule, findUnreachableRules, isShellTool, matchRules, mergeCompiledRules, normalizeWorkspacePath, parseRulesDocument, PLATFORMS, RuleError } from './rules.ts'
 import type { CompileOptions, CompiledRule, CompiledRuleset, MatchContext, NetworkTarget, RuleHit } from './rules.ts'
 import { DESCRIBE_TOKENS, UI_PROSE } from './prose.ts'
@@ -898,6 +901,8 @@ export class PermissionRulesRuntime {
       readonly active: boolean
       readonly chained: number
     }
+    /** Whether the settings page may offer the per-block allow action. */
+    readonly allowHostAction: boolean
   } {
     const cfg = this.config.network
     const { mode, sandboxMode } = this.resolveNetworkMode()
@@ -914,16 +919,17 @@ export class PermissionRulesRuntime {
       askBlocked: stats.askBlocked,
       recent: proxy?.recentBlocks() ?? [],
       upstream: this.upstreamSnapshot(),
+      allowHostAction: cfg.allowHostAction,
     }
   }
 
-  /**
-   * The rule-file paths the settings-page editor may read or write: every
-   * currently loaded source plus the per-workspace project files and the
-   * configured fallback (so a not-yet-existing project file can be
-   * created). The editor never touches arbitrary paths — and the built-in
-   * baseline is excluded entirely (it is a shipped, read-only baseline,
-   * shown via `/rules` attribution instead).
+  /** The rule-file paths the settings-page editor may read or write: every
+   * currently loaded source plus the per-workspace project files, the
+   * configured fallback, and the host-level project file the session-less
+   * chain resolves (so a not-yet-existing project file can be created). The
+   * editor never touches arbitrary paths — and the built-in baseline is
+   * excluded entirely (it is a shipped, read-only baseline, shown via
+   * `/rules` attribution instead).
    */
   knownRuleSources(): readonly string[] {
     const cfg = this.config
@@ -938,6 +944,11 @@ export class PermissionRulesRuntime {
     }
     if (cfg.fallbackPath !== undefined) set.add(isAbsolute(cfg.fallbackPath) ? cfg.fallbackPath : resolve(cfg.fallbackPath))
     if (isAbsolute(cfg.rulesFile)) set.add(cfg.rulesFile)
+    // The host-level chain (see hostChain) resolves its project file against
+    // the process cwd; it must be editable and allow-able even while no
+    // workspace chain is loaded, or the settings page could show a block the
+    // operator can see but not act on.
+    else set.add(join(process.cwd(), cfg.rulesFile))
     return [...set]
   }
 
@@ -1011,6 +1022,109 @@ export class PermissionRulesRuntime {
       reloaded += 1
     }
     return { ok: true, reloaded }
+  }
+
+  /**
+   * The settings-page "allow this host" action (issue #19 item 3): write ONE
+   * minimal `match.network.domains` allow rule for a blocked target into the
+   * nearest effective rule file, at index 0, then report the decision the
+   * runtime makes for that target afterwards.
+   *
+   * Why index 0: rules are first-match-wins, so appending the rule after an
+   * existing `deny` would leave the connection blocked — the rule would be
+   * dead text the operator cannot see the reason for.
+   *
+   * Why `domains` only: that dimension is subdomain-inclusive and
+   * port/scheme-agnostic; narrowing the generated rule to the blocked port
+   * would re-block the same host on its next connection from another port.
+   * The rule can never widen TOOL permissions either — an allow hit on
+   * `tools/pre-execute` is delegated downstream, never claimed.
+   *
+   * Failure modes are fail-closed and leave the disk untouched: the action is
+   * disabled, the host is not a host name/IP literal, the request names an
+   * unknown workspace, the target resolves outside the known rule sources or
+   * onto the built-in baseline, the file cannot be read, the document does
+   * not parse / has no `rules` list, or the written text fails the same
+   * `parseRulesDocument` + `compileRules` gate every hand edit passes.
+   *
+   * The write goes through {@link saveRuleFile}, so the per-workspace chains
+   * AND the session-less host chain are re-read — no restart, no
+   * `/rules reload` — and the returned `outcome` is the REAL decision
+   * recomputed after the write (with the target as given, no DNS: an
+   * `ips`-scoped allow rule cannot be seen here). Cross-process concurrent
+   * writes to one rule file are out of scope: last writer wins.
+   *
+   * @param request - the blocked target plus the workspace it belongs to.
+   * @returns the action result, never a throw.
+   */
+  allowHost(request: AllowHostRequest): AllowHostResult {
+    const fail = (error: string, path: string | null = null): AllowHostResult => ({
+      ok: false,
+      path,
+      created: false,
+      reloaded: 0,
+      outcome: null,
+      alreadyAllowed: false,
+      error,
+    })
+    if (!this.config.network.allowHostAction) {
+      return fail('the allow-host action is disabled by network.allowHostAction')
+    }
+    const host = normalizeAllowHost(request.host)
+    if (!isWritableHost(host)) {
+      return fail(`refusing to allow ${JSON.stringify(request.host)}: not a host name or IP literal`)
+    }
+    const target: NetworkTarget = { scheme: request.scheme ?? undefined, host, port: request.port ?? undefined, ips: [] }
+    if (this.decideProxyTarget(target).action === 'allow') {
+      return { ok: true, path: null, created: false, reloaded: 0, outcome: 'allow', alreadyAllowed: true, error: null }
+    }
+    let path: string
+    try {
+      path = resolveAllowHostTarget({
+        cwd: request.cwd,
+        loadedCwds: [...this.byCwd.values()].map(loaded => loaded.cwd),
+        knownSources: this.knownRuleSources(),
+        rulesFile: this.config.rulesFile,
+        fallbackPath: this.config.fallbackPath,
+        processCwd: process.cwd(),
+        builtinPath: this.builtinSource(),
+        exists: existsSync,
+      })
+    } catch (error: unknown) {
+      return fail(error instanceof Error ? error.message : String(error))
+    }
+    const existed = existsSync(path)
+    let existing = ''
+    if (existed) {
+      try {
+        existing = readFileSync(path, 'utf8')
+      } catch (error: unknown) {
+        return fail(`cannot read ${path}: ${error instanceof Error ? error.message : String(error)}`, path)
+      }
+    }
+    let edit: AllowHostInsertion
+    try {
+      edit = insertAllowRule(existing, host)
+    } catch (error: unknown) {
+      return fail(error instanceof Error ? error.message : String(error), path)
+    }
+    if (!edit.inserted) {
+      // The file already leads with this exact allow rule: first-match
+      // semantics make a second copy a no-op, so the file stays untouched.
+      return { ok: true, path, created: false, reloaded: 0, outcome: this.decideProxyTarget(target).action, alreadyAllowed: true, error: null }
+    }
+    const hadHostChain = this.hostLoaded !== undefined
+    const saved = this.saveRuleFile(path, edit.text)
+    if (!saved.ok) return fail(saved.error ?? `refusing to write ${path}`, path)
+    return {
+      ok: true,
+      path,
+      created: !existed,
+      reloaded: (saved.reloaded ?? 0) + (hadHostChain ? 1 : 0),
+      outcome: this.decideProxyTarget(target).action,
+      alreadyAllowed: false,
+      error: null,
+    }
   }
 
   /** The installed `@deepseek-ai/dsh-session` version, or `null` when unresolvable (falls back to the append probe). */

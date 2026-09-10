@@ -12,7 +12,7 @@ import { existsSync } from 'node:fs'
 import type { Context } from '@deepseek-ai/cordis'
 import { TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type { PermissionRulesRuntime } from './runtime.ts'
-import type { PermissionRulesSnapshot, RulesReadResult, RulesReloadResult, RulesSaveResult } from './wire.ts'
+import type { AllowHostRequest, AllowHostResult, PermissionRulesSnapshot, RulesReadResult, RulesReloadResult, RulesSaveResult } from './wire.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -69,8 +69,10 @@ export class PermissionRulesRemoteService extends TypertRemoteService {
         source: block.source,
         ruleIndex: block.ruleIndex ?? null,
         reason: block.reason ?? null,
+        cwd: block.cwd ?? null,
       })),
       sources,
+      allowHostAction: snapshot.allowHostAction,
       upstream: {
         mode: snapshot.upstream.mode,
         http: snapshot.upstream.http,
@@ -109,6 +111,29 @@ export class PermissionRulesRemoteService extends TypertRemoteService {
       return { ok: true, error: null }
     } catch (error: unknown) {
       return { ok: false, error: error instanceof Error ? error.message : String(error) }
+    }
+  }
+
+  /**
+   * Write one minimal allow rule for a blocked host into the nearest
+   * effective rule file (the settings page's per-block action). The runtime
+   * owns the whole decision — which file, index 0, the validation gate, the
+   * reload — and never throws; the try/catch is the same containment
+   * `reload()` uses so the page always receives a well-formed result.
+   */
+  allowHost(request: AllowHostRequest): AllowHostResult {
+    try {
+      return this.config.runtime.allowHost(request)
+    } catch (error: unknown) {
+      return {
+        ok: false,
+        path: null,
+        created: false,
+        reloaded: 0,
+        outcome: null,
+        alreadyAllowed: false,
+        error: error instanceof Error ? error.message : String(error),
+      }
     }
   }
 }

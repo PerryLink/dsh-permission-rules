@@ -27,6 +27,13 @@ export type PermissionRulesLocaleKey =
   | 'blockBy'
   | 'blockDefault'
   | 'blockUnattributed'
+  | 'allowHost'
+  | 'allowHostPickWorkspace'
+  | 'allowHostSaved'
+  | 'allowHostAlready'
+  | 'allowHostStillBlocked'
+  | 'allowHostFailed'
+  | 'allowHostDisabled'
   | 'editorTitle'
   | 'editorPath'
   | 'editorLoad'
@@ -61,6 +68,13 @@ export const en: Record<PermissionRulesLocaleKey, string> = {
   blockBy: 'rule {index}',
   blockDefault: 'mode default',
   blockUnattributed: 'unattributed',
+  allowHost: 'Allow',
+  allowHostPickWorkspace: 'Choose a workspace…',
+  allowHostSaved: 'Allowed — wrote {path} ({reloaded} chain(s) re-read).',
+  allowHostAlready: 'Already allowed — nothing was written.',
+  allowHostStillBlocked: 'Rule written, but the target is still "{outcome}" — a nearer chain or the mode default still blocks it.',
+  allowHostFailed: 'Allow failed: {error}',
+  allowHostDisabled: 'Allow action disabled (network.allowHostAction)',
   editorTitle: 'Rule editor',
   editorPath: 'Rule file',
   editorLoad: 'Load',
@@ -96,6 +110,13 @@ export const zh: Record<PermissionRulesLocaleKey, string> = {
   blockBy: '规则 {index}',
   blockDefault: '模式默认',
   blockUnattributed: '未归属',
+  allowHost: '放行',
+  allowHostPickWorkspace: '选择工作区…',
+  allowHostSaved: '已放行——写入 {path}（重读 {reloaded} 条链）。',
+  allowHostAlready: '已放行——未写入任何文件。',
+  allowHostStillBlocked: '规则已写入，但目标仍为「{outcome}」——更靠前的规则链或模式默认仍在拦截。',
+  allowHostFailed: '放行失败：{error}',
+  allowHostDisabled: '放行动作已关闭（network.allowHostAction）',
   editorTitle: '规则编辑器',
   editorPath: '规则文件',
   editorLoad: '载入',

@@ -10,7 +10,7 @@
 
 import type { RemoteResult, TypertRemoteContribution } from '@deepseek-ai/dsh-typert-protocol'
 import { PERMISSION_RULES_INVOCATIONS } from '../wire.ts'
-import type { PermissionRulesSnapshot, RulesReadResult, RulesReloadResult, RulesSaveResult } from '../wire.ts'
+import type { AllowHostRequest, AllowHostResult, PermissionRulesSnapshot, RulesReadResult, RulesReloadResult, RulesSaveResult } from '../wire.ts'
 
 declare module '@deepseek-ai/dsh-typert-protocol' {
   interface TypertRemoteNamespace$permissionRules {
@@ -22,12 +22,15 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     rulesSave: (path: string, text: string) => Promise<RemoteResult<RulesSaveResult>>
     /** Re-read every cached workspace chain. */
     reload: () => Promise<RemoteResult<RulesReloadResult>>
+    /** Write one minimal allow rule for a blocked host into the nearest effective rule file. */
+    allowHost: (request: AllowHostRequest) => Promise<RemoteResult<AllowHostResult>>
   }
   interface TypertRemoteMap {
     'permissionRules/networkStatus': () => Promise<RemoteResult<PermissionRulesSnapshot>>
     'permissionRules/rulesRead': (path: string) => Promise<RemoteResult<RulesReadResult>>
     'permissionRules/rulesSave': (path: string, text: string) => Promise<RemoteResult<RulesSaveResult>>
     'permissionRules/reload': () => Promise<RemoteResult<RulesReloadResult>>
+    'permissionRules/allowHost': (request: AllowHostRequest) => Promise<RemoteResult<AllowHostResult>>
   }
   interface TypertRemoteNamespaceMap {
     permissionRules: TypertRemoteNamespace$permissionRules

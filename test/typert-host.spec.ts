@@ -22,13 +22,14 @@ describe('host Typert manifest', () => {
 
   it('registers the canonical invocation list by identity, never a copy', () => {
     expect(TYPERT.invocations).toBe(PERMISSION_RULES_INVOCATIONS)
-    expect(TYPERT.invocations).toHaveLength(4)
+    expect(TYPERT.invocations).toHaveLength(5)
     expect(new Set(TYPERT.invocations.map(invocation => invocation.id))).toEqual(
       new Set([
         'dsh-permission-rules#permissionRules/networkStatus',
         'dsh-permission-rules#permissionRules/rulesRead',
         'dsh-permission-rules#permissionRules/rulesSave',
         'dsh-permission-rules#permissionRules/reload',
+        'dsh-permission-rules#permissionRules/allowHost',
       ]),
     )
   })

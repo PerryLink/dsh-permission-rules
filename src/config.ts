@@ -72,6 +72,16 @@ export interface NetworkConfig {
    * see the network section of the READMEs.
    */
   upstreamProxy?: UpstreamProxySetting
+  /**
+   * Whether the settings page may run its "allow this host" action, which
+   * writes one minimal `domains` allow rule into the nearest effective rule
+   * file (`true` by default). `false` hides the button and makes the
+   * `permissionRules/allowHost` RPC refuse: the page's rule EDITOR is
+   * strictly wider (it writes arbitrary rule text) and is not affected, so
+   * this is a narrow safety switch for deployments that want rule changes to
+   * stay a deliberate, hand-written act.
+   */
+  allowHostAction?: boolean
 }
 
 /** Upstream chaining setting: `off`, `inherit`, or an explicit http(s) proxy URL. */
@@ -154,6 +164,7 @@ export interface ResolvedNetworkConfig {
   readonly injectEnv: boolean
   readonly noProxy: NoProxyPolicy
   readonly upstreamProxy: UpstreamProxySetting
+  readonly allowHostAction: boolean
 }
 
 /** Builtin baseline after {@link resolveConfig}: the switch plus the resolved absolute path. */
@@ -213,6 +224,7 @@ export const Config: z<Config> = z.object({
     injectEnv: z.boolean().default(true),
     noProxy: z.union(['clear', 'preserve'] as const).default('clear'),
     upstreamProxy: z.string().default('off'),
+    allowHostAction: z.boolean().default(true),
   }),
   builtin: z.object({
     enabled: z.boolean().default(true),
@@ -305,6 +317,7 @@ function resolveNetworkConfig(raw: NetworkConfig | undefined): ResolvedNetworkCo
   assertEnum('network.noProxy', noProxy, ['clear', 'preserve'])
   assertBoolean('network.enabled', raw?.enabled ?? true)
   assertBoolean('network.injectEnv', raw?.injectEnv ?? true)
+  assertBoolean('network.allowHostAction', raw?.allowHostAction ?? true)
   const proxyBind = raw?.proxyBind ?? '127.0.0.1'
   if (typeof proxyBind !== 'string' || proxyBind.trim().length === 0) {
     throw new TypeError(`network.proxyBind must be a non-empty string, got ${typeof proxyBind}`)
@@ -331,6 +344,7 @@ function resolveNetworkConfig(raw: NetworkConfig | undefined): ResolvedNetworkCo
     injectEnv: raw?.injectEnv ?? true,
     noProxy,
     upstreamProxy,
+    allowHostAction: raw?.allowHostAction ?? true,
   }
 }
 

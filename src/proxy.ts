@@ -116,6 +116,13 @@ export interface NetworkBlockRecord {
   readonly source: string
   readonly ruleIndex?: number
   readonly reason?: string
+  /**
+   * The attributed agent's workspace root, when the block could be attributed
+   * to a session at all. The settings page needs it to name the rule file an
+   * "allow this host" action would write; an unattributed (host-level) block
+   * leaves it unset.
+   */
+  readonly cwd?: string
 }
 
 /** Cumulative proxy-layer block counters. */
@@ -129,7 +136,11 @@ export interface ProxyAttribution {
   readonly tool: string
   readonly callId?: CallId
   readonly agent?: {
-    readonly session: { append(type: 'permissionRules/network', data: unknown, options?: { ignorable?: true }): unknown }
+    readonly session: {
+      /** The session header the block's workspace is read from. */
+      readonly header: { readonly cwd?: string }
+      append(type: 'permissionRules/network', data: unknown, options?: { ignorable?: true }): unknown
+    }
   }
 }
 
@@ -476,6 +487,7 @@ export class NetworkProxy {
   /** Record a block: counters, recent ring, and the runtime hook (logger + session audit). */
   private recordBlock(decision: NetworkDecision, target: NetworkTarget): void {
     const attribution = this.options.attribution?.()
+    const cwd = attribution?.agent?.session.header.cwd
     const record: NetworkBlockRecord = {
       time: Date.now(),
       tool: attribution?.tool ?? 'subprocess',
@@ -490,6 +502,7 @@ export class NetworkProxy {
       source: decision.source ?? '',
       ...(decision.ruleIndex !== undefined ? { ruleIndex: decision.ruleIndex } : {}),
       ...(decision.rule !== undefined ? { reason: decision.rule.reason } : {}),
+      ...(cwd !== undefined ? { cwd } : {}),
     }
     if (record.action === 'deny') this.stats.denied += 1
     else this.stats.askBlocked += 1

@@ -17,6 +17,7 @@ import { Context } from '@deepseek-ai/cordis'
 import { PermissionRulesRemoteService } from '../src/remote-service.ts'
 import type { PermissionRulesRuntime } from '../src/runtime.ts'
 import type { NetworkBlockRecord } from '../src/proxy.ts'
+import type { AllowHostRequest, AllowHostResult } from '../src/wire.ts'
 
 /** A fully-attributed proxy block (all optional fields present). */
 const FULL_BLOCK: NetworkBlockRecord = {
@@ -33,6 +34,7 @@ const FULL_BLOCK: NetworkBlockRecord = {
   source: '/ws/.dsh/rules.yaml',
   ruleIndex: 2,
   reason: 'no mirrors',
+  cwd: '/ws',
 }
 
 /** A mode-default block (no rule attribution — the optional fields are absent). */
@@ -71,6 +73,7 @@ describe('PermissionRulesRemoteService.networkStatus', () => {
           denied: 2,
           askBlocked: 1,
           recent: [FULL_BLOCK, MODE_BLOCK],
+          allowHostAction: true,
         }),
         knownRuleSources: () => [existing, missing],
         sourceOwner: (path: string) => (path === existing ? dir : undefined),
@@ -85,11 +88,12 @@ describe('PermissionRulesRemoteService.networkStatus', () => {
         proxyActive: true,
         denied: 2,
         askBlocked: 1,
+        allowHostAction: true,
       })
-      // The attributed block keeps its optional fields…
-      expect(snapshot.recent[0]).toMatchObject({ scheme: 'https', port: 443, ruleIndex: 2, reason: 'no mirrors', domain: 'evil.example' })
+      // The attributed block keeps its optional fields, cwd included…
+      expect(snapshot.recent[0]).toMatchObject({ scheme: 'https', port: 443, ruleIndex: 2, reason: 'no mirrors', domain: 'evil.example', cwd: '/ws' })
       // …and the mode-default block maps the absent fields to null.
-      expect(snapshot.recent[1]).toMatchObject({ scheme: null, port: null, ruleIndex: null, reason: null, tool: 'subprocess' })
+      expect(snapshot.recent[1]).toMatchObject({ scheme: null, port: null, ruleIndex: null, reason: null, tool: 'subprocess', cwd: null })
       // Existing sources carry exists + owner; missing ones exists: false + null cwd.
       expect(snapshot.sources).toEqual([
         { path: existing, exists: true, cwd: dir },
@@ -114,6 +118,7 @@ describe('PermissionRulesRemoteService.networkStatus', () => {
         denied: 0,
         askBlocked: 0,
         recent: [],
+        allowHostAction: false,
       }),
       knownRuleSources: () => [],
       sourceOwner: () => undefined,
@@ -124,6 +129,8 @@ describe('PermissionRulesRemoteService.networkStatus', () => {
     expect(snapshot.sandboxMode).toBe('danger-full-access')
     expect(snapshot.sources).toEqual([])
     expect(snapshot.recent).toEqual([])
+    // The switch is reported, not assumed: the page hides the button on false.
+    expect(snapshot.allowHostAction).toBe(false)
   })
 })
 
@@ -177,6 +184,39 @@ describe('PermissionRulesRemoteService.reload', () => {
       },
     })
     expect(service.reload()).toEqual({ ok: false, error: '[object Object]' })
+  })
+})
+
+describe('PermissionRulesRemoteService.allowHost', () => {
+  it('forwards the request verbatim and returns the runtime result unchanged', () => {
+    const seen: unknown[] = []
+    const written: AllowHostResult = { ok: true, path: '/ws/.dsh/rules.yaml', created: false, reloaded: 1, outcome: 'allow', alreadyAllowed: false, error: null }
+    const service = serviceOver({
+      allowHost: (request: AllowHostRequest) => {
+        seen.push(request)
+        return written
+      },
+    })
+    const request: AllowHostRequest = { host: 'registry.npmjs.org', scheme: 'https', port: 443, cwd: '/ws' }
+    expect(service.allowHost(request)).toEqual(written)
+    expect(seen).toEqual([request])
+  })
+
+  it('contains a runtime throw into a structured failure so the page never sees an exception', () => {
+    const service = serviceOver({
+      allowHost: () => {
+        throw { code: 'EIO' }
+      },
+    })
+    expect(service.allowHost({ host: 'example.com', scheme: null, port: null, cwd: null })).toEqual({
+      ok: false,
+      path: null,
+      created: false,
+      reloaded: 0,
+      outcome: null,
+      alreadyAllowed: false,
+      error: '[object Object]',
+    })
   })
 })
 

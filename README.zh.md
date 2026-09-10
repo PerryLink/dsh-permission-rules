@@ -80,6 +80,7 @@ Codex 风格的**进程级网络策略**：shell 子进程流量经内置本地 
 - **上游链式** —— `network.upstreamProxy`（默认 `off`）把本代理**放行**的连接送上上游代理：CONNECT 向上游要一条隧道（`CONNECT host:port`），纯 HTTP 请求以绝对形式转发给它。被拦截的目标永远到不了上游——它照旧收到本插件的结构化 403。即使配置了上游，两类情况也绝不链式：**回环**目标（本机之外的代理无法路由它的回环），以及由 **`ips` 作用域规则**产生的任何裁决（链式会把主机名交给上游，"连接落在规则看过的地址上"（issue #21）恰恰会在规则真正在意地址的地方不再成立；这些裁决仍按裁决到的地址直连），再加上目标 scheme 没有可用上游的情况。上游自身的主机名是运维配置而非 agent 输入，不参与这些规则的裁决。带凭据的 URL 绝不原样输出：警告、`/rules network` 与设置页快照都会把口令打码（`http://user:***@host:port`）。上游不可达、超时（10 秒）或返回非 2xx 一律 **502**——刻意没有静默回退直连，配置错误因此始终可见。
 - **审计** —— 被拒连接向所属会话追加 `permissionRules/network`（同样的自适应 `ignorable` 门），块计数器与近期拦截在 `/rules network` 与设置页展示。
 - **诊断** —— 被拦截的连接带 `[network: …]` 消息，点名被拦目标、做出裁决的模式或规则，以及处置办法。
+- **设置页放行** —— 每条近期拦截都提供**放行**动作：它在真正裁决该连接的最近一个规则文件的**最前面**（索引 0）写入一条最小的 `match: { network: { domains: [<主机>] } }` / `action: allow` 规则——被拦截连接所归属工作区的项目文件（配置了绝对 `rulesFile` 时即该文件）；对无会话归属的宿主级拦截，则写宿主链解析出的文件（绝对 `rulesFile` → 已存在的 `<processCwd>/<rulesFile>` → 配置的 `fallbackPath` → `<processCwd>/<rulesFile>`，不存在则创建）。加载了多个工作区时，页面先提供工作区选择器——任何已加载的工作区链都优先于宿主链。之所以放在索引 0：规则首个匹配生效，追加在既有 `deny` 之后只会成为死文本。只写 `domains`：该维度包含子域且与端口/scheme 无关，因此同一主机在下一个端口上不会被重新拦截；既有注释与未改动规则原样保留，文本与手工编辑走同一道校验门。写入即刻生效——缓存的工作区链**与**无会话宿主链都会重读，无需重启、无需 `/rules reload`——随后重新计算裁决，因此提示报告的是**真实**结果，绝不在连接仍被拦截时声称成功。以下情况一律拒绝且磁盘文件分毫不动：未知工作区、不在已知规则源内的目标、只读的内置基线、无法读取或解析的文件；连接已被放行时不写入任何内容。`network.allowHostAction: false` 隐藏按钮并让 RPC 拒绝。
 
 ## Quick start
 
@@ -133,6 +134,7 @@ dsh --profile web --dump-config | grep -A4 'id: permission-rules'
 | `network.injectEnv` | `true` | 是否为子进程注入代理环境变量 |
 | `network.noProxy` | `clear` | 子进程 NO_PROXY 处理：`clear` 强制策略或 `preserve` |
 | `network.upstreamProxy` | `off` | 本插件**放行**连接的上游代理：`off` 直连、`inherit` 沿用启动环境的代理名，或显式 `http(s)://` 代理 URL |
+| `network.allowHostAction` | `true` | 设置页逐条「放行」动作：`false` 隐藏「放行」按钮并让 `permissionRules/allowHost` RPC 拒绝（规则编辑器不受影响） |
 | `builtin.enabled` | `true` | 内置高危基线：`false` 完全禁用随附的 deny/ask 规则集 |
 | `builtin.path` | *(随附)* | 替换基线文件（绝对路径，或相对 `process.cwd()`）；挂载时校验 |
 
@@ -145,7 +147,7 @@ dsh --profile web --dump-config | grep -A4 'id: permission-rules'
 | `permissionRules/decision` | event | 每次命中与透传的仅日志审计 |
 | `permissionRules/network` | event | 被拒连接的代理层审计 |
 | HTTP/CONNECT proxy | service | 治理 shell 子进程流量的内置本地代理 |
-| settings page | client | 网络模式编辑器、规则编辑器、块计数器、近期拦截 |
+| settings page | client | 网络模式编辑器、规则编辑器、块计数器、近期拦截（每条可一键放行） |
 
 ```
 /rules                        list the active rules, their source files, and any last-reload error

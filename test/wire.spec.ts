@@ -11,6 +11,9 @@
 
 import { describe, expect, it } from 'vitest'
 import {
+  ALLOW_HOST_DESCRIPTOR,
+  ALLOW_HOST_REQUEST_SCHEMA,
+  ALLOW_HOST_RESULT_SCHEMA,
   NETWORK_STATUS_DESCRIPTOR,
   PERMISSION_RULES_INVOCATIONS,
   PERMISSION_RULES_SNAPSHOT_SCHEMA,
@@ -21,7 +24,7 @@ import {
   RULES_SAVE_DESCRIPTOR,
   RULES_SAVE_SCHEMA,
 } from '../src/wire.ts'
-import type { PermissionRulesSnapshot, RulesReadResult, RulesReloadResult, RulesSaveResult } from '../src/wire.ts'
+import type { AllowHostRequest, AllowHostResult, PermissionRulesSnapshot, RulesReadResult, RulesReloadResult, RulesSaveResult } from '../src/wire.ts'
 
 /** A fully-populated snapshot with both recent-block shapes and both source shapes. */
 const VALID_SNAPSHOT: PermissionRulesSnapshot = {
@@ -48,6 +51,7 @@ const VALID_SNAPSHOT: PermissionRulesSnapshot = {
       source: '/ws/.dsh/rules.yaml',
       ruleIndex: null,
       reason: null,
+      cwd: '/ws',
     },
     {
       time: 1_720_000_001_000,
@@ -62,12 +66,14 @@ const VALID_SNAPSHOT: PermissionRulesSnapshot = {
       source: '/ws/.dsh/rules.yaml',
       ruleIndex: 2,
       reason: 'pinned',
+      cwd: null,
     },
   ],
   sources: [
     { path: '/ws/.dsh/rules.yaml', exists: true, cwd: '/ws' },
     { path: '/etc/dsh/rules.yaml', exists: false, cwd: null },
   ],
+  allowHostAction: true,
 }
 
 describe('PERMISSION_RULES_SNAPSHOT_SCHEMA', () => {
@@ -88,9 +94,23 @@ describe('PERMISSION_RULES_SNAPSHOT_SCHEMA', () => {
       upstream: { mode: 'off', http: null, https: null, active: false, chained: 0 },
       recent: [],
       sources: [],
+      allowHostAction: false,
     })
     expect(minimal.mode).toBe('allow-all')
     expect(minimal.sandboxMode).toBeNull()
+    expect(minimal.allowHostAction).toBe(false)
+  })
+
+  it('requires the allow-action switch and the per-block cwd', () => {
+    const withoutSwitch = { ...VALID_SNAPSHOT } as Record<string, unknown>
+    delete withoutSwitch['allowHostAction']
+    expect(PERMISSION_RULES_SNAPSHOT_SCHEMA.safeParse(withoutSwitch).success).toBe(false)
+    const block = VALID_SNAPSHOT.recent[0]
+    if (block === undefined) throw new Error('fixture missing recent block')
+    const withoutCwd = { ...block } as Record<string, unknown>
+    delete withoutCwd['cwd']
+    expect(PERMISSION_RULES_SNAPSHOT_SCHEMA.safeParse({ ...VALID_SNAPSHOT, recent: [withoutCwd] }).success).toBe(false)
+    expect(PERMISSION_RULES_SNAPSHOT_SCHEMA.safeParse({ ...VALID_SNAPSHOT, recent: [{ ...block, cwd: 7 }] }).success).toBe(false)
   })
 
   it('rejects a mode outside the three network literals', () => {
@@ -162,6 +182,28 @@ describe('RULES_RELOAD_SCHEMA', () => {
   })
 })
 
+describe('ALLOW_HOST_REQUEST_SCHEMA and ALLOW_HOST_RESULT_SCHEMA', () => {
+  it('round-trips a request and rejects wrong shapes', () => {
+    const request: AllowHostRequest = { host: 'registry.npmjs.org', scheme: 'https', port: 443, cwd: '/ws' }
+    expect(ALLOW_HOST_REQUEST_SCHEMA.parse(request)).toEqual(request)
+    expect(ALLOW_HOST_REQUEST_SCHEMA.parse({ host: 'example.com', scheme: null, port: null, cwd: null })).toEqual({ host: 'example.com', scheme: null, port: null, cwd: null })
+    expect(ALLOW_HOST_REQUEST_SCHEMA.safeParse({ ...request, scheme: 'ftp' }).success).toBe(false)
+    expect(ALLOW_HOST_REQUEST_SCHEMA.safeParse({ ...request, port: 443.5 }).success).toBe(false)
+    expect(ALLOW_HOST_REQUEST_SCHEMA.safeParse({ ...request, cwd: undefined }).success).toBe(false)
+    expect(ALLOW_HOST_REQUEST_SCHEMA.safeParse({ host: 'example.com' }).success).toBe(false)
+  })
+
+  it('round-trips every result shape and rejects out-of-vocabulary outcomes', () => {
+    const written: AllowHostResult = { ok: true, path: '/ws/.dsh/rules.yaml', created: true, reloaded: 2, outcome: 'allow', alreadyAllowed: false, error: null }
+    expect(ALLOW_HOST_RESULT_SCHEMA.parse(written)).toEqual(written)
+    const refused: AllowHostResult = { ok: false, path: null, created: false, reloaded: 0, outcome: null, alreadyAllowed: false, error: 'refusing to allow "x": not a host name or IP literal' }
+    expect(ALLOW_HOST_RESULT_SCHEMA.parse(refused)).toEqual(refused)
+    expect(ALLOW_HOST_RESULT_SCHEMA.safeParse({ ...written, outcome: 'maybe' }).success).toBe(false)
+    expect(ALLOW_HOST_RESULT_SCHEMA.safeParse({ ...written, reloaded: null }).success).toBe(false)
+    expect(ALLOW_HOST_RESULT_SCHEMA.safeParse({ ...written, created: 'yes' }).success).toBe(false)
+  })
+})
+
 describe('invocation descriptors', () => {
   it('NETWORK_STATUS_DESCRIPTOR names the zero-parameter networkStatus invocation', () => {
     expect(NETWORK_STATUS_DESCRIPTOR.id).toBe('dsh-permission-rules#permissionRules/networkStatus')
@@ -211,6 +253,27 @@ describe('invocation descriptors', () => {
     expect(RULES_RELOAD_DESCRIPTOR.result.schema).toBe(RULES_RELOAD_SCHEMA)
   })
 
+  it('ALLOW_HOST_DESCRIPTOR declares one request-object parameter and the allow-result codec', () => {
+    expect(ALLOW_HOST_DESCRIPTOR.id).toBe('dsh-permission-rules#permissionRules/allowHost')
+    expect(ALLOW_HOST_DESCRIPTOR.service).toBe('permissionRules')
+    expect(ALLOW_HOST_DESCRIPTOR.namespace).toBe('permissionRules')
+    expect(ALLOW_HOST_DESCRIPTOR.method).toBe('allowHost')
+    expect(ALLOW_HOST_DESCRIPTOR.invocation).toEqual({ kind: 'direct' })
+    const parameters = ALLOW_HOST_DESCRIPTOR.parameters
+    expect(parameters).toHaveLength(1)
+    const param = parameters[0]
+    if (param === undefined) throw new Error('fixture: allowHost descriptor has no parameters')
+    expect(param).toMatchObject({ name: 'request', wire: 'request', source: 'json' })
+    expect(param.codec).toMatchObject({ mode: 'strict', typeSymbol: 'dsh-permission-rules/types#AllowHostRequest' })
+    expect(param.codec.schema.safeParse({ host: 'example.com', scheme: null, port: null, cwd: null }).success).toBe(true)
+    expect(param.codec.schema.safeParse('example.com').success).toBe(false)
+    expect(ALLOW_HOST_DESCRIPTOR.result).toEqual({
+      mode: 'strict',
+      typeSymbol: 'dsh-permission-rules/types#AllowHostResult',
+      schema: ALLOW_HOST_RESULT_SCHEMA,
+    })
+  })
+
   it('every descriptor and its nested payloads are frozen (shared codec discipline)', () => {
     for (const descriptor of PERMISSION_RULES_INVOCATIONS) {
       expect(Object.isFrozen(descriptor)).toBe(true)
@@ -224,15 +287,16 @@ describe('invocation descriptors', () => {
     }
   })
 
-  it('PERMISSION_RULES_INVOCATIONS lists the four descriptors by identity, shared with the host manifest', () => {
-    expect(PERMISSION_RULES_INVOCATIONS).toHaveLength(4)
+  it('PERMISSION_RULES_INVOCATIONS lists the five descriptors by identity, shared with the host manifest', () => {
+    expect(PERMISSION_RULES_INVOCATIONS).toHaveLength(5)
     expect(PERMISSION_RULES_INVOCATIONS[0]).toBe(NETWORK_STATUS_DESCRIPTOR)
     expect(PERMISSION_RULES_INVOCATIONS[1]).toBe(RULES_READ_DESCRIPTOR)
     expect(PERMISSION_RULES_INVOCATIONS[2]).toBe(RULES_SAVE_DESCRIPTOR)
     expect(PERMISSION_RULES_INVOCATIONS[3]).toBe(RULES_RELOAD_DESCRIPTOR)
+    expect(PERMISSION_RULES_INVOCATIONS[4]).toBe(ALLOW_HOST_DESCRIPTOR)
     expect(Object.isFrozen(PERMISSION_RULES_INVOCATIONS)).toBe(true)
     expect(new Set(PERMISSION_RULES_INVOCATIONS.map(descriptor => descriptor.method))).toEqual(
-      new Set(['networkStatus', 'rulesRead', 'rulesSave', 'reload']),
+      new Set(['networkStatus', 'rulesRead', 'rulesSave', 'reload', 'allowHost']),
     )
   })
 })

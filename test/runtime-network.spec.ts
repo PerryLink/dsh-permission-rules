@@ -17,6 +17,8 @@ import { request as httpRequest } from 'node:http'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { PermissionRulesRemoteService } from '../src/remote-service.ts'
 import { PROXY_ENV_NAMES, NO_PROXY_ENV_NAMES } from '../src/proxy.ts'
+import { allowHostNotice, allowHostReason, allowHostWorkspaces } from '../src/allow-host.ts'
+import { parseRulesDocument } from '../src/rules.ts'
 import type { PermissionRulesRuntime } from '../src/runtime.ts'
 import { dispatchPreExecute, makeAgent, makeExec, mountHarness, removeWorkspace, tempWorkspace } from './harness.ts'
 import type { Harness } from './harness.ts'
@@ -311,6 +313,343 @@ describe('settings-page Remote service', () => {
       expect(remote.rulesSave(join(cwd, 'outside.yaml'), 'rules: []').ok).toBe(false)
     } finally {
       removeWorkspace(cwd)
+    }
+  })
+})
+
+/**
+ * Issue #19 item 3: the settings-page "allow this host" action. Every case
+ * here asserts a SAFETY property of the action rather than that a method ran:
+ * index-0 insertion (first-match), comment preservation, the session-less
+ * host file, the recomputed outcome, refusal with the disk untouched, and
+ * idempotence.
+ */
+describe('settings-page allow-host action (issue #19 item 3)', () => {
+  /** The blocked target every case uses: a literal, so no DNS is involved. */
+  const HOST = '127.0.0.1'
+
+  /** A deny rule for one host, as an operator would have written it. */
+  function denyRule(host: string, reason: string): string {
+    return `rules:\n  - match: { network: { domains: [${host}] } }\n    action: deny\n    reason: ${JSON.stringify(reason)}\n`
+  }
+
+  /** Mount whitelist mode with loopback judged by the rules, so a local origin can be blocked. */
+  async function mountPolicy(config: Record<string, unknown>, cwd: string): Promise<Harness> {
+    return mountNetwork({ mode: 'whitelist', unlisted: 'ask', loopback: 'policy', ...config }, { cwd })
+  }
+
+  /** The settings-page Remote service the plugin's `apply` mounted. */
+  function remoteOf(harness: Harness): PermissionRulesRemoteService {
+    return harness.ctx.get('permissionRules') as PermissionRulesRemoteService
+  }
+
+  /** Put one shell execution in flight so a proxy block is attributed to the workspace. */
+  async function attributeShell(harness: Harness): Promise<void> {
+    await dispatchPreExecute(harness.ctx, makeExec({ name: 'bash', arguments: { command: 'sleep 5' }, agent: harness.agent }))
+  }
+
+  it('inserts the rule at index 0 of the project file and unblocks the connection with no reload', async () => {
+    const upstream = await origin()
+    const cwd = tempWorkspace()
+    const projectFile = join(cwd, '.dsh', 'rules.yaml')
+    writeRules(cwd, denyRule(HOST, 'maintenance window'))
+    const harness = await mountPolicy({}, cwd)
+    const runtime = runtimeOf(harness)
+    const port = runtime.networkSnapshot().proxyPort
+    const target = `http://${HOST}:${upstream.port}/catalog.json`
+    try {
+      await attributeShell(harness)
+      expect((await proxyGet(port, target)).status).toBe(403)
+      // The block carries the attributed workspace, which is what the page sends back.
+      expect(runtime.networkSnapshot().recent[0]).toMatchObject({ domain: HOST, cwd })
+      const audits = (): number => harness.session.snapshotEvents().filter(event => String(event.type).startsWith('permissionRules/')).length
+      const auditsBefore = audits()
+
+      const result = remoteOf(harness).allowHost({ host: HOST, scheme: 'http', port: upstream.port, cwd })
+      expect(result).toMatchObject({ ok: true, outcome: 'allow', alreadyAllowed: false, created: false, error: null })
+      expect(result.path).toBe(projectFile)
+      expect(result.reloaded).toBeGreaterThanOrEqual(1)
+
+      // ② the FIRST rule of the file is the generated allow; the operator's deny survives after it.
+      const text = readFileSync(projectFile, 'utf8')
+      const doc = parseRulesDocument(text)
+      expect(doc.rules[0]).toMatchObject({ action: 'allow', match: { network: { domains: [HOST] } } })
+      expect(doc.rules[1]?.action).toBe('deny')
+      expect(text.indexOf(allowHostReason(HOST))).toBeLessThan(text.indexOf('maintenance window'))
+
+      // ③ the next connection goes through — the write itself reloaded the chain.
+      expect((await proxyGet(port, target)).status).toBe(200)
+
+      // ⑧ the action audits nothing: no fabricated permissionRules/* rows.
+      expect(audits()).toBe(auditsBefore)
+    } finally {
+      await upstream.close()
+      removeWorkspace(cwd)
+    }
+  })
+
+  it('preserves comments and the untouched rules of the file it edits', async () => {
+    const cwd = tempWorkspace()
+    const projectFile = join(cwd, '.dsh', 'rules.yaml')
+    const original = [
+      '# workspace rules — keep this header',
+      'rules:',
+      '  # a pinned deny, with a reason that must survive verbatim',
+      '  - match: { network: { domains: [evil.example] } }',
+      '    action: deny',
+      '    reason: "known bad"',
+      '',
+    ].join('\n')
+    writeRules(cwd, original)
+    const harness = await mountPolicy({ loopback: 'allow' }, cwd)
+    runtimeOf(harness).rulesFor(cwd)
+    const remote = remoteOf(harness)
+    try {
+      const result = remote.allowHost({ host: 'Registry.NPMJS.org.', scheme: 'https', port: 443, cwd })
+      expect(result).toMatchObject({ ok: true, outcome: 'allow', created: false })
+      const text = readFileSync(projectFile, 'utf8')
+      expect(text.startsWith('# workspace rules — keep this header\nrules:\n')).toBe(true)
+      expect(text).toContain('  # a pinned deny, with a reason that must survive verbatim\n')
+      expect(text).toContain('  - match: { network: { domains: [ evil.example ] } }\n    action: deny\n    reason: "known bad"\n')
+      // The host was normalized before it reached the document.
+      expect(parseRulesDocument(text).rules[0]?.match.network?.domains).toEqual(['registry.npmjs.org'])
+    } finally {
+      removeWorkspace(cwd)
+    }
+  })
+
+  it('writes the session-less host chain file for a block with no cwd, and unblocks a later host-level fetch', async () => {
+    const upstream = await origin()
+    // A test must never write into the repository: the host process's cwd is the
+    // session-less workspace, so it is stubbed onto a temp directory AND the
+    // fallback is configured, which is the file the host chain then resolves.
+    const hostDir = tempWorkspace('allow-host-cwd')
+    const fallbackDir = tempWorkspace('allow-host-fallback')
+    const fallbackPath = join(fallbackDir, 'fallback.yaml')
+    writeFileSync(fallbackPath, '', 'utf8')
+    const cwdSpy = vi.spyOn(process, 'cwd').mockReturnValue(hostDir)
+    const harness = await mountHarness({
+      fallbackPath,
+      network: { enabled: true, injectEnv: false, mode: 'whitelist', unlisted: 'ask', loopback: 'policy' },
+    }, {})
+    const runtime = runtimeOf(harness)
+    const port = runtime.networkSnapshot().proxyPort
+    const target = `http://${HOST}:${upstream.port}/catalog.json`
+    try {
+      // No tool call has run: byCwd is empty, so the host chain judges this — the
+      // exact state the issue's boot-time fetch is in.
+      expect((await proxyGet(port, target)).status).toBe(403)
+      const result = remoteOf(harness).allowHost({ host: HOST, scheme: 'http', port: upstream.port, cwd: null })
+      expect(result).toMatchObject({ ok: true, outcome: 'allow', created: false, alreadyAllowed: false, error: null })
+      expect(result.path).toBe(fallbackPath)
+      // The cached session-less chain was dropped and re-read: +1 over the (zero) workspace chains.
+      expect(result.reloaded).toBe(1)
+      expect(existsSync(join(hostDir, '.dsh', 'rules.yaml'))).toBe(false)
+      expect(readFileSync(fallbackPath, 'utf8')).toContain(allowHostReason(HOST))
+      // No /rules reload, no restart: the next session-less fetch is allowed.
+      expect((await proxyGet(port, target)).status).toBe(200)
+
+      // The settings-page Reload action reaches the host chain too: drop the rule
+      // behind the plugin's back and the connection is blocked again.
+      writeFileSync(fallbackPath, '', 'utf8')
+      expect((await proxyGet(port, target)).status).toBe(200)
+      expect(remoteOf(harness).reload()).toEqual({ ok: true, error: null })
+      expect((await proxyGet(port, target)).status).toBe(403)
+    } finally {
+      cwdSpy.mockRestore()
+      await upstream.close()
+      removeWorkspace(hostDir)
+      removeWorkspace(fallbackDir)
+    }
+  })
+
+  it('refuses an unparseable file and a non-list "rules" without changing a byte', async () => {
+    const cwd = tempWorkspace()
+    const projectFile = join(cwd, '.dsh', 'rules.yaml')
+    // `ignore-with-warning` keeps the workspace loaded (and its file a known
+    // source) while the document itself stays broken — exactly the state in
+    // which a "helpful" action would overwrite the user's file. `badFilePolicy`
+    // is a top-level key, not a network one.
+    const harness = await mountHarness({ badFilePolicy: 'ignore-with-warning', network: { enabled: true, injectEnv: false, mode: 'whitelist', unlisted: 'ask' } }, { cwd })
+    const remote = remoteOf(harness)
+    try {
+      for (const broken of ['rules: [not a list\n', 'rules:\n  domains: [a.example]\n']) {
+        writeRules(cwd, broken)
+        runtimeOf(harness).rulesFor(cwd)
+        const result = remote.allowHost({ host: 'blocked.example', scheme: 'http', port: 80, cwd })
+        expect(result.ok).toBe(false)
+        expect(result.error).toMatch(/cannot edit the rule file/)
+        expect(result.outcome).toBeNull()
+        expect(readFileSync(projectFile, 'utf8')).toBe(broken)
+      }
+    } finally {
+      removeWorkspace(cwd)
+    }
+  })
+
+  it('never writes the built-in baseline', async () => {
+    const dir = tempWorkspace('allow-host-builtin')
+    const builtinPath = join(dir, 'builtin-high-risk.yaml')
+    const baseline = 'rules:\n  - match: { network: { domains: [metadata.example] } }\n    action: deny\n    reason: shipped baseline\n'
+    writeFileSync(builtinPath, baseline, 'utf8')
+    // An absolute rulesFile that IS the baseline: both the workspace path and the
+    // host path resolve onto it, and both must be refused.
+    const harness = await mountHarness({
+      rulesFile: builtinPath,
+      builtin: { enabled: true, path: builtinPath },
+      network: { enabled: true, injectEnv: false, mode: 'whitelist', unlisted: 'ask' },
+    }, {})
+    const remote = remoteOf(harness)
+    try {
+      for (const cwd of [null, harness.cwd]) {
+        // The workspace path needs the workspace loaded; the target is its project
+        // file, which the absolute `rulesFile` points at the baseline.
+        if (cwd !== null) runtimeOf(harness).rulesFor(cwd)
+        const result = remote.allowHost({ host: 'blocked.example', scheme: 'http', port: 80, cwd })
+        expect(result.ok).toBe(false)
+        expect(result.error).toMatch(/built-in ruleset is read-only/)
+      }
+      expect(readFileSync(builtinPath, 'utf8')).toBe(baseline)
+    } finally {
+      removeWorkspace(dir)
+    }
+  })
+
+  it('refuses a host that is not exactly one host name or IP literal', async () => {
+    const cwd = tempWorkspace()
+    const projectFile = join(cwd, '.dsh', 'rules.yaml')
+    const original = denyRule('blocked.example', 'policy')
+    writeRules(cwd, original)
+    const harness = await mountPolicy({}, cwd)
+    const remote = remoteOf(harness)
+    runtimeOf(harness).rulesFor(cwd)
+    try {
+      const attempts = [
+        '',
+        'blocked.example\nrules:\n  - match: {}\n    action: allow\n    reason: injected\n',
+        '*.example.com',
+        'http://blocked.example',
+        'blocked.example:443',
+        'blocked example',
+      ]
+      for (const host of attempts) {
+        const result = remote.allowHost({ host, scheme: 'http', port: 80, cwd })
+        expect(result.ok, JSON.stringify(host)).toBe(false)
+        expect(result.error).toMatch(/not a host name or IP literal/)
+      }
+      // No injection reached the document.
+      expect(readFileSync(projectFile, 'utf8')).toBe(original)
+    } finally {
+      removeWorkspace(cwd)
+    }
+  })
+
+  it('refuses an unknown workspace and reports the switch in the snapshot', async () => {
+    const cwd = tempWorkspace()
+    const projectFile = join(cwd, '.dsh', 'rules.yaml')
+    const original = denyRule('blocked.example', 'policy')
+    writeRules(cwd, original)
+    const harness = await mountPolicy({}, cwd)
+    const remote = remoteOf(harness)
+    runtimeOf(harness).rulesFor(cwd)
+    try {
+      const unknown = remote.allowHost({ host: 'blocked.example', scheme: 'http', port: 80, cwd: join(cwd, 'not-loaded') })
+      expect(unknown.ok).toBe(false)
+      expect(unknown.error).toMatch(/not a workspace whose rules are loaded/)
+      expect(readFileSync(projectFile, 'utf8')).toBe(original)
+    } finally {
+      removeWorkspace(cwd)
+    }
+  })
+
+  it('refuses the whole action when network.allowHostAction is false', async () => {
+    const cwd = tempWorkspace()
+    const projectFile = join(cwd, '.dsh', 'rules.yaml')
+    const original = denyRule('blocked.example', 'policy')
+    writeRules(cwd, original)
+    const harness = await mountPolicy({ allowHostAction: false }, cwd)
+    const remote = remoteOf(harness)
+    runtimeOf(harness).rulesFor(cwd)
+    try {
+      expect(remote.networkStatus().allowHostAction).toBe(false)
+      const result = remote.allowHost({ host: 'blocked.example', scheme: 'http', port: 80, cwd })
+      expect(result.ok).toBe(false)
+      expect(result.error).toMatch(/disabled by network.allowHostAction/)
+      expect(readFileSync(projectFile, 'utf8')).toBe(original)
+    } finally {
+      removeWorkspace(cwd)
+    }
+  })
+
+  it('is idempotent: an already-allowed target is never written twice', async () => {
+    const upstream = await origin()
+    const cwd = tempWorkspace()
+    const projectFile = join(cwd, '.dsh', 'rules.yaml')
+    writeRules(cwd, denyRule(HOST, 'maintenance window'))
+    const harness = await mountPolicy({}, cwd)
+    const runtime = runtimeOf(harness)
+    const port = runtime.networkSnapshot().proxyPort
+    const target = `http://${HOST}:${upstream.port}/catalog.json`
+    try {
+      await attributeShell(harness)
+      expect((await proxyGet(port, target)).status).toBe(403)
+      const first = remoteOf(harness).allowHost({ host: HOST, scheme: 'http', port: upstream.port, cwd })
+      expect(first).toMatchObject({ ok: true, outcome: 'allow', alreadyAllowed: false })
+      const written = readFileSync(projectFile, 'utf8')
+      const second = remoteOf(harness).allowHost({ host: HOST, scheme: 'http', port: upstream.port, cwd })
+      // The decision is already allow, so the second click resolves no target at
+      // all and touches nothing.
+      expect(second).toMatchObject({ ok: true, alreadyAllowed: true, outcome: 'allow', path: null, created: false, reloaded: 0, error: null })
+      expect(readFileSync(projectFile, 'utf8')).toBe(written)
+      expect(allowHostNotice(second)).toMatchObject({ ok: true, key: 'allowHostAlready' })
+    } finally {
+      await upstream.close()
+      removeWorkspace(cwd)
+    }
+  })
+
+  it('reports the REAL outcome when a nearer chain still blocks, and adds no duplicate rule', async () => {
+    const upstream = await origin()
+    const nearer = tempWorkspace('allow-host-nearer')
+    const target = tempWorkspace('allow-host-target')
+    writeRules(nearer, denyRule(HOST, 'nearer chain denies'))
+    const targetFile = join(target, '.dsh', 'rules.yaml')
+    writeRules(target, denyRule(HOST, 'target chain denies'))
+    // `nearer` is loaded first, so it outranks `target` in the proxy's chain order.
+    const harness = await mountPolicy({}, nearer)
+    const runtime = runtimeOf(harness)
+    const port = runtime.networkSnapshot().proxyPort
+    const session = harness.ctx.sessions.create(SessionId('allow-host-other'), { meta: { cwd: target } })
+    const other = makeAgent(session)
+    try {
+      await attributeShell(harness)
+      await dispatchPreExecute(harness.ctx, makeExec({ name: 'bash', arguments: { command: 'sleep 5' }, agent: other }))
+      const url = `http://${HOST}:${upstream.port}/catalog.json`
+      expect((await proxyGet(port, url)).status).toBe(403)
+
+      // The page's workspace choices come from the snapshot's sources, one per loaded workspace.
+      const snapshot = remoteOf(harness).networkStatus()
+      expect(snapshot.sources.length).toBeGreaterThan(1)
+      expect(allowHostWorkspaces(snapshot.sources)).toEqual(expect.arrayContaining([nearer, target]))
+
+      const result = remoteOf(harness).allowHost({ host: HOST, scheme: 'http', port: upstream.port, cwd: target })
+      expect(result).toMatchObject({ ok: true, outcome: 'deny', alreadyAllowed: false })
+      expect(result.path).toBe(targetFile)
+      // The write itself succeeded — the honest outcome, and the honest notice.
+      const written = readFileSync(targetFile, 'utf8')
+      expect(parseRulesDocument(written).rules[0]?.action).toBe('allow')
+      expect(allowHostNotice(result)).toMatchObject({ ok: false, key: 'allowHostStillBlocked', vars: { outcome: 'deny' } })
+      expect((await proxyGet(port, url)).status).toBe(403)
+
+      // Clicking again writes nothing: the file already leads with this exact rule.
+      const again = remoteOf(harness).allowHost({ host: HOST, scheme: 'http', port: upstream.port, cwd: target })
+      expect(again).toMatchObject({ ok: true, alreadyAllowed: true, outcome: 'deny' })
+      expect(readFileSync(targetFile, 'utf8')).toBe(written)
+      expect(allowHostNotice(again)).toMatchObject({ ok: false, key: 'allowHostStillBlocked' })
+    } finally {
+      await upstream.close()
+      removeWorkspace(nearer)
+      removeWorkspace(target)
     }
   })
 })
