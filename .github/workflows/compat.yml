@@ -1,4 +1,4 @@
-﻿name: Compat
+name: Compat
 
 # dshbase-style compatibility verification (monthly + on demand):
 #   1. bare-import: install the packed tarball into an empty project (native
