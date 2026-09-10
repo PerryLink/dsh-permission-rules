@@ -147,6 +147,12 @@ export class PermissionRulesRuntime {
   /** Live watchers per watched path (rule file or candidate ancestor directory), with the cwds each serves. */
   private readonly watchers = new Map<string, WatcherEntry>()
 
+  /** The configured chain session-less proxy connections are judged against (see {@link hostChain}); never a `byCwd` member. */
+  private hostLoaded: LoadedRules | undefined
+
+  /** Whether the one-time "configured chain unusable" warning was already logged. */
+  private hostChainWarned = false
+
   /** Debounce timers per rule-file path. */
   private readonly timers = new Map<string, ReturnType<typeof setTimeout>>()
 
@@ -577,7 +583,45 @@ export class PermissionRulesRuntime {
     for (const loaded of this.byCwd.values()) {
       chains.push({ ruleset: loaded.compiled, sources: loaded.sources })
     }
+    if (chains.length === 0) {
+      const host = this.hostChain()
+      if (host !== undefined) chains.push(host)
+    }
     return chains
+  }
+
+  /**
+   * The CONFIGURED chain a session-less connection is judged against: the
+   * chain for the host process's own working directory (project rule file →
+   * an absolute `rulesFile` → the configured fallback → the shipped
+   * baseline), loaded on first use. Proxy traffic that carries no session —
+   * the harness's own plugin-market catalog/update/npm lookups at boot — used
+   * to be judged against an empty chain and therefore always hit the mode
+   * default, so a target an already-configured allow rule permits stayed
+   * blocked until some session had run a tool call (issue #18). The chain is
+   * kept OUT of `byCwd` on purpose: it must never outrank a session workspace
+   * chain, and it stops being consulted as soon as one is loaded (a host-level
+   * connection is then judged exactly as before, against the loaded workspace
+   * chains). It is not watched either: the session-less window is the boot
+   * window, and the first tool call of any session takes over with the normal
+   * per-workspace chain, which is watched.
+   * @returns the configured chain, or undefined when it cannot be loaded (the mode default then applies).
+   */
+  private hostChain(): NetworkChain | undefined {
+    if (this.hostLoaded === undefined) {
+      try {
+        this.hostLoaded = this.load(process.cwd())
+      } catch (error: unknown) {
+        // Never throw into the proxy: an unusable configured chain degrades to
+        // the mode default (fail closed), with one warning per mount.
+        if (!this.hostChainWarned) {
+          this.hostChainWarned = true
+          this.ctx.logger.warn(`permission-rules: cannot load the configured rules for session-less connections at ${process.cwd()}: ${String(error)} (the network mode default applies)`)
+        }
+        return undefined
+      }
+    }
+    return { ruleset: this.hostLoaded.compiled, sources: this.hostLoaded.sources }
   }
 
   /** Mark one delegated shell execution as in-flight (newest attribution wins). */

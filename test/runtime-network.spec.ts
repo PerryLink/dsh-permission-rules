@@ -9,14 +9,28 @@
  * @module dsh-permission-rules/test/runtime-network
  */
 
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import { createServer } from 'node:http'
 import { mkdirSync, writeFileSync, existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { request as httpRequest } from 'node:http'
+import { SessionId } from '@deepseek-ai/dsh-session'
 import { PermissionRulesRemoteService } from '../src/remote-service.ts'
 import type { PermissionRulesRuntime } from '../src/runtime.ts'
-import { dispatchPreExecute, makeExec, mountHarness, removeWorkspace, tempWorkspace } from './harness.ts'
+import { dispatchPreExecute, makeAgent, makeExec, mountHarness, removeWorkspace, tempWorkspace } from './harness.ts'
 import type { Harness } from './harness.ts'
+
+/** One local HTTP origin for the end-to-end adjudication cases. */
+async function origin(): Promise<{ port: number; close: () => Promise<void> }> {
+  const server = createServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'text/plain' })
+    res.end('origin-ok')
+  })
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
+  const address = server.address()
+  if (address === null || typeof address === 'string') throw new Error('origin bind failed')
+  return { port: address.port, close: () => new Promise<void>(resolve => server.close(() => resolve())) }
+}
 
 /** One local proxy GET that resolves with status + body even on 403s. */
 function proxyGet(port: number, url: string): Promise<{ status: number; body: string }> {
@@ -137,6 +151,89 @@ describe('proxy-layer blocks with attribution audit', () => {
     expect(events).toHaveLength(1)
     expect(events[0]?.data).toMatchObject({ kind: 'block', tool: 'bash', attributed: true, domain: 'denied.example', action: 'deny', mode: 'deny-all', matched: false })
     expect(runtime.networkSnapshot().denied).toBe(1)
+  })
+})
+
+/**
+ * Issue #18: host-level, session-less proxy traffic (the plugin market's own
+ * catalog/update/npm lookups at boot) was adjudicated against the per-cwd
+ * chain map while that map was still empty, so an allow rule that was ALREADY
+ * configured did not permit the fetch until some session had run a tool call.
+ */
+describe('session-less host-level connections (issue #18)', () => {
+  /** Mount with whitelist mode and a loopback target that must match a rule. */
+  async function mountWithConfiguredRules(rulesFilePath: string): Promise<Harness> {
+    return mountHarness({
+      rulesFile: rulesFilePath,
+      network: { enabled: true, injectEnv: false, mode: 'whitelist', unlisted: 'ask', loopback: 'policy' },
+    }, {})
+  }
+
+  it('honours an already-configured allow rule before any session chain is loaded', async () => {
+    const upstream = await origin()
+    const rulesDir = tempWorkspace('sessionless')
+    const rulesFilePath = join(rulesDir, 'rules.yaml')
+    writeFileSync(rulesFilePath, `rules:\n  - action: allow\n    reason: pinned local origin\n    match:\n      network:\n        ips: [127.0.0.1]\n        ports: [${upstream.port}]\n`, 'utf8')
+    const harness = await mountWithConfiguredRules(rulesFilePath)
+    try {
+      const port = runtimeOf(harness).networkSnapshot().proxyPort
+      expect(port).toBeGreaterThan(0)
+      // No tool call has run yet: the per-cwd chain map is still empty, which
+      // is exactly the state the harness's own boot-time fetches see.
+      const result = await proxyGet(port, `http://127.0.0.1:${upstream.port}/catalog.json`)
+      expect(result.status).toBe(200)
+      expect(result.body).toBe('origin-ok')
+    } finally {
+      await upstream.close()
+      removeWorkspace(rulesDir)
+    }
+  })
+
+  it('still applies the mode default when no configured rule matches', async () => {
+    const upstream = await origin()
+    const rulesDir = tempWorkspace('sessionless')
+    const rulesFilePath = join(rulesDir, 'rules.yaml')
+    writeFileSync(rulesFilePath, 'rules:\n  - action: allow\n    reason: some other host\n    match: { network: { domains: [allowed.example] } }\n', 'utf8')
+    const harness = await mountWithConfiguredRules(rulesFilePath)
+    try {
+      const result = await proxyGet(runtimeOf(harness).networkSnapshot().proxyPort, `http://127.0.0.1:${upstream.port}/catalog.json`)
+      expect(result.status).toBe(403)
+      expect(result.body).toContain('[network: blocked pending approval] whitelist mode')
+    } finally {
+      await upstream.close()
+      removeWorkspace(rulesDir)
+    }
+  })
+
+  it('stops consulting the configured chain once a session workspace chain is loaded', async () => {
+    const upstream = await origin()
+    const hostDir = tempWorkspace('sessionless-host')
+    const rulesFilePath = join(hostDir, '.dsh', 'rules.yaml')
+    mkdirSync(join(hostDir, '.dsh'), { recursive: true })
+    writeFileSync(rulesFilePath, `rules:\n  - action: allow\n    reason: pinned local origin\n    match:\n      network:\n        ips: [127.0.0.1]\n        ports: [${upstream.port}]\n`, 'utf8')
+    // The configured chain is the one for the host process's own working
+    // directory; it is stubbed here because a test must not depend on the
+    // repository checkout's own cwd.
+    const cwdSpy = vi.spyOn(process, 'cwd').mockReturnValue(hostDir)
+    const harness = await mountHarness({
+      network: { enabled: true, injectEnv: false, mode: 'whitelist', unlisted: 'ask', loopback: 'policy' },
+    }, {})
+    // A session in a workspace with no rule file of its own: its (empty)
+    // chain is what later connections are judged against — the configured
+    // chain never outranks a session workspace chain.
+    const otherWorkspace = tempWorkspace('sessionless-ws')
+    try {
+      const port = runtimeOf(harness).networkSnapshot().proxyPort
+      expect((await proxyGet(port, `http://127.0.0.1:${upstream.port}/catalog.json`)).status).toBe(200)
+      const session = harness.ctx.sessions.create(SessionId('sessionless-other'), { meta: { cwd: otherWorkspace } })
+      await dispatchPreExecute(harness.ctx, makeExec({ name: 'bash', arguments: {}, agent: makeAgent(session) }))
+      expect((await proxyGet(port, `http://127.0.0.1:${upstream.port}/catalog.json`)).status).toBe(403)
+    } finally {
+      cwdSpy.mockRestore()
+      await upstream.close()
+      removeWorkspace(hostDir)
+      removeWorkspace(otherWorkspace)
+    }
   })
 })
 
