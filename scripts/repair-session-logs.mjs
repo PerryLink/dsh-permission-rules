@@ -82,13 +82,14 @@ const STORAGE_ROW_TYPES = new Set([
 /**
  * The harness build's generated event vocabulary
  * (`KNOWN_SESSION_EVENT_TYPES`, `packages/core/session/src/known-event-types.ts`,
- * synced with the `0.1.5-alpha.1` catalog), plus the v1/v2-only spellings the
+ * synced with the `0.1.5-rc.1` catalog), plus the v1/v2-only spellings the
  * older generations wrote (`assistant/chunk`, `tool/code-dispatch`,
  * `tool/code-dispatch-start`; V3 renamed the latter two to `tool/ptc-dispatch`
  * and `tool/ptc-dispatch-start`), so every generation scans clean. Rows whose
  * type is outside this set are what the read path refuses when the envelope
  * lacks `ignorable: true`; the scan reports them so nothing is missed.
- * Regenerate this list from the harness checkout when it changes.
+ * Regenerate this list from the harness checkout when it changes (0.1.5-rc.1
+ * added `deliverables/presented` and `subagent/catalog`).
  */
 const KNOWN_SESSION_EVENT_TYPES = new Set([
   'agent-preset/selected',
@@ -107,6 +108,7 @@ const KNOWN_SESSION_EVENT_TYPES = new Set([
   'compaction/prune',
   'compaction/start',
   'compaction/summary',
+  'deliverables/presented',
   'feedback/message-delete',
   'feedback/message-put',
   'feedback/record',
@@ -128,6 +130,7 @@ const KNOWN_SESSION_EVENT_TYPES = new Set([
   'session/title-llm-request',
   'step/end',
   'step/start',
+  'subagent/catalog',
   'subagent/descriptor',
   'subagent/model-selection-policy',
   'system/message',
