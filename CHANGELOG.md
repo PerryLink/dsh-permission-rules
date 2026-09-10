@@ -1,4 +1,18 @@
+## v0.6.18 - 2026-09-10
+
+### Docs
+
+- Five-language READMEs: the network-policy "Matching" bullet now states that IPv4-mapped IPv6 literals are normalized to their IPv4 form before matching, and that the proxy connects on the addresses the decision was made on (never a second DNS resolution). Republished so the npm page carries the updated READMEs.
+
+### Tests
+
+- No behavior change in this version: it republishes the 0.6.17 code (which already contains the network hardening below) with the refreshed documentation. Gate chain re-run green (285 tests, 23 files).
+
 ## v0.6.17 - 2026-09-10
+
+### Security
+
+- **Hardening: the proxy now connects on the adjudicated address, never a second DNS resolution.** The proxy adjudicated a hostname on one `lookup()` and then connected by hostname, re-resolving — a hostname whose answers change between adjudication and connect (DNS rebinding, CWE-367) could reach an address the rules never approved. `decideWithResolution` now returns the target carrying the resolved addresses, CONNECT tunnels try those addresses in order (a 502 when none accepts), and the plain-HTTP forward pins `http(s).request` with a `lookup` answering from the same list, so a multi-address host keeps its fallbacks through happy-eyeballs ordering. End-to-end guards live in `test/proxy.spec.ts` (plain HTTP and CONNECT, literal and CIDR `ips` rules, plus named-target forwarding); `AGENTS.md` and both `rules-format` docs record the behavior.
 
 ### Changed
 

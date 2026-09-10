@@ -76,7 +76,7 @@ Una **política de red a nivel de proceso** estilo Codex: el tráfico de subproc
 - **`allow-all`** — el preset danger-full-access: permitir todo.
 - **`auto`** (por defecto) — sigue el preset del sandbox; en hosts sin el servicio de política de sandbox se resuelve a `autoFallback` (`allow-all`).
 
-- **Emparejamiento** — `match.network` con `domains` / `ips` / `ports` / `schemes` (globs, comodines, CIDR, rangos de puertos; se aceptan puertos YAML numéricos). La extracción de candidatos URL en la ruta caliente `tools/pre-execute` se dispara sobre argumentos de herramientas web y URLs embebidas en texto de comandos bash/pwsh; los destinos de loopback pueden cortocircuitar reglas según la política `loopback`.
+- **Emparejamiento** — `match.network` con `domains` / `ips` / `ports` / `schemes` (globs, comodines, CIDR, rangos de puertos; se aceptan puertos YAML numéricos). La extracción de candidatos URL en la ruta caliente `tools/pre-execute` se dispara sobre argumentos de herramientas web y URLs embebidas en texto de comandos bash/pwsh; los destinos de loopback pueden cortocircuitar reglas según la política `loopback`. Los literales IPv6 mapeados a IPv4 se normalizan a su forma IPv4 antes de comparar, y el proxy se conecta a las direcciones con las que se tomó la decisión, sin una segunda resolución DNS.
 - **Auditoría** — las conexiones denegadas anexan `permissionRules/network` a la sesión propietaria (la misma puerta adaptativa `ignorable`), con contadores de bloqueo e intercepciones recientes en `/rules network` y la página de settings.
 
 ## Quick start

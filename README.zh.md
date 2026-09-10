@@ -76,7 +76,7 @@ Codex 风格的**进程级网络策略**：shell 子进程流量经内置本地 
 - **`allow-all`** —— danger-full-access 预设：放行一切。
 - **`auto`**（默认）—— 跟随沙箱预设；无沙箱策略服务的宿主上解析为 `autoFallback`（`allow-all`）。
 
-- **匹配** —— `match.network` 用 `domains` / `ips` / `ports` / `schemes`（glob、通配符、CIDR、端口范围；数值型 YAML 端口可接受）。`tools/pre-execute` 热路径上的 URL 候选抽取作用于 web 工具参数与嵌入 bash/pwsh 命令文本的 URL；回环目标可按 `loopback` 策略短路规则。
+- **匹配** —— `match.network` 用 `domains` / `ips` / `ports` / `schemes`（glob、通配符、CIDR、端口范围；数值型 YAML 端口可接受）。`tools/pre-execute` 热路径上的 URL 候选抽取作用于 web 工具参数与嵌入 bash/pwsh 命令文本的 URL；回环目标可按 `loopback` 策略短路规则。IPv4 映射的 IPv6 字面量在匹配前归一化为 IPv4 形式；代理按裁决到的地址建连，不做二次 DNS 解析。
 - **审计** —— 被拒连接向所属会话追加 `permissionRules/network`（同样的自适应 `ignorable` 门），块计数器与近期拦截在 `/rules network` 与设置页展示。
 
 ## Quick start
