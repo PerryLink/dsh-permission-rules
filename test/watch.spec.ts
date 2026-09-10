@@ -12,6 +12,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { dispatchPreExecute, makeAgent, makeExec, mountHarness, removeWorkspace, tempWorkspace } from './harness.ts'
 import type { PermissionRulesRuntime } from '../src/runtime.ts'
+import { isDvrfsPath, isWslKernel } from '../src/runtime.ts'
 
 /** Hoisted mock controls: chokidar is replaced by a fake EventEmitter watcher. */
 const watchHarness = vi.hoisted(() => ({
@@ -20,14 +21,14 @@ const watchHarness = vi.hoisted(() => ({
 }))
 interface FakeWatcher extends EventEmitter {
   path: string
-  options: { depth?: number; ignored?: (path: string) => boolean } | undefined
+  options: { depth?: number; ignored?: (path: string) => boolean; usePolling?: boolean; interval?: number } | undefined
   close(): Promise<void>
 }
 const { watchers, closed } = watchHarness
 
 vi.mock('chokidar', () => ({
   default: {
-    watch(path: string, options?: { depth?: number; ignored?: (path: string) => boolean }): FakeWatcher {
+    watch(path: string, options?: { depth?: number; ignored?: (path: string) => boolean; usePolling?: boolean; interval?: number }): FakeWatcher {
       const emitter = new EventEmitter()
       const watcher = emitter as FakeWatcher
       watcher.path = path
@@ -433,6 +434,76 @@ describe('rule-file watching', () => {
     } finally {
       removeWorkspace(cwd)
       removeWorkspace(fallbackDir)
+    }
+  })
+})
+
+/**
+ * Issue #19 item 1: on a WSL host — and specifically for a rule file under
+ * `/mnt/<drive>` (drvfs/9p) — chokidar's native events can stop arriving with
+ * no error at all, so rule edits silently stopped hot-reloading. The watcher
+ * must switch to polling there and stay native everywhere else.
+ */
+describe('polling fallback for WSL drvfs mounts (issue #19 item 1)', () => {
+  it('recognizes a /mnt/<drive> path and a Microsoft kernel string', () => {
+    expect(isDvrfsPath('/mnt/c/Users/dev/project/.dsh/rules.yaml')).toBe(true)
+    expect(isDvrfsPath('/mnt/d/project/.dsh/rules.yaml')).toBe(true)
+    expect(isDvrfsPath('/mnt/c')).toBe(true)
+    // The Windows spelling of the same path is recognized too.
+    expect(isDvrfsPath('\\mnt\\c\\Users\\dev\\.dsh\\rules.yaml')).toBe(true)
+    expect(isDvrfsPath('/home/dev/project/.dsh/rules.yaml')).toBe(false)
+    expect(isDvrfsPath('D:\\projects\\.dsh\\rules.yaml')).toBe(false)
+    expect(isDvrfsPath('/mnt')).toBe(false)
+
+    expect(isWslKernel('Linux version 5.15.90.1-microsoft-standard-WSL2 (gcc ...)')).toBe(true)
+    expect(isWslKernel('Linux version 5.15.90.1-MICROSOFT-standard-WSL2')).toBe(true)
+    expect(isWslKernel('Linux version 6.1.0-13-amd64 (Debian ...)')).toBe(false)
+    expect(isWslKernel('Darwin Kernel Version 23.0.0')).toBe(false)
+    expect(isWslKernel('')).toBe(false)
+  })
+
+  it('polls both the rule-file watch and the candidate watch when the detection fires', async () => {
+    // The detection itself is covered above (and cannot be faked on a
+    // non-WSL runner: /proc/version is absent, and a Windows runner resolves
+    // the POSIX spelling before the watcher is built). This asserts the
+    // plumbing: whenever `watchPollingFor` says yes, BOTH watcher kinds hand
+    // chokidar the polling options.
+    const cwd = workspaceWithRules() // an existing file → the rule-file watch
+    const harness = await mountHarness({ watch: true }, { cwd })
+    const runtime = harness.ctx.get('permissionRulesRuntime') as PermissionRulesRuntime
+    const spy = vi.spyOn(runtime, 'watchPollingFor').mockReturnValue(true)
+    try {
+      await dispatchPreExecute(harness.ctx, makeExec({ name: 'bash', arguments: {}, agent: harness.agent }))
+      const fileWatcher = watchers.at(-1)
+      expect(fileWatcher?.path.toLowerCase()).toBe(join(cwd, '.dsh', 'rules.yaml').toLowerCase())
+      expect(fileWatcher?.options?.usePolling).toBe(true)
+      expect(fileWatcher?.options?.interval).toBe(300)
+
+      // A workspace with no rule file → the candidate (directory) watch.
+      const empty = tempWorkspace()
+      try {
+        runtime.rulesFor(empty)
+        const candidateWatcher = watchers.at(-1)
+        expect(candidateWatcher).not.toBe(fileWatcher)
+        expect(candidateWatcher?.options?.usePolling).toBe(true)
+        expect(candidateWatcher?.options?.interval).toBe(300)
+      } finally {
+        removeWorkspace(empty)
+      }
+    } finally {
+      spy.mockRestore()
+      removeWorkspace(cwd)
+    }
+  })
+
+  it('keeps the native watcher on a non-WSL host with a non-drvfs path', async () => {
+    const cwd = workspaceWithRules()
+    const harness = await mountHarness({ watch: true }, { cwd })
+    try {
+      await dispatchPreExecute(harness.ctx, makeExec({ name: 'bash', arguments: {}, agent: harness.agent }))
+      expect(watchers.at(-1)?.options?.usePolling).toBeUndefined()
+    } finally {
+      removeWorkspace(cwd)
     }
   })
 })

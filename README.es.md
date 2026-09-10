@@ -45,7 +45,7 @@ Cada acierto **y** cada paso directo se registra como un evento de sesión `perm
 - **Línea base de alto riesgo integrada** — un conjunto deny/ask embarcado (comandos destructivos, escalada de privilegios, descarga-y-ejecución, rutas sensibles) habilitado por defecto y añadido después de las reglas de usuario (una regla de usuario más cercana puede sobrescribirlo); se alterna con `builtin.enabled`.
 - **Archivos de reglas jerárquicos** — `searchUp` opcional fusiona cada `.dsh/rules.yaml` desde el cwd de la sesión hasta la raíz del sistema de archivos, el más cercano primero.
 - **Despliegue en dry-run** — `enforce: false` audita lo que la política *haría* mientras deja pasar cada llamada.
-- **Recarga en caliente** — vigilancia Chokidar con debounce; una edición rota conserva las reglas anteriores, nunca falla.
+- **Recarga en caliente** — vigilancia Chokidar con debounce; una edición rota conserva las reglas anteriores, nunca falla. En un host WSL, o para un archivo de reglas bajo `/mnt/<unidad>`, la vigilancia pasa a sondeo (polling) porque allí los eventos nativos de cambio no son fiables.
 - **Fallo ruidoso** — YAML inválido, acciones/campos desconocidos, globs/regexes malos, patrones propensos a backtracking o más de `maxRules` reglas fallan la carga.
 
 ## Rule syntax

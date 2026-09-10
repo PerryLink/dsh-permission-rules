@@ -82,6 +82,58 @@ const WEB_TOOLS: readonly string[] = ['web_fetch', 'web_search']
 const IN_FLIGHT_TTL_MS = 10 * 60 * 1000
 
 /**
+ * Chokidar polling interval used when the watched path lives on a filesystem
+ * whose change events are unreliable (WSL drvfs/9p mounts): polling costs a
+ * stat per interval, which is negligible for a rule file and far cheaper than
+ * a rule edit that silently never hot-reloads.
+ */
+const POLLING_WATCH_INTERVAL_MS = 300
+
+/**
+ * Whether one watched path lies under a WSL drvfs mount (`/mnt/<drive>/…`),
+ * where inotify-style change events are known to be unreliable — chokidar
+ * then has to poll (issue #19 item 1). The separator is normalized first so
+ * the check also recognizes the path as the Windows side spells it; a
+ * Windows drive path (`D:\…`) never matches.
+ * @param path - the watched file or directory path.
+ * @returns true when the path addresses a drvfs mount.
+ */
+export function isDvrfsPath(path: string): boolean {
+  return /^\/mnt\/[a-z](?:\/|$)/i.test(path.replace(/\\/g, '/'))
+}
+
+/**
+ * Whether the running kernel is WSL's, as `/proc/version` reports it. Every
+ * WSL kernel string carries `microsoft` (`…-microsoft-standard-WSL2`), which
+ * is what the issue asks the detection to key on; a non-WSL Linux kernel
+ * never does, and hosts without `/proc/version` (Windows, macOS) answer
+ * false.
+ * @param procVersion - the `/proc/version` text, or an empty string when it cannot be read.
+ * @returns true when the kernel is Microsoft's.
+ */
+export function isWslKernel(procVersion: string): boolean {
+  return procVersion.toLowerCase().includes('microsoft')
+}
+
+/** `/proc/version` is immutable for the process lifetime: read it at most once. */
+let procVersionText: string | undefined
+
+/** Read `/proc/version`, or an empty string wherever the file is absent (Windows, macOS). */
+function readProcVersion(): string {
+  if (procVersionText === undefined) {
+    try {
+      procVersionText = readFileSync('/proc/version', 'utf8')
+    } catch {
+      procVersionText = ''
+    }
+  }
+  return procVersionText
+}
+
+/** Chokidar options that switch one watch to polling (drvfs mount or WSL host). */
+const POLLING_WATCH_OPTIONS = { usePolling: true, interval: POLLING_WATCH_INTERVAL_MS } as const
+
+/**
  * State and behavior. One instance per plugin mount; disposals are owned by
  * the watcher/timer/proxy effects registered in {@link apply}.
  */
@@ -1014,6 +1066,20 @@ export class PermissionRulesRuntime {
     }
   }
 
+  /**
+   * Whether one watched path must be polled instead of trusting the platform's
+   * change events. WSL is the case issue #19 item 1 reports: a rule file under
+   * `/mnt/<drive>` (drvfs/9p) or any file on a WSL host can stop delivering
+   * chokidar change events with no error at all, so the watcher edits would
+   * silently stop hot-reloading. Polling is the documented chokidar remedy;
+   * everywhere else the native watcher stays in place.
+   * @param path - the watched rule file or candidate directory.
+   * @returns true when the watch should run in polling mode.
+   */
+  watchPollingFor(path: string): boolean {
+    return isDvrfsPath(path) || isWslKernel(readProcVersion())
+  }
+
   /** Attach (once per file path) the Chokidar watcher feeding {@link reload}. */
   private attachWatch(cwd: string, source: string): void {
     if (!this.config.watch || source === '' || (this.config.builtin.enabled && source === this.config.builtin.path)) return
@@ -1023,7 +1089,8 @@ export class PermissionRulesRuntime {
       return
     }
     const cwds = new Set([cwd])
-    const watcher = chokidar.watch(source, { persistent: true, ignoreInitial: true })
+    const polling = this.watchPollingFor(source)
+    const watcher = chokidar.watch(source, { persistent: true, ignoreInitial: true, ...(polling ? POLLING_WATCH_OPTIONS : {}) })
     const onEvent = (): void => this.scheduleReload(source)
     watcher.on('add', onEvent)
     watcher.on('change', onEvent)
@@ -1120,9 +1187,11 @@ export class PermissionRulesRuntime {
     }
     const cwds = new Set([cwd])
     const candidates = new Map([[cwd, candidate]])
+    const polling = this.watchPollingFor(candidate)
     const watchOptions = {
       persistent: true,
       ignoreInitial: true,
+      ...(polling ? POLLING_WATCH_OPTIONS : {}),
       ignored: (path: string): boolean => path.split(sep).includes('node_modules') || path.split(sep).includes('.git'),
     }
     const watcher = dir === parent

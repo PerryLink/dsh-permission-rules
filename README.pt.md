@@ -45,7 +45,7 @@ Cada acerto **e** cada passagem direta é registrada como um evento de sessão `
 - **Linha de base de alto risco integrada** — um conjunto deny/ask embarcado (comandos destrutivos, escalada de privilégios, baixar-e-executar, caminhos sensíveis) habilitado por padrão e anexado após as regras de usuário (uma regra de usuário mais próxima pode sobrescrevê-lo); alterna com `builtin.enabled`.
 - **Arquivos de regras hierárquicos** — `searchUp` opcional mescla cada `.dsh/rules.yaml` do cwd da sessão até a raiz do sistema de arquivos, o mais próximo primeiro.
 - **Implantação em dry-run** — `enforce: false` audita o que a política *faria* enquanto deixa cada chamada passar.
-- **Recarga a quente** — vigilância Chokidar com debounce; uma edição quebrada mantém as regras anteriores, nunca falha.
+- **Recarga a quente** — vigilância Chokidar com debounce; uma edição quebrada mantém as regras anteriores, nunca falha. Num host WSL, ou para um arquivo de regras sob `/mnt/<unidade>`, a vigilância passa a polling porque os eventos nativos de mudança não são confiáveis ali.
 - **Falha ruidosa** — YAML inválido, ações/campos desconhecidos, globs/regexes ruins, padrões propensos a backtracking ou mais de `maxRules` regras falham a carga.
 
 ## Rule syntax

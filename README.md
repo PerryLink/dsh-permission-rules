@@ -46,7 +46,7 @@ Every hit **and** every passthrough is audit-logged as a `permissionRules/decisi
 - **Built-in high-risk baseline** — a shipped deny/ask ruleset (destructive commands, privilege escalation, download-and-execute, sensitive paths) enabled by default and appended after user rules so a nearer user rule can override it; toggle with `builtin.enabled`.
 - **Hierarchical rule files** — optional `searchUp` merges every `.dsh/rules.yaml` from the session cwd to the filesystem root, nearest first.
 - **Dry-run rollout** — `enforce: false` audits what the policy *would* do while passing every call through.
-- **Hot reload** — Chokidar watch with debounce; a broken edit keeps the previous rules, never crashes.
+- **Hot reload** — Chokidar watch with debounce; a broken edit keeps the previous rules, never crashes. On a WSL host, or for a rule file under `/mnt/<drive>`, the watch switches to polling because native change events are unreliable there.
 - **Fail loud** — invalid YAML, unknown actions/fields, bad globs/regexes, backtracking-prone patterns, or more than `maxRules` rules fail the load.
 
 ## Rule syntax
