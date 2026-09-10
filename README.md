@@ -79,7 +79,7 @@ A Codex-style **process-level network policy**: shell subprocess traffic flows t
 
 - **Matching** — `match.network` with `domains` / `ips` / `ports` / `schemes` (globs, wildcards, CIDRs, port ranges; numeric YAML ports are accepted). URL-candidate extraction on the `tools/pre-execute` hot path fires on web-tool arguments and URLs embedded in bash/pwsh command text; loopback targets can short-circuit rules per `loopback` policy. IPv4-mapped IPv6 literals are normalized to their IPv4 form before matching, and the proxy connects on the addresses the decision was made on — never a second DNS resolution.
 - **Audit** — denied connections append `permissionRules/network` to the owning session (same adaptive `ignorable` gate), with block counters and recent interceptions in `/rules network` and the settings page.
-- **Diagnosis** — blocked connections carry a `[network: …]` message, and a model call that fails while the proxy blocked a target (the injected proxy environment also reaches the host's LLM transport) names that target and the remediation in its failure text instead of failing as a bare transport error.
+- **Diagnosis** — blocked connections carry a `[network: …]` message naming the blocked target, the mode or rule that decided, and the remediation.
 
 ## Quick start
 
@@ -176,7 +176,7 @@ All tunables are Schemastery `Config` fields (changeable from cordis.yml). An id
 - **Path candidates are heuristic.** Only the documented argument keys feed path matching, and workspace-relative matching is ASCII-case-insensitive only when `caseInsensitivePaths` is on.
 - **Globs are a conservative subset.** No brace expansion — write two patterns, or use regex mode.
 - **The regex backtracking guard is structural, not exhaustive.** Prefer glob mode for untrusted files.
-- **LLM provider endpoints need an allow rule.** The injected proxy environment is process-wide, so in whitelist mode the host's own model transport is adjudicated like any other connection, and the plugin cannot enumerate the endpoints an adapter will call (provider routes expose ids, and configured base URLs live in adapter-owned settings). Add an allow rule for the provider endpoint, or set `network.injectEnv: false` to keep the host process out of the proxy.
+- **The host's own outbound requests do not go through this proxy.** The injected proxy environment covers **spawned shell children** — which is what the injection is for — and any consumer that reads the proxy names at request time. It does **not** cover the host process's own `fetch`-based traffic: the launcher installs undici's global dispatcher from the **launch environment** before the first plugin mounts, that dispatcher routes by its policy rather than by the environment, and Node samples the proxy environment at start — so a plugin mounting later cannot redirect it. Consequences: provider endpoints do **not** need an allow rule, and `network.injectEnv: false` does not take the host process out of anything. Measured 2026-09-10 on Node 22; reproduce with `scripts/host-egress-probe.mjs`.
 
 ## Collaborating with dsh-auto-review
 

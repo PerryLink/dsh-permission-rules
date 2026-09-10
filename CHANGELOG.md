@@ -1,3 +1,9 @@
+## Unreleased
+
+### Fixed
+
+- **Corrected the mechanism by which this plugin participates in host networking (issue #22).** The five READMEs, `AGENTS.md` and the v0.6.19 note claimed that the process-wide injected proxy environment also placed the harness's own LLM transport under this policy. Measurement on 2026-09-10 (Node 22; `scripts/host-egress-probe.mjs`) shows it does not: the launcher installs undici's global dispatcher from the **launch environment** before the first plugin mounts, that dispatcher routes by its policy rather than by the environment, and Node samples the proxy environment at start — so a mid-process `process.env` write reaches neither `fetch` nor `node:http`. The injection covers spawned shell children, which is what it was always for. The READMEs' known-limitations bullet now says so, and the `llm/stream` annotation shipped in v0.6.19 is recorded as inert: it can only fire when a blocked child-process connection coincides within its window with an unrelated model failure, so it misattributes rather than diagnoses and its removal is queued for the next release.
+
 ## v0.6.19 - 2026-09-10
 
 ### Security

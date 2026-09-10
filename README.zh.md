@@ -78,7 +78,7 @@ Codex 风格的**进程级网络策略**：shell 子进程流量经内置本地 
 
 - **匹配** —— `match.network` 用 `domains` / `ips` / `ports` / `schemes`（glob、通配符、CIDR、端口范围；数值型 YAML 端口可接受）。`tools/pre-execute` 热路径上的 URL 候选抽取作用于 web 工具参数与嵌入 bash/pwsh 命令文本的 URL；回环目标可按 `loopback` 策略短路规则。IPv4 映射的 IPv6 字面量在匹配前归一化为 IPv4 形式；代理按裁决到的地址建连，不做二次 DNS 解析。
 - **审计** —— 被拒连接向所属会话追加 `permissionRules/network`（同样的自适应 `ignorable` 门），块计数器与近期拦截在 `/rules network` 与设置页展示。
-- **诊断** —— 被拦截的连接带 `[network: …]` 消息；若模型调用失败时代理恰好拦截了某个目标（注入的代理环境同样作用于宿主的 LLM 传输），失败文本会点名该目标与处置办法，而不再只是一个裸的传输错误。
+- **诊断** —— 被拦截的连接带 `[network: …]` 消息，点名被拦目标、做出裁决的模式或规则，以及处置办法。
 
 ## Quick start
 
@@ -175,7 +175,7 @@ dsh --profile web --dump-config | grep -A4 'id: permission-rules'
 - **路径候选是启发式的。** 只有文档化的参数键参与路径匹配，且工作区相对匹配仅在 `caseInsensitivePaths` 开启时忽略 ASCII 大小写。
 - **glob 是保守子集。** 无花括号展开——写两个模式，或用正则模式。
 - **正则回溯守卫是结构性的、非穷尽的。** 对不可信文件优先用 glob 模式。
-- **LLM 供应商端点需要显式允许规则。** 注入的代理环境是进程级的，因此白名单模式下宿主自身的模型传输与其他连接一样被裁决，而插件无法枚举某个适配器将要调用的端点（供应商路由只暴露 id，配置的 base URL 存在各适配器自己的设置里）。请为供应商端点添加 allow 规则，或设 `network.injectEnv: false` 让宿主进程不经过该代理。
+- **宿主自身的出站请求不经过本代理。** 注入的代理环境覆盖**派生的 shell 子进程**（这正是注入的用途），以及在请求时读取代理变量名的消费者；它**不覆盖**宿主进程自身基于 `fetch` 的流量——launcher 在第一个插件挂载之前就用**启动环境**装好了 undici 的全局 dispatcher，该 dispatcher 按策略而非按环境路由，且 Node 在启动时采样代理环境，因此后挂载的插件无法改变它。结论：供应商端点**不需要**允许规则，`network.injectEnv: false` 也不会把宿主进程移出任何东西。2026-09-10 实测于 Node 22；用 `scripts/host-egress-probe.mjs` 可复现。
 
 ## Collaborating with dsh-auto-review
 
