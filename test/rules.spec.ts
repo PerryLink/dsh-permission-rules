@@ -655,3 +655,54 @@ rules:
     expect(describeRule(set.rules[0]!, EN, '')).toBe('1. deny [tools:bash]: no bash')
   })
 })
+
+/**
+ * Issue #19 item 4: a rule file authored or checked out on the Windows side
+ * arrives with CRLF, and a lone CR (one not paired with an LF) survives YAML
+ * parsing INTO the scalar it terminates — the compiled pattern then silently
+ * never matched its target. Every line-ending spelling must parse to the
+ * same document.
+ */
+describe('rule-file line endings (issue #19 item 4)', () => {
+  const LF_BODY = [
+    'rules:',
+    '  - action: allow',
+    '    reason: pin the registry',
+    '    match:',
+    '      tools: [bash]',
+    '      network:',
+    '        domains:',
+    '          - registry.npmjs.org',
+    '',
+  ].join('\n')
+
+  it('parses a CRLF document exactly like its LF twin', () => {
+    const crlf = LF_BODY.replace(/\n/g, '\r\n')
+    expect(parseRulesDocument(crlf)).toEqual(parseRulesDocument(LF_BODY))
+    expect(parseRulesDocument(crlf).rules[0]?.match.network?.domains).toEqual(['registry.npmjs.org'])
+  })
+
+  it('parses a CR-only document (classic Mac line endings) like its LF twin', () => {
+    const cr = LF_BODY.replace(/\n/g, '\r')
+    expect(parseRulesDocument(cr)).toEqual(parseRulesDocument(LF_BODY))
+  })
+
+  it('strips a trailing CR that YAML would otherwise keep inside a flow pattern', () => {
+    // `[registry.npmjs.org<CR>]` on one CRLF line: the CR is inside the flow
+    // sequence and survives parsing as part of the scalar.
+    const yaml = 'rules:\r\n  - action: allow\r\n    reason: pin\r\n    match: { network: { domains: [registry.npmjs.org\r] } }\r\n'
+    const domains = parseRulesDocument(yaml).rules[0]?.match.network?.domains
+    expect(domains).toEqual(['registry.npmjs.org'])
+    expect(domains?.[0]?.endsWith('\r')).toBe(false)
+  })
+
+  it('strips a bare CR ending the last line of a CRLF file (the Windows-authored shape)', () => {
+    // The final line ends with a bare CR instead of CRLF; YAML keeps it as
+    // part of the scalar, so a block-sequence pattern compiled to `bash\r`.
+    const yaml = 'rules:\r\n  - action: deny\r\n    reason: no bash\r\n    match:\r\n      tools:\r\n        - bash\r'
+    const tools = parseRulesDocument(yaml).rules[0]?.match.tools
+    expect(tools).toEqual(['bash'])
+    const set = compileRules(parseRulesDocument(yaml), GLOB)
+    expect(set.rules[0]?.tools.length).toBeGreaterThan(0)
+  })
+})

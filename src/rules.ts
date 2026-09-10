@@ -291,7 +291,7 @@ export interface MatchContext {
  * @returns the validated document.
  */
 export function parseRulesDocument(text: string): RulesFileDoc {
-  const parsed = parseYaml(text)
+  const parsed = parseYaml(normalizeLineEndings(text))
   // An empty (or comment-only) file is a valid empty rule set.
   if (parsed === null || parsed === undefined) return { rules: [] }
   const root = asRecord(parsed, 'rules document root')
@@ -713,6 +713,26 @@ function compileParamPatterns(key: string, patterns: readonly string[], options:
 }
 
 // --- YAML/shape validation -------------------------------------------------
+
+/**
+ * Normalize the line endings of one rule-file body before parsing. A file
+ * authored or checked out on the Windows side arrives with CRLF, and a lone
+ * CR — one not paired with an LF — is NOT a line break to the YAML parser in
+ * every position: it survives into the scalar it terminates, so a pattern
+ * spelled `domains: [registry.npmjs.org<CR>]`, or a final line ending in a
+ * bare CR, compiled a pattern that could never match its target (issue #19
+ * item 4). CRLF becomes LF; a stray CR inside a line is dropped (it is junk
+ * there — a deliberate CR is written as the YAML escape `\r` and never
+ * reaches this text); and a CR-only file (classic Mac line endings, no LF
+ * anywhere) treats every CR as its line separator. Every line-ending style
+ * therefore parses to the same document.
+ * @param text - the raw rule-file text.
+ * @returns the same text with LF line breaks and no stray CR.
+ */
+function normalizeLineEndings(text: string): string {
+  if (!text.includes('\n')) return text.replace(/\r/g, '\n')
+  return text.replace(/\r\n/g, '\n').replace(/\r/g, '')
+}
 
 /** Parse YAML through the `yaml` dependency, mapping parse failures onto {@link RuleError}. */
 function parseYaml(text: string): unknown {

@@ -129,6 +129,28 @@ describe('rule-file loading', () => {
       removeWorkspace(cwd)
     }
   })
+
+  it('a Windows-authored CRLF file (final line ending in a bare CR) loads and matches', async () => {
+    // Issue #19 item 4: the bare CR survives YAML parsing into the last
+    // scalar, so `tools: [bash]` used to compile to `bash\r` and silently
+    // never match. The file is byte-for-byte what a Windows editor/checkout
+    // can produce: CRLF lines, last line terminated by a lone CR.
+    const cwd = tempWorkspace()
+    mkdirSync(join(cwd, '.dsh'), { recursive: true })
+    writeFileSync(join(cwd, '.dsh', 'rules.yaml'), 'rules:\r\n  - action: deny\r\n    reason: no bash\r\n    match:\r\n      tools:\r\n        - bash\r', 'utf8')
+    const harness = await mountHarness({}, { cwd })
+    try {
+      const decision = await dispatchPreExecute(
+        harness.ctx,
+        makeExec({ name: 'bash', arguments: {}, agent: harness.agent }),
+      )
+      expect(decision).toEqual({ kind: 'deny', reason: 'no bash' })
+      const audit = harness.session.snapshotEvents().find(event => event.type === 'permissionRules/decision')
+      expect((audit?.data as Record<string, unknown>).action).toBe('deny')
+    } finally {
+      removeWorkspace(cwd)
+    }
+  })
 })
 
 describe('searchUp hierarchical discovery', () => {
