@@ -407,11 +407,14 @@ describe('mapped IPv6 targets and adjudicated-address pinning', () => {
   }
 
   it('denies a plain-HTTP target spelled as an IPv4-mapped IPv6 literal (literal rule)', async () => {
-    const upstream = await origin('127.0.0.2')
-    const proxy = await startProxy(ipsDenyDecide(['127.0.0.2']))
+    // 127.0.0.2 is NOT bindable on macOS runners (EADDRNOTAVAIL), so the denied
+    // address is the ordinary loopback: the mapped spelling reaches the same
+    // destination, which is what the rule must catch.
+    const upstream = await origin()
+    const proxy = await startProxy(ipsDenyDecide(['127.0.0.1']))
     try {
-      expect((await viaProxy(proxy.port, `http://127.0.0.2:${upstream.port}/x`)).status).toBe(403)
-      expect((await viaProxy(proxy.port, `http://[::ffff:127.0.0.2]:${upstream.port}/x`)).status).toBe(403)
+      expect((await viaProxy(proxy.port, `http://127.0.0.1:${upstream.port}/x`)).status).toBe(403)
+      expect((await viaProxy(proxy.port, `http://[::ffff:127.0.0.1]:${upstream.port}/x`)).status).toBe(403)
       expect(proxy.blockStats().denied).toBe(2)
     } finally {
       await proxy.close()
@@ -420,11 +423,11 @@ describe('mapped IPv6 targets and adjudicated-address pinning', () => {
   })
 
   it('denies the mapped spelling under an IPv4 CIDR rule as well', async () => {
-    const upstream = await origin('127.0.0.2')
+    const upstream = await origin()
     const proxy = await startProxy(ipsDenyDecide(['127.0.0.0/8']))
     try {
-      expect((await viaProxy(proxy.port, `http://127.0.0.2:${upstream.port}/x`)).status).toBe(403)
-      expect((await viaProxy(proxy.port, `http://[::ffff:127.0.0.2]:${upstream.port}/x`)).status).toBe(403)
+      expect((await viaProxy(proxy.port, `http://127.0.0.1:${upstream.port}/x`)).status).toBe(403)
+      expect((await viaProxy(proxy.port, `http://[::ffff:127.0.0.1]:${upstream.port}/x`)).status).toBe(403)
     } finally {
       await proxy.close()
       await upstream.close()
@@ -433,13 +436,13 @@ describe('mapped IPv6 targets and adjudicated-address pinning', () => {
 
   it('denies a CONNECT tunnel to an IPv4-mapped IPv6 target', async () => {
     const echo = createNetServer(socket => socket.pipe(socket))
-    await new Promise<void>(resolve => echo.listen(0, '127.0.0.2', resolve))
+    await new Promise<void>(resolve => echo.listen(0, '127.0.0.1', resolve))
     const address = echo.address()
     if (address === null || typeof address === 'string') throw new Error('echo bind failed')
-    const proxy = await startProxy(ipsDenyDecide(['127.0.0.2']))
+    const proxy = await startProxy(ipsDenyDecide(['127.0.0.1']))
     try {
-      expect((await viaConnect(proxy.port, `127.0.0.2:${address.port}`)).status).toBe(403)
-      expect((await viaConnect(proxy.port, `[::ffff:127.0.0.2]:${address.port}`)).status).toBe(403)
+      expect((await viaConnect(proxy.port, `127.0.0.1:${address.port}`)).status).toBe(403)
+      expect((await viaConnect(proxy.port, `[::ffff:127.0.0.1]:${address.port}`)).status).toBe(403)
     } finally {
       await proxy.close()
       await new Promise<void>(resolve => echo.close(() => resolve()))
