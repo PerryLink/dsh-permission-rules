@@ -24,7 +24,7 @@ import type { Duplex } from 'node:stream'
 import type { Server, IncomingMessage, RequestOptions, ServerResponse } from 'node:http'
 import type { CallId } from './call-id.ts'
 import type { NetworkDecision, NetworkMode } from './network.ts'
-import { blockMessage } from './network.ts'
+import { blockMessage, isLoopbackTarget } from './network.ts'
 import { isIpLiteral, parseUrlTarget } from './rules.ts'
 import type { NetworkTarget, SchemeName } from './rules.ts'
 
@@ -33,6 +33,73 @@ export const PROXY_ENV_NAMES: readonly string[] = ['HTTP_PROXY', 'HTTPS_PROXY', 
 
 /** NO_PROXY names cleared (or preserved) by the injector. */
 export const NO_PROXY_ENV_NAMES: readonly string[] = ['NO_PROXY', 'no_proxy']
+
+/** How long a chained CONNECT waits for the upstream to answer before it gives up. */
+const UPSTREAM_CONNECT_TIMEOUT_MS = 10_000
+
+/** The upstream proxies the launch environment supplies, resolved per scheme. */
+export interface AmbientUpstream {
+  readonly http?: string
+  readonly https?: string
+}
+
+/**
+ * Resolve ambient upstream candidates the way the harness's own proxy policy
+ * does: the scheme-specific name (lowercase first, blank treated as unset),
+ * then `ALL_PROXY`, then — for https only — the http name. A value that is not
+ * a parseable `http(s)://` URL is dropped here; the runtime reports those once.
+ * @param lookup - reads one environment name (the launch snapshot, or `process.env`).
+ * @returns the usable candidates, each absent when it is unusable.
+ */
+export function readAmbientProxy(lookup: (name: string) => string | undefined): AmbientUpstream {
+  const pick = (names: readonly string[]): string | undefined => {
+    for (const name of names) {
+      const value = lookup(name)
+      if (value !== undefined && value.trim().length > 0) return value.trim()
+    }
+    return undefined
+  }
+  const usable = (value: string | undefined): string | undefined => {
+    if (value === undefined) return undefined
+    try {
+      const parsed = new URL(value)
+      return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? value : undefined
+    } catch {
+      return undefined
+    }
+  }
+  const all = usable(pick(['ALL_PROXY', 'all_proxy']))
+  const http = usable(pick(['http_proxy', 'HTTP_PROXY'])) ?? all
+  const https = usable(pick(['https_proxy', 'HTTPS_PROXY'])) ?? all ?? http
+  return { ...(http === undefined ? {} : { http }), ...(https === undefined ? {} : { https }) }
+}
+
+/**
+ * The loggable form of a proxy URL: the password is replaced, everything else
+ * is kept verbatim. An upstream URL may carry credentials, and a proxy URL is
+ * printed in warnings, `/rules network` and the settings snapshot, so it must
+ * never be emitted raw.
+ * @param value - the configured upstream URL.
+ * @returns the same URL with its password masked, or the input when unparseable.
+ */
+export function redactProxyUrl(value: string): string {
+  try {
+    const parsed = new URL(value)
+    if (parsed.username === '' && parsed.password === '') return value
+    const user = parsed.username
+    const auth = parsed.password === '' ? `${user}@` : `${user}:***@`
+    return `${parsed.protocol}//${auth}${parsed.host}`
+  } catch {
+    return value
+  }
+}
+
+/** The `Proxy-Authorization` value for an upstream URL carrying userinfo. */
+function proxyAuthorization(url: URL): string | undefined {
+  if (url.username === '' && url.password === '') return undefined
+  const credentials = `${decodeURIComponent(url.username)}:${decodeURIComponent(url.password)}`
+  return `Basic ${Buffer.from(credentials).toString('base64')}`
+}
 
 /** One recorded proxy-layer block (settings-page list + session audit + logger). */
 export interface NetworkBlockRecord {
@@ -82,6 +149,12 @@ export interface NetworkProxyOptions {
   readonly onBlock?: (record: NetworkBlockRecord, attribution: ProxyAttribution | undefined) => void
   /** Logger sink (proxy failures must never crash the host). */
   readonly logger: { warn(message: string): void }
+  /**
+   * The upstream proxies an ALLOWED connection may be chained through, or
+   * undefined to dial directly. A getter, so a live settings change takes
+   * effect on the next connection.
+   */
+  readonly upstream?: () => AmbientUpstream | undefined
 }
 
 /**
@@ -96,8 +169,14 @@ export class NetworkProxy {
   private readonly recent: NetworkBlockRecord[] = []
   private readonly stats: NetworkStats = { denied: 0, askBlocked: 0 }
   private actualPort = 0
+  private chained = 0
 
   constructor(private readonly options: NetworkProxyOptions) {}
+
+  /** Connections dispatched through the configured upstream since mount. */
+  chainedConnections(): number {
+    return this.chained
+  }
 
   /** The bound port (valid after {@link start} resolves). */
   get port(): number {
@@ -155,6 +234,76 @@ export class NetworkProxy {
     })
   }
 
+  /**
+   * The upstream one ALLOWED connection may be chained through, or undefined to
+   * dial directly. Three vetoes, in order:
+   *
+   * 1. a loopback target never chains — a proxy outside this host cannot route
+   *    its loopback, and the harness's own policy bypasses loopback for the same
+   *    reason;
+   * 2. an `ips`-scoped decision never chains — chaining hands the hostname to
+   *    the upstream, so "the connection lands on an address the rules saw"
+   *    (the issue #21 invariant) would stop holding exactly where the rules
+   *    cared about the address;
+   * 3. no usable upstream for the target's scheme.
+   *
+   * A blocked connection never reaches this method: it is called only on the
+   * `allow` branch, after the decision is final.
+   * @param target - the adjudicated target.
+   * @param decision - the decision that allowed it.
+   * @returns the upstream URL to chain through, or undefined.
+   */
+  private upstreamRouteFor(target: NetworkTarget, decision: NetworkDecision): string | undefined {
+    const ambient = this.options.upstream?.()
+    if (ambient === undefined) return undefined
+    if (isLoopbackTarget(target)) return undefined
+    const ipsScope = decision.rule?.source.match.network?.ips
+    if (ipsScope !== undefined && ipsScope.length > 0) return undefined
+    return (target.scheme ?? 'http') === 'https' ? ambient.https : ambient.http
+  }
+
+  /**
+   * Open a tunnel by asking the upstream for one, and hand back the socket it
+   * established. The upstream's own hostname is resolved by the system: it is
+   * operator configuration, not agent input, so it takes no part in rule
+   * adjudication and is outside the adjudicated-address invariant.
+   * @param upstream - the upstream proxy URL.
+   * @param authority - the `host:port` to ask for (IPv6 already bracketed).
+   * @returns the established tunnel socket.
+   */
+  private connectViaUpstream(upstream: string, authority: string): Promise<Duplex> {
+    return new Promise((resolve, reject) => {
+      const via = new URL(upstream)
+      const send = via.protocol === 'https:' ? httpsRequest : httpRequest
+      const headers: Record<string, string> = { host: authority }
+      const auth = proxyAuthorization(via)
+      if (auth !== undefined) headers['proxy-authorization'] = auth
+      const req = send({
+        host: via.hostname,
+        port: via.port === '' ? (via.protocol === 'https:' ? 443 : 80) : Number(via.port),
+        method: 'CONNECT',
+        path: authority,
+        headers,
+      })
+      req.setTimeout(UPSTREAM_CONNECT_TIMEOUT_MS, () => { req.destroy(new Error('upstream CONNECT timed out')) })
+      req.on('connect', (response, socket) => {
+        const status = response.statusCode ?? 0
+        if (status >= 200 && status < 300) resolve(socket)
+        else {
+          socket.destroy()
+          reject(new Error(`upstream answered ${String(status)}`))
+        }
+      })
+      // A non-2xx CONNECT answer arrives as a plain response, not as 'connect'.
+      req.on('response', response => {
+        response.resume()
+        reject(new Error(`upstream answered ${String(response.statusCode ?? 0)}`))
+      })
+      req.on('error', reject)
+      req.end()
+    })
+  }
+
   /** Plain-HTTP proxying: absolute-form requests are adjudicated and forwarded (or blocked with a structured 403). */
   private async handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const target = parseUrlTarget(req.url ?? '')
@@ -172,20 +321,40 @@ export class NetworkProxy {
       return
     }
     const upstream = new URL(req.url as string)
-    const send = upstream.protocol === 'https:' ? httpsRequest : httpRequest
-    // The forwarded connection is pinned to the addresses the decision was made
-    // on, so a hostname that re-resolves between adjudication and connect
-    // (DNS rebinding) cannot reach an address the rules never approved.
-    const pinned = pinnedAddresses(adjudicated)
-    const options: RequestOptions = {
-      method: req.method,
-      headers: req.headers,
-      ...(pinned.length === 0 ? {} : { lookup: pinnedLookup(pinned) }),
-    }
-    const proxyReq = send(upstream, options, proxyRes => {
+    const onResponse = (proxyRes: IncomingMessage): void => {
       res.writeHead(proxyRes.statusCode ?? 502, proxyRes.headers)
       proxyRes.pipe(res)
-    })
+    }
+    const chained = this.upstreamRouteFor(adjudicated, decision)
+    let proxyReq: ReturnType<typeof httpRequest>
+    if (chained === undefined) {
+      // The forwarded connection is pinned to the addresses the decision was
+      // made on, so a hostname that re-resolves between adjudication and
+      // connect (DNS rebinding) cannot reach an address the rules never
+      // approved.
+      const pinned = pinnedAddresses(adjudicated)
+      const options: RequestOptions = {
+        method: req.method,
+        headers: req.headers,
+        ...(pinned.length === 0 ? {} : { lookup: pinnedLookup(pinned) }),
+      }
+      proxyReq = (upstream.protocol === 'https:' ? httpsRequest : httpRequest)(upstream, options, onResponse)
+    } else {
+      // Chained: the upstream does the resolving, which is exactly why an
+      // `ips`-scoped decision never takes this branch (see upstreamRouteFor).
+      const via = new URL(chained)
+      const headers: Record<string, string | string[] | undefined> = { ...req.headers }
+      const auth = proxyAuthorization(via)
+      if (auth !== undefined) headers['proxy-authorization'] = auth
+      proxyReq = (via.protocol === 'https:' ? httpsRequest : httpRequest)({
+        host: via.hostname,
+        port: via.port === '' ? (via.protocol === 'https:' ? 443 : 80) : Number(via.port),
+        method: req.method,
+        path: req.url, // absolute form, which is what a proxy expects
+        headers,
+      }, onResponse)
+      this.chained += 1
+    }
     proxyReq.on('error', (error: unknown) => {
       if (!res.headersSent) {
         res.writeHead(502, { 'content-type': 'text/plain' })
@@ -260,10 +429,14 @@ export class NetworkProxy {
       return
     }
     let tunnel: Duplex
+    const chained = this.upstreamRouteFor(adjudicated, decision)
     try {
-      tunnel = await this.connectUpstream(adjudicated, target.port ?? 443)
+      tunnel = chained === undefined
+        ? await this.connectUpstream(adjudicated, target.port ?? 443)
+        : await this.connectViaUpstream(chained, target.host.includes(':') ? `[${target.host}]:${String(target.port ?? 443)}` : `${target.host}:${String(target.port ?? 443)}`)
+      if (chained !== undefined) this.chained += 1
     } catch (error) {
-      this.options.logger.warn(`permission-rules: upstream connect failed for ${target.host}: ${String(error)}`)
+      this.options.logger.warn(`permission-rules: upstream connect failed for ${target.host}: ${String(error)}${chained === undefined ? '' : ` (via ${redactProxyUrl(chained)})`}`)
       socket.end('HTTP/1.1 502 Bad Gateway\r\n\r\n')
       return
     }

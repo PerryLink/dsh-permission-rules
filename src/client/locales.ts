@@ -14,6 +14,11 @@ export type PermissionRulesLocaleKey =
   | 'proxyActive'
   | 'proxyInactive'
   | 'proxyDisabled'
+  | 'upstream'
+  | 'upstreamOff'
+  | 'upstreamInherit'
+  | 'upstreamInactive'
+  | 'upstreamChained'
   | 'counters'
   | 'denied'
   | 'askBlocked'
@@ -43,6 +48,11 @@ export const en: Record<PermissionRulesLocaleKey, string> = {
   proxyActive: 'active on 127.0.0.1:{port}',
   proxyInactive: 'INACTIVE (bind failed — shell network policy is not enforced)',
   proxyDisabled: 'network policy disabled',
+  upstream: 'Upstream',
+  upstreamOff: 'off — allowed connections dial directly',
+  upstreamInherit: 'inherit from the launch environment',
+  upstreamInactive: 'inactive',
+  upstreamChained: '{count} chained',
   counters: 'Blocks',
   denied: 'denied',
   askBlocked: 'ask-blocked',
@@ -73,6 +83,11 @@ export const zh: Record<PermissionRulesLocaleKey, string> = {
   proxyActive: '运行于 127.0.0.1:{port}',
   proxyInactive: '未激活（绑定失败——shell 网络策略未生效）',
   proxyDisabled: '网络策略已停用',
+  upstream: '上游',
+  upstreamOff: '关闭 —— 已放行连接直连',
+  upstreamInherit: '继承启动环境',
+  upstreamInactive: '未生效',
+  upstreamChained: '已链式 {count} 条',
   counters: '拦截',
   denied: '拒绝',
   askBlocked: '待审批阻断',

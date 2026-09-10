@@ -71,6 +71,13 @@ export class PermissionRulesRemoteService extends TypertRemoteService {
         reason: block.reason ?? null,
       })),
       sources,
+      upstream: {
+        mode: snapshot.upstream.mode,
+        http: snapshot.upstream.http,
+        https: snapshot.upstream.https,
+        active: snapshot.upstream.active,
+        chained: snapshot.upstream.chained,
+      },
     }
   }
 

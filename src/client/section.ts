@@ -144,6 +144,12 @@ export function PermissionRulesSection({ close, t, ...injected }: PermissionRule
     children.push(React.createElement('div', { key: 'proxy', style: ROW },
       React.createElement('span', { style: LABEL }, t('proxy')),
       React.createElement('span', { style: VALUE }, proxyText)))
+    const upstreamHead = snapshot.upstream.mode === 'off'
+      ? t('upstreamOff')
+      : `${snapshot.upstream.mode === 'inherit' ? t('upstreamInherit') : (snapshot.upstream.https ?? snapshot.upstream.http ?? '')}${snapshot.upstream.active ? '' : ` (${t('upstreamInactive')})`}`
+    children.push(React.createElement('div', { key: 'upstream', style: ROW },
+      React.createElement('span', { style: LABEL }, t('upstream')),
+      React.createElement('span', { style: VALUE }, `${upstreamHead} · ${t('upstreamChained', { count: snapshot.upstream.chained })}`)))
     children.push(React.createElement('div', { key: 'counters', style: ROW },
       React.createElement('span', { style: LABEL }, t('counters')),
       React.createElement('span', { style: VALUE }, `${snapshot.denied} ${t('denied')} · ${snapshot.askBlocked} ${t('askBlocked')}`)))

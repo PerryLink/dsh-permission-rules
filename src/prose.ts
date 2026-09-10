@@ -64,6 +64,7 @@ export interface UiProse {
   networkHeader: (mode: string, sandboxMode: string | undefined, configuredMode: string, proxyActive: boolean, proxyPort: number) => string
   /** Cumulative block counters line. */
   networkCounters: (denied: number, askBlocked: number) => string
+  networkUpstream: (mode: 'off' | 'inherit' | 'url', http: string | null, https: string | null, active: boolean, chained: number) => string
   /** Line shown when no proxy blocks were recorded yet. */
   noNetworkBlocks: string
   /** One recent proxy-block row. */
@@ -129,6 +130,7 @@ const EN: UiProse = {
   networkDisabled: 'Network policy disabled (network.enabled: false): no proxy, no web-tool mode defaults.',
   networkHeader: (mode, sandboxMode, configuredMode, proxyActive, proxyPort) => `Network policy: mode ${mode}${sandboxMode === undefined ? '' : ` (sandbox preset ${sandboxMode})`}${configuredMode === 'auto' ? '' : ` (configured ${configuredMode})`}; proxy ${proxyActive ? `active on 127.0.0.1:${proxyPort}` : 'INACTIVE (bind failed — shell network policy is not enforced)'}.`,
   networkCounters: (denied, askBlocked) => `Blocks: ${denied} denied, ${askBlocked} ask-blocked.`,
+  networkUpstream: (mode, http, https, active, chained) => `Upstream: ${mode}${http === null ? '' : ` http ${http}`}${https === null ? '' : ` https ${https}`}${active ? '' : ' (inactive)'}, ${chained} chained.`,
   noNetworkBlocks: 'No network blocks recorded yet.',
   networkBlockLine: (time, tool, attributed, domain, scheme, port, action, matched, ruleIndex, reason) => {
     const when = new Date(time).toISOString()
@@ -172,6 +174,7 @@ const ZH: UiProse = {
   networkDisabled: '网络策略已停用（network.enabled: false）：无代理、无 web 工具模式默认裁决。',
   networkHeader: (mode, sandboxMode, configuredMode, proxyActive, proxyPort) => `网络策略：模式 ${mode}${sandboxMode === undefined ? '' : `（沙箱预设 ${sandboxMode}）`}${configuredMode === 'auto' ? '' : `（显式配置 ${configuredMode}）`}；代理${proxyActive ? `运行于 127.0.0.1:${proxyPort}` : '未激活（绑定失败——shell 网络策略未生效）'}。`,
   networkCounters: (denied, askBlocked) => `拦截：拒绝 ${denied} 次，待审批阻断 ${askBlocked} 次。`,
+  networkUpstream: (mode, http, https, active, chained) => `上游：${mode}${http === null ? '' : ` http ${http}`}${https === null ? '' : ` https ${https}`}${active ? '' : '（未生效）'}，已链式 ${chained} 条。`,
   noNetworkBlocks: '尚未记录任何网络拦截。',
   networkBlockLine: (time, tool, attributed, domain, scheme, port, action, matched, ruleIndex, reason) => {
     const when = new Date(time).toISOString()
@@ -215,6 +218,7 @@ const ES: UiProse = {
   networkDisabled: 'Política de red desactivada (network.enabled: false): sin proxy, sin valores predeterminados de modo para herramientas web.',
   networkHeader: (mode, sandboxMode, configuredMode, proxyActive, proxyPort) => `Política de red: modo ${mode}${sandboxMode === undefined ? '' : ` (preset sandbox ${sandboxMode})`}${configuredMode === 'auto' ? '' : ` (configurado ${configuredMode})`}; proxy ${proxyActive ? `activo en 127.0.0.1:${proxyPort}` : 'INACTIVO (fallo de bind — la política de red de shell no se aplica)'}.`,
   networkCounters: (denied, askBlocked) => `Bloqueos: ${denied} denegados, ${askBlocked} bloqueados por aprobación.`,
+  networkUpstream: (mode, http, https, active, chained) => `Upstream: ${mode}${http === null ? '' : ` http ${http}`}${https === null ? '' : ` https ${https}`}${active ? '' : ' (inactivo)'}, ${chained} encadenadas.`,
   noNetworkBlocks: 'Aún no se han registrado bloqueos de red.',
   networkBlockLine: (time, tool, attributed, domain, scheme, port, action, matched, ruleIndex, reason) => {
     const when = new Date(time).toISOString()
@@ -258,6 +262,7 @@ const PT: UiProse = {
   networkDisabled: 'Política de rede desativada (network.enabled: false): sem proxy, sem padrões de modo para ferramentas web.',
   networkHeader: (mode, sandboxMode, configuredMode, proxyActive, proxyPort) => `Política de rede: modo ${mode}${sandboxMode === undefined ? '' : ` (preset sandbox ${sandboxMode})`}${configuredMode === 'auto' ? '' : ` (configurado ${configuredMode})`}; proxy ${proxyActive ? `ativo em 127.0.0.1:${proxyPort}` : 'INATIVO (falha de bind — a política de rede do shell não está ativa)'}.`,
   networkCounters: (denied, askBlocked) => `Bloqueios: ${denied} negados, ${askBlocked} bloqueados por aprovação.`,
+  networkUpstream: (mode, http, https, active, chained) => `Upstream: ${mode}${http === null ? '' : ` http ${http}`}${https === null ? '' : ` https ${https}`}${active ? '' : ' (inativo)'}, ${chained} encadeadas.`,
   noNetworkBlocks: 'Nenhum bloqueio de rede registrado ainda.',
   networkBlockLine: (time, tool, attributed, domain, scheme, port, action, matched, ruleIndex, reason) => {
     const when = new Date(time).toISOString()
@@ -301,6 +306,7 @@ const HI: UiProse = {
   networkDisabled: 'नेटवर्क नीति अक्षम (network.enabled: false): कोई प्रॉक्सी नहीं, कोई वेब-टूल मोड डिफ़ॉल्ट नहीं।',
   networkHeader: (mode, sandboxMode, configuredMode, proxyActive, proxyPort) => `नेटवर्क नीति: मोड ${mode}${sandboxMode === undefined ? '' : ` (सैंडबॉक्स प्रीसेट ${sandboxMode})`}${configuredMode === 'auto' ? '' : ` (कॉन्फ़िगर किया ${configuredMode})`}; प्रॉक्सी ${proxyActive ? `सक्रिय 127.0.0.1:${proxyPort} पर` : 'निष्क्रिय (बाइंड विफल — शेल नेटवर्क नीति लागू नहीं)'}।`,
   networkCounters: (denied, askBlocked) => `ब्लॉक: ${denied} अस्वीकृत, ${askBlocked} अनुमोदन-ब्लॉक।`,
+  networkUpstream: (mode, http, https, active, chained) => `Upstream: ${mode}${http === null ? '' : ` http ${http}`}${https === null ? '' : ` https ${https}`}${active ? '' : ' (निष्क्रिय)'}, ${chained} श्रृंखलित।`,
   noNetworkBlocks: 'अभी तक कोई नेटवर्क ब्लॉक दर्ज नहीं हुआ।',
   networkBlockLine: (time, tool, attributed, domain, scheme, port, action, matched, ruleIndex, reason) => {
     const when = new Date(time).toISOString()

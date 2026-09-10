@@ -64,7 +64,18 @@ export interface NetworkConfig {
   injectEnv?: boolean
   /** Subprocess NO_PROXY handling: `clear` enforces the policy (default) or `preserve` keeps ambient values. */
   noProxy?: NoProxyPolicy
+  /**
+   * Upstream proxy for connections this proxy ALLOWS: `off` (default — dial
+   * directly), `inherit` (reuse the proxy names from the launch environment),
+   * or an explicit `http(s)://` proxy URL. A blocked connection never reaches
+   * it, and `ips`-scoped decisions plus loopback targets are never chained —
+   * see the network section of the READMEs.
+   */
+  upstreamProxy?: UpstreamProxySetting
 }
+
+/** Upstream chaining setting: `off`, `inherit`, or an explicit http(s) proxy URL. */
+export type UpstreamProxySetting = 'off' | 'inherit' | string
 
 /** Raw plugin config — every field optional; {@link Config} supplies the defaults. */
 export interface Config {
@@ -142,6 +153,7 @@ export interface ResolvedNetworkConfig {
   readonly loopback: LoopbackPolicy
   readonly injectEnv: boolean
   readonly noProxy: NoProxyPolicy
+  readonly upstreamProxy: UpstreamProxySetting
 }
 
 /** Builtin baseline after {@link resolveConfig}: the switch plus the resolved absolute path. */
@@ -200,6 +212,7 @@ export const Config: z<Config> = z.object({
     loopback: z.union(['allow', 'policy'] as const).default('allow'),
     injectEnv: z.boolean().default(true),
     noProxy: z.union(['clear', 'preserve'] as const).default('clear'),
+    upstreamProxy: z.string().default('off'),
   }),
   builtin: z.object({
     enabled: z.boolean().default(true),
@@ -304,6 +317,8 @@ function resolveNetworkConfig(raw: NetworkConfig | undefined): ResolvedNetworkCo
   if (!Number.isSafeInteger(proxyMaxRecent) || proxyMaxRecent <= 0) {
     throw new TypeError(`network.proxyMaxRecent must be a positive safe integer, got ${String(raw?.proxyMaxRecent)}`)
   }
+  const upstreamProxy = raw?.upstreamProxy ?? 'off'
+  assertUpstreamProxy(upstreamProxy)
   return {
     enabled: raw?.enabled ?? true,
     mode: mode as 'auto' | NetworkMode,
@@ -315,7 +330,34 @@ function resolveNetworkConfig(raw: NetworkConfig | undefined): ResolvedNetworkCo
     loopback,
     injectEnv: raw?.injectEnv ?? true,
     noProxy,
+    upstreamProxy,
   }
+}
+
+/**
+ * Throw unless `value` is `off`, `inherit`, or a usable http(s) proxy URL.
+ *
+ * Node has no SOCKS client, and the harness's own policy refuses a proxy URL it
+ * cannot express for a scheme, so a SOCKS value is rejected at the mount with an
+ * actionable message instead of failing at connect time. `''` is rejected too:
+ * an empty string reads as "no upstream" but silently disables chaining.
+ */
+function assertUpstreamProxy(value: string): void {
+  const invalid = (detail: string): TypeError =>
+    new TypeError(`network.upstreamProxy must be "off" | "inherit" | an http(s) proxy URL, got ${JSON.stringify(value)}${detail}`)
+  if (value === 'off' || value === 'inherit') return
+  if (typeof value !== 'string' || value.trim().length === 0) throw invalid('')
+  let parsed: URL | undefined
+  try {
+    parsed = new URL(value)
+  } catch {
+    parsed = undefined
+  }
+  if (parsed === undefined) throw invalid('')
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw invalid(` (${parsed.protocol}// is not supported: Node has no SOCKS client, so give an http:// or https:// proxy)`)
+  }
+  if (parsed.hostname.length === 0) throw invalid(' (it must name a host)')
 }
 
 /** Throw unless `key` is one of `allowed` (TypeScript's closed enums are not runtime checks). */

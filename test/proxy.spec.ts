@@ -11,7 +11,7 @@ import { createServer, request as httpRequest } from 'node:http'
 import type { Server } from 'node:http'
 import { connect as netConnect, createServer as createNetServer } from 'node:net'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { NetworkProxy, injectProxyEnv, NO_PROXY_ENV_NAMES, PROXY_ENV_NAMES } from '../src/proxy.ts'
+import { NetworkProxy, injectProxyEnv, NO_PROXY_ENV_NAMES, PROXY_ENV_NAMES, readAmbientProxy } from '../src/proxy.ts'
 import type { NetworkBlockRecord, NetworkProxyOptions } from '../src/proxy.ts'
 import { compileRules, parseRulesDocument, targetMatchesNetwork } from '../src/rules.ts'
 import type { CompiledRule } from '../src/rules.ts'
@@ -541,6 +541,173 @@ describe('CONNECT without an adjudicated address fails closed (issue #21)', () =
       dnsControl.fail = false
       await proxy.close()
       await new Promise<void>(resolve => echo.close(() => resolve()))
+    }
+  })
+})
+
+/**
+ * Issue #19 item 2: an ALLOWED connection can be chained through an upstream
+ * proxy (`network.upstreamProxy`). What matters is not only that chaining
+ * happens, but what the upstream is NEVER asked to do — a blocked target, an
+ * `ips`-scoped decision, or a loopback target — and that a failure is loud
+ * instead of a silent direct dial.
+ */
+describe('upstream chaining (issue #19 item 2)', () => {
+  /** One recording upstream proxy: echoes CONNECT tunnels and records every request line. */
+  async function recordingUpstream(): Promise<{ port: number; seen: string[]; close: () => Promise<void> }> {
+    const seen: string[] = []
+    const server = createServer((req, res) => {
+      seen.push(`REQ ${req.method ?? ''} ${req.url ?? ''}`)
+      res.writeHead(200, { 'content-type': 'text/plain' })
+      res.end(`upstream:${req.url ?? ''}`)
+    })
+    server.on('connect', (req, socket) => {
+      seen.push(`CONNECT ${req.url ?? ''}`)
+      socket.write('HTTP/1.1 200 Connection Established\r\n\r\n')
+      socket.pipe(socket)
+    })
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
+    const address = server.address()
+    if (address === null || typeof address === 'string') throw new Error('upstream bind failed')
+    return { port: address.port, seen, close: () => new Promise<void>(resolve => server.close(() => resolve())) }
+  }
+
+  const allow = (): NetworkDecision => ({ action: 'allow', matched: false, mode: 'allow-all' })
+  const deny = (): NetworkDecision => ({ action: 'deny', matched: false, mode: 'deny-all' })
+  const upstreamAt = (port: number) => (): { http: string; https: string } => ({
+    http: `http://127.0.0.1:${port}`,
+    https: `http://127.0.0.1:${port}`,
+  })
+
+  it('reads the ambient proxy per scheme, prefers the lowercase name, and drops unusable values', () => {
+    const env = (values: Record<string, string>) => (name: string): string | undefined => values[name]
+    // The lowercase spelling wins over the uppercase one.
+    expect(readAmbientProxy(env({ http_proxy: 'http://lower:1', HTTP_PROXY: 'http://upper:1' }))).toEqual({ http: 'http://lower:1', https: 'http://lower:1' })
+    // ALL_PROXY covers both schemes when neither scheme name is set.
+    expect(readAmbientProxy(env({ ALL_PROXY: 'http://all:1' }))).toEqual({ http: 'http://all:1', https: 'http://all:1' })
+    // An https-only environment chains https and leaves http direct.
+    expect(readAmbientProxy(env({ HTTPS_PROXY: 'http://secure:1' }))).toEqual({ https: 'http://secure:1' })
+    // A SOCKS value is unusable (Node has no SOCKS client) and is dropped.
+    expect(readAmbientProxy(env({ http_proxy: 'socks5://127.0.0.1:1080', HTTPS_PROXY: 'http://secure:1' }))).toEqual({ https: 'http://secure:1' })
+    // Blank and unparseable values are treated as unset.
+    expect(readAmbientProxy(env({ http_proxy: '   ' }))).toEqual({})
+    expect(readAmbientProxy(env({ http_proxy: 'not a url' }))).toEqual({})
+  })
+
+  it('chains an allowed CONNECT to the upstream rather than dialing the name', async () => {
+    const upstream = await recordingUpstream()
+    const proxy = await startProxy(allow, { upstream: upstreamAt(upstream.port) })
+    dnsControl.fail = true
+    try {
+      const result = await viaConnect(proxy.port, 'target.example:443')
+      expect(result.status).toBe(200)
+      expect(result.echoed).toBe(true)
+      expect(upstream.seen).toContain('CONNECT target.example:443')
+      expect(proxy.chainedConnections()).toBe(1)
+    } finally {
+      dnsControl.fail = false
+      await proxy.close()
+      await upstream.close()
+    }
+  })
+
+  it('forwards a plain-HTTP request to the upstream in absolute form', async () => {
+    const upstream = await recordingUpstream()
+    const proxy = await startProxy(allow, { upstream: upstreamAt(upstream.port) })
+    dnsControl.fail = true
+    try {
+      const result = await viaProxy(proxy.port, 'http://target.example/thing')
+      expect(result.status).toBe(200)
+      expect(upstream.seen).toContain('REQ GET http://target.example/thing')
+      expect(proxy.chainedConnections()).toBe(1)
+    } finally {
+      dnsControl.fail = false
+      await proxy.close()
+      await upstream.close()
+    }
+  })
+
+  it('never lets a blocked target reach the upstream', async () => {
+    const upstream = await recordingUpstream()
+    const proxy = await startProxy(deny, { upstream: upstreamAt(upstream.port) })
+    try {
+      expect((await viaProxy(proxy.port, 'http://blocked.example/')).status).toBe(403)
+      expect((await viaConnect(proxy.port, 'blocked.example:443')).status).toBe(403)
+      expect(upstream.seen).toEqual([])
+      expect(proxy.chainedConnections()).toBe(0)
+    } finally {
+      await proxy.close()
+      await upstream.close()
+    }
+  })
+
+  it('keeps an `ips`-scoped decision on the adjudicated address instead of chaining', async () => {
+    const upstream = await recordingUpstream()
+    const doc = parseRulesDocument('rules:\n  - action: allow\n    reason: pinned address\n    match:\n      network:\n        ips: [10.0.0.1]\n')
+    const rule = compileRules(doc, { patternMode: 'glob', maxRules: 10, maxGlobStars: 2, caseInsensitivePaths: false }).rules[0]!
+    const proxy = await startProxy(() => ({ action: 'allow', matched: true, mode: 'whitelist', rule }), { upstream: upstreamAt(upstream.port) })
+    dnsControl.fail = true
+    try {
+      // The rules cared about the ADDRESS, so handing the name to the upstream
+      // would defeat them: this must fail closed rather than chain.
+      expect((await viaConnect(proxy.port, 'target.example:443')).status).toBe(502)
+      expect(upstream.seen).toEqual([])
+      expect(proxy.chainedConnections()).toBe(0)
+    } finally {
+      dnsControl.fail = false
+      await proxy.close()
+      await upstream.close()
+    }
+  })
+
+  it('never chains a loopback target', async () => {
+    const target = await origin()
+    const upstream = await recordingUpstream()
+    const proxy = await startProxy(allow, { upstream: upstreamAt(upstream.port) })
+    try {
+      expect((await viaProxy(proxy.port, `http://127.0.0.1:${target.port}/x`)).status).toBe(200)
+      expect(upstream.seen).toEqual([])
+      expect(proxy.chainedConnections()).toBe(0)
+    } finally {
+      await proxy.close()
+      await upstream.close()
+      await target.close()
+    }
+  })
+
+  it('answers 502 rather than dialing directly when the upstream is unreachable', async () => {
+    const upstream = await recordingUpstream()
+    const deadPort = upstream.port
+    await upstream.close()
+    const proxy = await startProxy(allow, { upstream: upstreamAt(deadPort) })
+    dnsControl.fail = true
+    try {
+      expect((await viaConnect(proxy.port, 'target.example:443')).status).toBe(502)
+      expect(proxy.chainedConnections()).toBe(0)
+    } finally {
+      dnsControl.fail = false
+      await proxy.close()
+    }
+  })
+
+  it('answers 502 without echoing the upstream body when the upstream refuses the tunnel', async () => {
+    const refuse = createServer()
+    refuse.on('connect', (_req, socket) => {
+      socket.end('HTTP/1.1 403 Forbidden\r\ncontent-length: 15\r\n\r\nupstream-secret')
+    })
+    await new Promise<void>(resolve => refuse.listen(0, '127.0.0.1', resolve))
+    const address = refuse.address()
+    if (address === null || typeof address === 'string') throw new Error('refuse bind failed')
+    const proxy = await startProxy(allow, { upstream: upstreamAt(address.port) })
+    dnsControl.fail = true
+    try {
+      const result = await viaConnect(proxy.port, 'target.example:443')
+      expect(result.status).toBe(502)
+      expect(result.body).not.toContain('upstream-secret')
+    } finally {
+      dnsControl.fail = false
+      await proxy.close()
+      await new Promise<void>(resolve => refuse.close(() => resolve()))
     }
   })
 })

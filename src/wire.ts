@@ -56,6 +56,14 @@ export interface PermissionRulesSnapshot {
   denied: number
   askBlocked: number
   recent: readonly NetworkBlockView[]
+  /** Upstream chaining state; any credential in a proxy URL is already masked. */
+  upstream: {
+    mode: 'off' | 'inherit' | 'url'
+    http: string | null
+    https: string | null
+    active: boolean
+    chained: number
+  }
   sources: readonly RuleSourceView[]
 }
 
@@ -88,6 +96,13 @@ export const PERMISSION_RULES_SNAPSHOT_SCHEMA = z.object({
     exists: z.boolean(),
     cwd: z.string().nullable(),
   })),
+  upstream: z.object({
+    mode: z.union([z.literal('off'), z.literal('inherit'), z.literal('url')]),
+    http: z.string().nullable(),
+    https: z.string().nullable(),
+    active: z.boolean(),
+    chained: z.number().int(),
+  }),
 })
 
 /** Result of `permissionRules/rulesRead`. */

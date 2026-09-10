@@ -1,3 +1,21 @@
+## Unreleased
+
+### Added
+
+- `network.upstreamProxy` — chain the connections this plugin **allows** through an upstream proxy: `off` (default — allowed connections dial directly), `inherit` (reuse the proxy names from the launch environment), or an explicit `http(s)://` proxy URL. CONNECT requests are chained by asking the upstream for a tunnel (`CONNECT host:port`); plain-HTTP requests are forwarded to the upstream in absolute form. A SOCKS (`socks:`/`socks5:`), non-http(s), blank or unparseable value fails the mount with a `TypeError` naming `network.upstreamProxy` (Node has no SOCKS client, so SOCKS is refused rather than attempted).
+- `/rules network` renders one `Upstream: …` line and the settings page one `Upstream` row, both fed by the new `upstream` block of `networkSnapshot()`: `mode` (`off` | `inherit` | `url`), the redacted `http`/`https` candidates, `active`, and the `chained` counter.
+
+### Security
+
+- Two cases never chain even when an upstream is configured: a **loopback** target (a proxy outside this host cannot route its loopback) and any decision produced by an **`ips`-scoped rule** (chaining hands the hostname to the upstream, so the issue #21 invariant — the connection lands on an address the rules saw — would stop holding exactly where the rules cared about the address; those decisions keep dialing the adjudicated address directly). A target whose scheme has no usable upstream is not chained either. A blocked target never reaches the upstream: it still gets this plugin's structured 403.
+- An upstream URL carrying credentials is never emitted raw: warnings, `/rules network` and the settings snapshot print it through `redactProxyUrl` with the password masked (`http://user:***@host:port`).
+- A configured upstream that points at this proxy's own bind address and port is treated as a self-loop: chaining is disabled for it and warned about once, instead of recursing into this proxy.
+- An unreachable upstream, a timeout (10 s), or a non-2xx answer from the upstream yields **502** — deliberately no silent fallback to a direct dial, so a misconfiguration stays visible.
+
+### Fixed
+
+- An ambient proxy used to be discarded silently when `network.upstreamProxy` was `off` (the default): the plugin now logs one warning saying the ambient proxy is discarded for traffic through this proxy (it is still exported to subprocesses). `inherit` warns too when `injectEnv` is false or when the launch environment named nothing usable.
+
 ## v0.6.21 - 2026-09-10
 
 ### Fixed

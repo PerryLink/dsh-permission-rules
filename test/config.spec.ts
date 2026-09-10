@@ -122,3 +122,20 @@ describe('resolveConfig', () => {
     expect(() => resolveConfig({ builtin: { enabled: 'yes' as never } })).toThrow(/builtin.enabled/)
   })
 })
+
+describe('network.upstreamProxy (issue #19 item 2)', () => {
+  it('defaults to off and accepts inherit or an explicit http(s) proxy URL', () => {
+    expect(resolveConfig().network.upstreamProxy).toBe('off')
+    expect(resolveConfig({ network: { upstreamProxy: 'inherit' } }).network.upstreamProxy).toBe('inherit')
+    const withUserinfo = 'http://user:pw@proxy.example:3128'
+    expect(resolveConfig({ network: { upstreamProxy: withUserinfo } }).network.upstreamProxy).toBe(withUserinfo)
+    expect(resolveConfig({ network: { upstreamProxy: 'https://proxy.example:3129' } }).network.upstreamProxy).toBe('https://proxy.example:3129')
+  })
+
+  it('rejects SOCKS, non-http(s), blank and unparseable values loudly', () => {
+    for (const value of ['socks5://127.0.0.1:1080', 'socks://127.0.0.1:1080', 'ftp://proxy.example', 'proxy.example:3128', 'not a url', '', '   ']) {
+      expect(() => resolveConfig({ network: { upstreamProxy: value } })).toThrow(/upstreamProxy/)
+    }
+    expect(() => resolveConfig({ network: { upstreamProxy: 42 as never } })).toThrow(/upstreamProxy/)
+  })
+})

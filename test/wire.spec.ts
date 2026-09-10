@@ -33,6 +33,7 @@ const VALID_SNAPSHOT: PermissionRulesSnapshot = {
   proxyActive: true,
   denied: 4,
   askBlocked: 1,
+  upstream: { mode: 'inherit', http: 'http://proxy.example:3128', https: 'http://proxy.example:3128', active: true, chained: 3 },
   recent: [
     {
       time: 1_720_000_000_000,
@@ -84,6 +85,7 @@ describe('PERMISSION_RULES_SNAPSHOT_SCHEMA', () => {
       proxyActive: false,
       denied: 0,
       askBlocked: 0,
+      upstream: { mode: 'off', http: null, https: null, active: false, chained: 0 },
       recent: [],
       sources: [],
     })

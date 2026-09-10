@@ -77,6 +77,7 @@ Codex 风格的**进程级网络策略**：shell 子进程流量经内置本地 
 - **`auto`**（默认）—— 跟随沙箱预设；无沙箱策略服务的宿主上解析为 `autoFallback`（`allow-all`）。
 
 - **匹配** —— `match.network` 用 `domains` / `ips` / `ports` / `schemes`（glob、通配符、CIDR、端口范围；数值型 YAML 端口可接受）。`tools/pre-execute` 热路径上的 URL 候选抽取作用于 web 工具参数与嵌入 bash/pwsh 命令文本的 URL；回环目标可按 `loopback` 策略短路规则。IPv4 映射的 IPv6 字面量在匹配前归一化为 IPv4 形式；代理按裁决到的地址建连，不做二次 DNS 解析。
+- **上游链式** —— `network.upstreamProxy`（默认 `off`）把本代理**放行**的连接送上上游代理：CONNECT 向上游要一条隧道（`CONNECT host:port`），纯 HTTP 请求以绝对形式转发给它。被拦截的目标永远到不了上游——它照旧收到本插件的结构化 403。即使配置了上游，两类情况也绝不链式：**回环**目标（本机之外的代理无法路由它的回环），以及由 **`ips` 作用域规则**产生的任何裁决（链式会把主机名交给上游，"连接落在规则看过的地址上"（issue #21）恰恰会在规则真正在意地址的地方不再成立；这些裁决仍按裁决到的地址直连），再加上目标 scheme 没有可用上游的情况。上游自身的主机名是运维配置而非 agent 输入，不参与这些规则的裁决。带凭据的 URL 绝不原样输出：警告、`/rules network` 与设置页快照都会把口令打码（`http://user:***@host:port`）。上游不可达、超时（10 秒）或返回非 2xx 一律 **502**——刻意没有静默回退直连，配置错误因此始终可见。
 - **审计** —— 被拒连接向所属会话追加 `permissionRules/network`（同样的自适应 `ignorable` 门），块计数器与近期拦截在 `/rules network` 与设置页展示。
 - **诊断** —— 被拦截的连接带 `[network: …]` 消息，点名被拦目标、做出裁决的模式或规则，以及处置办法。
 
@@ -131,6 +132,7 @@ dsh --profile web --dump-config | grep -A4 'id: permission-rules'
 | `network.loopback` | `allow` | 回环目标：`allow`（Codex 对齐）或 `policy` |
 | `network.injectEnv` | `true` | 是否为子进程注入代理环境变量 |
 | `network.noProxy` | `clear` | 子进程 NO_PROXY 处理：`clear` 强制策略或 `preserve` |
+| `network.upstreamProxy` | `off` | 本插件**放行**连接的上游代理：`off` 直连、`inherit` 沿用启动环境的代理名，或显式 `http(s)://` 代理 URL |
 | `builtin.enabled` | `true` | 内置高危基线：`false` 完全禁用随附的 deny/ask 规则集 |
 | `builtin.path` | *(随附)* | 替换基线文件（绝对路径，或相对 `process.cwd()`）；挂载时校验 |
 
@@ -176,6 +178,7 @@ dsh --profile web --dump-config | grep -A4 'id: permission-rules'
 - **glob 是保守子集。** 无花括号展开——写两个模式，或用正则模式。
 - **正则回溯守卫是结构性的、非穷尽的。** 对不可信文件优先用 glob 模式。
 - **宿主自身的出站请求不经过本代理。** 注入的代理环境覆盖**派生的 shell 子进程**（这正是注入的用途），以及在请求时读取代理变量名的消费者；它**不覆盖**宿主进程自身基于 `fetch` 的流量——launcher 在第一个插件挂载之前就用**启动环境**装好了 undici 的全局 dispatcher，该 dispatcher 按策略而非按环境路由，且 Node 在启动时采样代理环境，因此后挂载的插件无法改变它。结论：供应商端点**不需要**允许规则，`network.injectEnv: false` 也不会把宿主进程移出任何东西。2026-09-10 实测于 Node 22；用 `scripts/host-egress-probe.mjs` 可复现。
+- **链式只覆盖到达本代理的流量。** 在 `dsh-v0.1.3-alpha.1` 及之后的宿主上，harness 自身的启动期代理策略与其子进程环境覆盖可能优先于本插件注入的代理名，因此 `network.upstreamProxy` 描述的是本代理所处理连接的去向——它不是关于宿主进程每一条出站路径的断言。
 
 ## Collaborating with dsh-auto-review
 

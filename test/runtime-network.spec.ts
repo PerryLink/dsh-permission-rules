@@ -16,6 +16,7 @@ import { join } from 'node:path'
 import { request as httpRequest } from 'node:http'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { PermissionRulesRemoteService } from '../src/remote-service.ts'
+import { PROXY_ENV_NAMES, NO_PROXY_ENV_NAMES } from '../src/proxy.ts'
 import type { PermissionRulesRuntime } from '../src/runtime.ts'
 import { dispatchPreExecute, makeAgent, makeExec, mountHarness, removeWorkspace, tempWorkspace } from './harness.ts'
 import type { Harness } from './harness.ts'
@@ -311,5 +312,77 @@ describe('settings-page Remote service', () => {
     } finally {
       removeWorkspace(cwd)
     }
+  })
+})
+
+/**
+ * Issue #19 item 2, runtime half: the ambient capture, the snapshot the
+ * settings page and `/rules network` render, and the self-loop guard.
+ *
+ * Every case clears ALL proxy names for its duration: each mount injects the
+ * plugin's own address into the process environment (and the harness is not
+ * disposed between cases), so an earlier case's injection would otherwise be
+ * captured as if the operator had exported it — the very trap the capture's
+ * memoization exists for.
+ */
+describe('upstream chaining, runtime side (issue #19 item 2)', () => {
+  /** Run one body with every proxy name cleared, then the given ones applied. */
+  async function withProxyEnv(values: Record<string, string>, body: () => Promise<void>): Promise<void> {
+    const saved = new Map<string, string | undefined>()
+    for (const name of [...PROXY_ENV_NAMES, ...NO_PROXY_ENV_NAMES]) {
+      saved.set(name, process.env[name])
+      delete process.env[name]
+    }
+    for (const [name, value] of Object.entries(values)) process.env[name] = value
+    try {
+      await body()
+    } finally {
+      for (const [name, value] of saved) {
+        if (value === undefined) delete process.env[name]
+        else process.env[name] = value
+      }
+    }
+  }
+
+  it('reports the upstream state in the network snapshot, with the password masked', async () => {
+    await withProxyEnv({ http_proxy: 'http://user:secret@ambient.example:3128' }, async () => {
+      const off = await mountHarness({ network: { enabled: true, injectEnv: false, mode: 'allow-all', upstreamProxy: 'off' } }, {})
+      expect(runtimeOf(off).networkSnapshot().upstream).toEqual({ mode: 'off', http: null, https: null, active: false, chained: 0 })
+
+      const inherit = await mountHarness({ network: { enabled: true, injectEnv: false, mode: 'allow-all', upstreamProxy: 'inherit' } }, {})
+      const upstream = runtimeOf(inherit).networkSnapshot().upstream
+      expect(upstream.mode).toBe('inherit')
+      expect(upstream.active).toBe(true)
+      expect(upstream.http).toBe('http://user:***@ambient.example:3128')
+      // The credential never leaves the plugin in the clear, in any field.
+      expect(JSON.stringify(upstream)).not.toContain('secret')
+    })
+  })
+
+  it('disables chaining when the configured upstream is this proxy itself', async () => {
+    // Reserve a port, release it, then make the proxy bind to it AND name it as
+    // the ambient upstream: a self-loop, which would otherwise recurse forever.
+    const probe = createServer()
+    await new Promise<void>(resolve => probe.listen(0, '127.0.0.1', resolve))
+    const address = probe.address()
+    if (address === null || typeof address === 'string') throw new Error('probe bind failed')
+    const port = address.port
+    await new Promise<void>(resolve => probe.close(() => resolve()))
+
+    await withProxyEnv({ http_proxy: `http://127.0.0.1:${port}` }, async () => {
+      const harness = await mountHarness({ network: { enabled: true, injectEnv: false, mode: 'allow-all', proxyPort: port, upstreamProxy: 'inherit' } }, {})
+      const snapshot = runtimeOf(harness).networkSnapshot()
+      expect(snapshot.proxyPort).toBe(port)
+      expect(snapshot.upstream.http).toBe(`http://127.0.0.1:${port}`)
+      expect(snapshot.upstream.active).toBe(false)
+      expect(snapshot.upstream.chained).toBe(0)
+    })
+  })
+
+  it('renders the upstream line in /rules network', async () => {
+    const harness = await mountNetwork({ mode: 'allow-all' })
+    const execution = await harness.ctx.commands.execute(harness.agent, '/rules network', [], new AbortController().signal)
+    const text = execution?.result.kind === 'success' ? execution.result.text ?? '' : ''
+    expect(text).toContain('Upstream:')
   })
 })

@@ -35,8 +35,8 @@ function readSessionEvents(session: { snapshotEvents?: () => readonly SessionEve
   if (typeof session.snapshotEvents === 'function') return session.snapshotEvents()
   return session.events ?? []
 }
-import { injectProxyEnv, NetworkProxy } from './proxy.ts'
-import type { NetworkBlockRecord, ProxyAttribution } from './proxy.ts'
+import { injectProxyEnv, NetworkProxy, readAmbientProxy, redactProxyUrl } from './proxy.ts'
+import type { AmbientUpstream, NetworkBlockRecord, ProxyAttribution } from './proxy.ts'
 import { PermissionRulesRemoteService } from './remote-service.ts'
 import { attachSettingsSection } from './settings.ts'
 import { isMarkedAuditEvent } from './events.ts'
@@ -137,6 +137,23 @@ const POLLING_WATCH_OPTIONS = { usePolling: true, interval: POLLING_WATCH_INTERV
  * State and behavior. One instance per plugin mount; disposals are owned by
  * the watcher/timer/proxy effects registered in {@link apply}.
  */
+/**
+ * Whether a configured upstream addresses this proxy's own bind address and
+ * port, which would make every chained connection recurse into this proxy.
+ */
+function isSelfUpstream(value: string, bind: string, port: number): boolean {
+  try {
+    const parsed = new URL(value)
+    const bindIsLocal = bind === '127.0.0.1' || bind === 'localhost' || bind === '::1' || bind === '0.0.0.0'
+    const host = parsed.hostname
+    const valueIsLocal = host === '127.0.0.1' || host === 'localhost' || host === '::1' || host === '[::1]'
+    const valuePort = parsed.port === '' ? (parsed.protocol === 'https:' ? 443 : 80) : Number(parsed.port)
+    return bindIsLocal && valueIsLocal && valuePort === port
+  } catch {
+    return false
+  }
+}
+
 export class PermissionRulesRuntime {
   /** Loaded (or failed) rules per workspace cwd, least-recently-used first for eviction. */
   private readonly byCwd = new Map<string, LoadedRules>()
@@ -164,6 +181,11 @@ export class PermissionRulesRuntime {
 
   /** The network proxy, when the policy is enabled and mounted. */
   private networkProxy: NetworkProxy | undefined
+  /** Ambient upstream candidates, captured ONCE before this plugin injects its own (see {@link captureAmbientUpstream}). */
+  private ambientUpstream: AmbientUpstream | undefined
+  private ambientCaptured = false
+  private upstreamWarned = false
+  private selfLoopWarned = false
 
   /** Restores the injected proxy environment (set after a successful bind). */
   private envRestore: (() => void) | undefined
@@ -721,6 +743,9 @@ export class PermissionRulesRuntime {
    */
   async attachNetworkProxy(): Promise<void> {
     const cfg = this.config.network
+    // Capture the ambient proxy BEFORE injectProxyEnv() rewrites the
+    // environment: afterwards the only proxy this process can still see is ours.
+    this.captureAmbientUpstream()
     const proxy = new NetworkProxy({
       bind: cfg.proxyBind,
       port: cfg.proxyPort,
@@ -729,6 +754,7 @@ export class PermissionRulesRuntime {
       attribution: () => this.proxyAttribution(),
       onBlock: (record, attribution) => this.auditNetworkBlock(record, attribution),
       logger: this.ctx.logger,
+      upstream: () => this.upstreamFor(),
     })
     this.networkProxy = proxy
     this.ctx.effect(() => () => {
@@ -769,6 +795,91 @@ export class PermissionRulesRuntime {
     await this.attachNetworkProxy()
   }
 
+  /**
+   * Capture the launch environment's proxy names exactly ONCE, before this
+   * plugin injects its own. `onNetworkConfigChanged()` closes the old proxy and
+   * restores the environment around a rebind, so a second capture could read
+   * this plugin's own address back as if the operator had exported it — hence
+   * the memo. The launch snapshot is immutable and preferred; `process.env` is
+   * the fallback for hosts that expose no snapshot.
+   */
+  private captureAmbientUpstream(): void {
+    if (this.ambientCaptured) return
+    this.ambientCaptured = true
+    const launch = this.ctx.get('launchEnvironment') as { get(name: string): { value: string } | undefined } | undefined
+    const lookup = (name: string): string | undefined => launch?.get(name)?.value ?? process.env[name]
+    this.ambientUpstream = readAmbientProxy(lookup)
+    this.warnAboutUpstream()
+  }
+
+  /** The one-shot upstream diagnostics: a discarded ambient proxy, or an `inherit` with nothing to inherit. */
+  private warnAboutUpstream(): void {
+    if (this.upstreamWarned) return
+    this.upstreamWarned = true
+    const cfg = this.config.network
+    const ambient = this.ambientUpstream
+    const has = ambient !== undefined && (ambient.http !== undefined || ambient.https !== undefined)
+    if (cfg.upstreamProxy === 'off' && cfg.injectEnv && has) {
+      this.ctx.logger.warn(`permission-rules: an ambient proxy (${redactProxyUrl(ambient.https ?? ambient.http ?? '')}) is discarded for traffic through this proxy; set network.upstreamProxy to "inherit" to chain through it, or leave it to subprocesses only`)
+    }
+    if (cfg.upstreamProxy === 'inherit' && !cfg.injectEnv) {
+      this.ctx.logger.warn('permission-rules: network.upstreamProxy is only consulted for connections that reach this proxy; with injectEnv false, subprocess traffic keeps its own route')
+    }
+    if (cfg.upstreamProxy === 'inherit' && !has) {
+      this.ctx.logger.warn('permission-rules: network.upstreamProxy is "inherit" but the launch environment named no usable http(s) proxy (a SOCKS or malformed value is ignored; Node has no SOCKS client)')
+    }
+  }
+
+  /**
+   * The upstream getter the proxy consults per connection. Undefined when the
+   * setting is `off`, when no candidate is usable, or when the candidate points
+   * back into this very proxy — a self-loop would recurse forever, so chaining
+   * is disabled for it and warned about once.
+   */
+  private upstreamFor(): AmbientUpstream | undefined {
+    if (this.config.network.upstreamProxy === 'off') return undefined
+    const ambient = this.ambientUpstream
+    if (ambient === undefined) return undefined
+    const selfPort = this.networkProxy?.port ?? 0
+    const selfHost = this.config.network.proxyBind
+    const usable = (value: string | undefined): string | undefined => {
+      if (value === undefined) return undefined
+      if (selfPort > 0 && isSelfUpstream(value, selfHost, selfPort)) {
+        if (!this.selfLoopWarned) {
+          this.selfLoopWarned = true
+          this.ctx.logger.warn(`permission-rules: network.upstreamProxy points at this proxy itself (${redactProxyUrl(value)}); chaining is disabled for it`)
+        }
+        return undefined
+      }
+      return value
+    }
+    const http = usable(ambient.http)
+    const https = usable(ambient.https)
+    if (http === undefined && https === undefined) return undefined
+    return { ...(http === undefined ? {} : { http }), ...(https === undefined ? {} : { https }) }
+  }
+
+  /** The upstream block of the network snapshot, already redacted. */
+  private upstreamSnapshot(): {
+    readonly mode: 'off' | 'inherit' | 'url'
+    readonly http: string | null
+    readonly https: string | null
+    readonly active: boolean
+    readonly chained: number
+  } {
+    const setting = this.config.network.upstreamProxy
+    const mode: 'off' | 'inherit' | 'url' = setting === 'off' ? 'off' : setting === 'inherit' ? 'inherit' : 'url'
+    const http = mode === 'off' ? undefined : mode === 'url' ? setting : this.ambientUpstream?.http
+    const https = mode === 'off' ? undefined : mode === 'url' ? setting : this.ambientUpstream?.https
+    return {
+      mode,
+      http: http === undefined ? null : redactProxyUrl(http),
+      https: https === undefined ? null : redactProxyUrl(https),
+      active: mode !== 'off' && this.upstreamFor() !== undefined,
+      chained: this.networkProxy?.chainedConnections() ?? 0,
+    }
+  }
+
   /** The network snapshot the settings page and `/rules network` render. */
   networkSnapshot(): {
     readonly enabled: boolean
@@ -780,6 +891,13 @@ export class PermissionRulesRuntime {
     readonly denied: number
     readonly askBlocked: number
     readonly recent: readonly NetworkBlockRecord[]
+    readonly upstream: {
+      readonly mode: 'off' | 'inherit' | 'url'
+      readonly http: string | null
+      readonly https: string | null
+      readonly active: boolean
+      readonly chained: number
+    }
   } {
     const cfg = this.config.network
     const { mode, sandboxMode } = this.resolveNetworkMode()
@@ -795,6 +913,7 @@ export class PermissionRulesRuntime {
       denied: stats.denied,
       askBlocked: stats.askBlocked,
       recent: proxy?.recentBlocks() ?? [],
+      upstream: this.upstreamSnapshot(),
     }
   }
 
@@ -1090,6 +1209,7 @@ export class PermissionRulesRuntime {
     }
     lines.push(prose.networkHeader(snapshot.mode, snapshot.sandboxMode, snapshot.configuredMode, snapshot.proxyActive, snapshot.proxyPort))
     lines.push(prose.networkCounters(snapshot.denied, snapshot.askBlocked))
+    lines.push(prose.networkUpstream(snapshot.upstream.mode, snapshot.upstream.http, snapshot.upstream.https, snapshot.upstream.active, snapshot.upstream.chained))
     if (snapshot.recent.length === 0) {
       lines.push(prose.noNetworkBlocks)
     } else {
