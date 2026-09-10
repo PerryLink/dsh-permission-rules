@@ -1,3 +1,9 @@
+## v0.6.21 - 2026-09-10
+
+### Fixed
+
+- The session-less host chain no longer survives an explicit reload, so a corrected rule takes effect without restarting the process. `hostLoaded` was cached for the lifetime of the mount, and that chain is deliberately neither a `byCwd` member nor watched, so neither `reloadAll()` nor `saveRuleFile()` ever reached it — and the settings page (which drives `reloadAll()`) is the one surface usable while no session has run a tool call, i.e. exactly the window in which this chain is what judges traffic. `invalidateHostChain()` now drops the cache and re-arms the one-shot warning, and is called from `reloadAll()`, `saveRuleFile()` and `onNetworkConfigChanged()` (the last because `rulesFile` and `fallbackPath` are inputs to the chain, so a config change must not reuse a chain built from the previous one). The new test asserts both the stale read and the refreshed one, and removing the invalidation makes it fail.
+
 ## v0.6.20 - 2026-09-10
 
 ### Fixed
