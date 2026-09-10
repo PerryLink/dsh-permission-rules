@@ -3,6 +3,7 @@
 ### Changed
 
 - Pin the `@deepseek-ai/dsh-*` dev/test dependencies to the published `0.1.5-rc.1` line and record `0.1.5-rc.1` in `dshWorkshop.compatibility.dshVersions`; the monthly Compat workflow now runs against `0.1.5-rc.1`. The peer range `>=0.1.2-rc.1 <0.2.0 || >=0.1.5-alpha.1 <0.2.0` is unchanged, so no supported host line is dropped.
+- Vendor integration tarball updated to `dsh-auto-review` 0.12.2 (`vendor/dsh-auto-review-0.12.2.tgz`, packed from the sibling repo at tag `v0.12.2`; the packed `files` are byte-identical to that tag's checkout), with the devDependency `file:` specifier and `pnpm-lock.yaml` refreshed. The sibling's runtime `@deepseek-ai/dsh-*` pins now follow the `0.1.5-rc.1` host line, matching this repo's dev peers. The six historical vendor tarballs (`0.9.0`–`0.12.1`) stay in the tree.
 
 ### Docs
 
