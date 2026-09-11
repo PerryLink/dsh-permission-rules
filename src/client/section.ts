@@ -11,7 +11,7 @@
 
 import * as React from 'react'
 import type { ReactElement } from 'react'
-import { allowHostNotice, allowHostWorkspaces } from '../allow-host.ts'
+import { allowHostNotice, allowHostWorkspaces } from '../allow-host-notice.ts'
 import type { PermissionRulesLocaleKey } from './locales.ts'
 import type { AllowHostRequest, AllowHostResult, NetworkBlockView, PermissionRulesSnapshot, RulesReadResult, RulesReloadResult, RulesSaveResult } from '../wire.ts'
 
