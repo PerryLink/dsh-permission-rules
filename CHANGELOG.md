@@ -424,7 +424,7 @@ All notable changes to dsh-permission-rules are recorded here, newest first.
 - Per-workspace rule discovery (`<cwd>/.dsh/rules.yaml`), `fallbackPath`, Chokidar HMR with debounce, `/rules` session command.
 - Fail-loud loading: invalid YAML, unknown fields/actions, bad globs/regexes, and rule counts over `maxRules` fail the load.
 
-## [Unreleased]
+## v0.7.1 - 2026-09-12
 
 ### Changed
 
