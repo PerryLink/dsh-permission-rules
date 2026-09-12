@@ -1,3 +1,13 @@
+## v0.7.2 - 2026-09-12
+
+### Fixed
+
+- **The plugin failed to load when installed from git.** `src/client/section.ts` imported `allowHostNotice` and `allowHostWorkspaces` by value from `src/allow-host.ts`, which is host-only: it carries `node:path`, `node:net` and `yaml`, and reads `process.platform`. The client bundler inlines every value import it meets, so those node builtins were emitted into `lib/client.js` as `require("process")` / `require("buffer")` calls — and the shell answers a client factory's `require` from a frozen module table seeded with the platform modules only. The loader therefore threw and the plugin never mounted: host half, `/rules` and the settings page together. The two helpers now live in their own client-safe module, `src/allow-host-notice.ts`, whose only import is `import type ... from './wire.ts'`; `src/allow-host.ts` re-exports them, so pre-split host-side import sites are unchanged. No public behaviour or wire-format change — the moved functions are byte-identical — and `lib/client.js` drops from 412 kB to 166 kB. Reported and fixed by @am-i-dead (#24). The same defect is present in the published `0.7.1`, whose `lib/client.js` is byte-for-byte the pre-fix build.
+
+### Added
+
+- `scripts/verify-client-bundle.mjs` (also `pnpm run verify:client-bundle`): every `require("...")` left in `lib/client.js` must name one of the eight `PLATFORM_EXTERNALS` declared in `tsdown.config.ts`, which the script parses as the single source of truth and fails loudly on when the array is missing or parses empty. It runs at the end of `scripts/prepare.mjs` — so both `pnpm run build` and the git-install `prepare` channel refuse a regression — and as its own `ci.yml` step.
+
 ## v0.7.0 - 2026-09-10
 
 ### Added
