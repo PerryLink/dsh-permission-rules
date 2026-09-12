@@ -8,6 +8,7 @@
 *规则裁决已知的。评审模型裁决未知的。*
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![Gitee](https://img.shields.io/badge/Gitee-mirror-c71d23?logo=gitee)](https://gitee.com/perrylink/dsh-permission-rules)
 [![DSH plugin](https://img.shields.io/badge/dsh--plugin-✅-green)](https://github.com/topics/dsh-plugin)
 [![dsh-doctor](https://raw.githubusercontent.com/PerryLink/dsh-plugin-doctor/main/badges/PerryLink__dsh-permission-rules.svg)](https://github.com/PerryLink/dsh-plugin-doctor#verified-徽章)
 [![Node](https://img.shields.io/badge/node-%5E22.19%20%7C%7C%20%3E%3D24-brightgreen.svg)](#)
@@ -210,7 +211,7 @@ node scripts/repair-session-logs.mjs strip [--home DIR] [--dry-run]
 pnpm install            # node ^22.19 || >=24
 pnpm run typecheck      # tsc, src + tests
 pnpm run lint           # eslint, src + tests + scripts
-pnpm test               # vitest: 280 tests, 23 files
+pnpm test               # vitest: 24 spec files
 pnpm run test:coverage  # coverage gate (90/80/90/90)
 pnpm run build          # tsc declarations + tsdown bundles (lib/)
 pnpm run pack:check     # build + pack (the published artifact)
@@ -235,7 +236,7 @@ node scripts/check-readme-sync.mjs   # five-language README sync gate (also in C
 
 ## PerryLink DSH Plugin Family
 
-这是 [PerryLink](https://github.com/PerryLink) 维护的 [37 个 DeepSeek Harness 插件](https://github.com/PerryLink) 之一。如果它能帮到你，其他的也会：
+这是 [PerryLink](https://github.com/PerryLink) 维护的 [40 个 DeepSeek Harness 插件](https://github.com/PerryLink) 之一。如果它能帮到你，其他的也会：
 
 | Plugin | One-liner |
 |---|---|
@@ -264,6 +265,7 @@ node scripts/check-readme-sync.mjs   # five-language README sync gate (also in C
 | **[dsh-output-styles](https://github.com/PerryLink/dsh-output-styles)** | Claude Code outputStyles 等价的运行时风格切换 | |
 | **[dsh-personal-directive](https://github.com/PerryLink/dsh-personal-directive)** | 个人指令注入器：顶栏开关（框架版） |
 | **[dsh-plugin-guide](https://github.com/PerryLink/dsh-plugin-guide)** | 作为按需代理技能的插件开发知识库 | |
+| **[dsh-plugin-doctor](https://github.com/PerryLink/dsh-plugin-doctor)** | Zero-dependency static + sandbox smoke detector for DSH plugins | |
 | **[dsh-reach](https://github.com/PerryLink/dsh-reach)** | 多渠道审批/提问桥接：微信/Telegram/飞书，会话控制台 |
 | **[dsh-research-report](https://github.com/PerryLink/dsh-research-report)** | 可验证研究报告引擎：内容寻址证据账本与封存版本 | |
 | **[dsh-score](https://github.com/PerryLink/dsh-score)** | DeepSeek Harness 插件的多维质量评分。 | |
@@ -274,7 +276,16 @@ node scripts/check-readme-sync.mjs   # five-language README sync gate (also in C
 | **[dsh-test-drive](https://github.com/PerryLink/dsh-test-drive)** | DeepSeek Harness 插件的隔离试装冒烟。 | |
 | **[dsh-ticktick](https://github.com/PerryLink/dsh-ticktick)** | TickTick/滴答清单任务桥接：会话头面板 + 11 个工具 |
 | **[dsh-translate](https://github.com/PerryLink/dsh-translate)** | DeepSeek Harness 的厂商参数翻译与确定性 JSON 修复。 | |
-| **[dsh-wechat](https://github.com/PerryLink/dsh-wechat)** | 微信 ↔ DSH 桥接（Tencent iLink 机器人）：文本/图片/文件/语音，聊天内审批卡片 |
+| **[dsh-wechat](https://github.com/pan17/dsh-wechat)** | 微信 ↔ DSH 桥接（Tencent iLink 机器人）：文本/图片/文件/语音，聊天内审批卡片 |
+| **[dsh-autotier](https://github.com/PerryLink/dsh-autotier)** | Automatic strong/cheap model-tier routing with deterministic risk guards and a `/tier` command | |
+| **[dsh-catalog](https://github.com/PerryLink/dsh-catalog)** | DSH Desktop Market standard catalog source for the PerryLink family | |
+| **[dsh-cert-mcp](https://github.com/PerryLink/dsh-cert-mcp)** | Read-only MCP server exposing the certification registry: grades, snapshots and five-dimension evidence | |
+| **[dsh-kit](https://github.com/PerryLink/dsh-kit)** | One-command starter pack that installs the core family | |
+| **[dsh-plugin-certification](https://github.com/PerryLink/dsh-plugin-certification)** | Community certification registry with repro-checkable grades and badges | |
+| **[dsh-plugin-kit](https://github.com/PerryLink/dsh-plugin-kit)** | Shared zero-runtime-dependency toolkit for the PerryLink DSH plugins | |
+| **[dsh-plugin-portal](https://github.com/PerryLink/dsh-plugin-portal)** | Zero-dependency static portal rendering the whole plugin family as one page | |
+| **[dsh-plugin-upgrade-015](https://github.com/PerryLink/dsh-plugin-upgrade-015)** | Merged `0.1.3-alpha.1` → `0.1.5-rc.1` upgrade corridor card plus a zero-dependency seam scanner | |
+| **[dsh-team-rooms](https://github.com/PerryLink/dsh-team-rooms)** | Cross-session team rooms: shared message bus, task board and timeline | |
 
 ## License
 
