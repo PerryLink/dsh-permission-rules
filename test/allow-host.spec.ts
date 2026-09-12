@@ -10,7 +10,6 @@
 import { describe, expect, it } from 'vitest'
 import { isAbsolute, join, resolve } from 'node:path'
 import {
-  allowHostNotice,
   allowHostReason,
   insertAllowRule,
   isWritableHost,
@@ -18,6 +17,7 @@ import {
   resolveAllowHostTarget,
 } from '../src/allow-host.ts'
 import type { AllowHostTargetInput } from '../src/allow-host.ts'
+import { allowHostNotice, allowHostWorkspaces } from '../src/allow-host-notice.ts'
 import { compileRules, parseRulesDocument, targetMatchesNetwork } from '../src/rules.ts'
 import type { CompileOptions } from '../src/rules.ts'
 import type { AllowHostResult } from '../src/wire.ts'
@@ -261,5 +261,15 @@ describe('allowHostNotice', () => {
     // produces a message rather than "undefined" in the page.
     expect(allowHostNotice(result({ outcome: null }))).toMatchObject({ ok: false, key: 'allowHostStillBlocked', vars: { outcome: 'unknown' } })
     expect(allowHostNotice(result({ path: null })).vars['path']).toBe('')
+  })
+})
+
+describe('allow-host module split', () => {
+  it('keeps the host module re-exporting the client-safe helpers', async () => {
+    // The settings page imports from '../src/allow-host-notice.ts' directly;
+    // these re-exports keep pre-split host-side import sites working.
+    const host = await import('../src/allow-host.ts')
+    expect(host.allowHostNotice).toBe(allowHostNotice)
+    expect(host.allowHostWorkspaces).toBe(allowHostWorkspaces)
   })
 })

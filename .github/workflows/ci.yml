@@ -50,5 +50,8 @@ jobs:
       - name: Build
         run: pnpm run build
 
+      - name: Verify client bundle externals
+        run: pnpm run verify:client-bundle
+
       - name: Pack
         run: pnpm run pack:check

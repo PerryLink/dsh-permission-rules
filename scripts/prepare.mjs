@@ -33,6 +33,10 @@ rmSync(new URL('../lib', import.meta.url), { recursive: true, force: true })
 // Declarations first, then the tsdown bundles (node half + browser half).
 run(binOf('typescript', 'tsc'), ['-p', 'tsconfig.build.json'])
 run(binOf('tsdown', 'tsdown'), [])
+// The browser bundle must require ONLY the shell's platform modules: any
+// other require ("process", "buffer", ...) means a host-only module leaked
+// into the client graph and the plugin will not load. Fail the build here.
+run(path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'verify-client-bundle.mjs'), [])
 // TS 5.9 does not rewrite `.ts` specifiers in declaration emit; fix them so
 // NodeNext declaration consumers can resolve lib/types.
 run(path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'fix-dts.mjs'), [])

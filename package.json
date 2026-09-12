@@ -194,6 +194,7 @@
     "test:coverage": "vitest run --coverage",
     "check:readmes": "node scripts/check-readme-sync.mjs",
     "verify:self-contained": "node scripts/verify-self-contained.mjs",
+    "verify:client-bundle": "node scripts/verify-client-bundle.mjs",
     "pack:check": "node scripts/prepare.mjs && pnpm pack",
     "prepare": "node scripts/prepare.mjs"
   },

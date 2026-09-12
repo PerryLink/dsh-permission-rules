@@ -1,9 +1,16 @@
 /**
- * The settings-page "allow this host" action, as pure pieces: normalizing
+ * The settings-page "allow this host" action, host-only half: normalizing
  * and validating a blocked host, inserting ONE minimal
- * `match.network.domains` allow rule at the HEAD of a rule document, choosing
- * which rule file the rule belongs in, and mapping the action's result onto
- * the notice the page renders.
+ * `match.network.domains` allow rule at the HEAD of a rule document, and
+ * choosing which rule file the rule belongs in.
+ *
+ * The workspace choices (`allowHostWorkspaces`) and the notice mapping
+ * (`allowHostNotice`) live in `./allow-host-notice.ts`: the settings page
+ * imports them from the BROWSER bundle, whose bundler inlines every value
+ * import — keeping them next to the `node:path`/`node:net`/`yaml` code here
+ * emitted `require("process")`/`require("buffer")` calls the shell's frozen
+ * module table cannot answer, failing the whole plugin load. They are
+ * re-exported below so existing host-side imports keep working.
  *
  * Three invariants hold here and are asserted by `test/allow-host.spec.ts`:
  *
@@ -27,7 +34,11 @@ import { isIP } from 'node:net'
 import { isMap, isSeq, parseDocument } from 'yaml'
 import type { YAMLSeq } from 'yaml'
 import { RuleError, normalizeHost } from './rules.ts'
-import type { AllowHostResult, RuleSourceView } from './wire.ts'
+
+// Client-safe pieces re-exported from their own module — see the module doc
+// above for why they must not live in this host-only file.
+export { allowHostNotice, allowHostWorkspaces } from './allow-host-notice.ts'
+export type { AllowHostNotice, AllowHostNoticeKey } from './allow-host-notice.ts'
 
 /**
  * Why a generated rule may legitimately live in a rule file the parser would
@@ -250,58 +261,4 @@ function samePath(a: string, b: string): boolean {
   const left = resolve(a)
   const right = resolve(b)
   return process.platform === 'win32' ? left.toLowerCase() === right.toLowerCase() : left === right
-}
-
-/**
- * The workspaces a host-level block may be allowed in: the distinct non-null
- * `cwd`s of the loaded rule sources.
- *
- * A block with no cwd was judged by the proxy's session-less host chain, which
- * any loaded workspace chain outranks the moment one exists — so writing the
- * host file can leave the connection blocked while the rule sits in a file
- * nothing consults. The settings page therefore offers these workspaces and
- * sends the chosen one as the request's cwd; when there is exactly one (or
- * none), there is nothing to choose between.
- * @param sources - the snapshot's rule sources.
- * @returns the distinct workspace roots, in source order.
- */
-export function allowHostWorkspaces(sources: readonly RuleSourceView[]): string[] {
-  const seen = new Set<string>()
-  const workspaces: string[] = []
-  for (const source of sources) {
-    if (source.cwd === null || seen.has(source.cwd)) continue
-    seen.add(source.cwd)
-    workspaces.push(source.cwd)
-  }
-  return workspaces
-}
-
-/** The locale keys the allow action reports through. */
-export type AllowHostNoticeKey = 'allowHostSaved' | 'allowHostAlready' | 'allowHostStillBlocked' | 'allowHostFailed'
-
-/** The notice one action result maps onto: a locale key plus its interpolation values. */
-export interface AllowHostNotice {
-  readonly ok: boolean
-  readonly key: AllowHostNoticeKey
-  readonly vars: Record<string, string | number>
-}
-
-/**
- * Map an action result onto the page notice.
- *
- * A non-`allow` outcome outranks `alreadyAllowed`: the whole point of
- * returning the RECOMPUTED decision is that the page can never say "allowed"
- * while the connection is still blocked (a nearer chain with an earlier deny,
- * or a mode default, still wins). `alreadyAllowed` therefore only ever reads
- * as success when the decision really is `allow`.
- * @param result - the `permissionRules/allowHost` result.
- * @returns the notice to render.
- */
-export function allowHostNotice(result: AllowHostResult): AllowHostNotice {
-  if (!result.ok) return { ok: false, key: 'allowHostFailed', vars: { error: result.error ?? 'unknown error' } }
-  if (result.outcome !== 'allow') {
-    return { ok: false, key: 'allowHostStillBlocked', vars: { outcome: result.outcome ?? 'unknown' } }
-  }
-  if (result.alreadyAllowed) return { ok: true, key: 'allowHostAlready', vars: {} }
-  return { ok: true, key: 'allowHostSaved', vars: { path: result.path ?? '', reloaded: result.reloaded } }
 }
