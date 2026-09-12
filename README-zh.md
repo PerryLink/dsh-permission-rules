@@ -26,7 +26,7 @@
 
 | Surface | Status |
 |---|---|
-| Harness | DeepSeek Harness `dsh-v0.1.5-rc.1`（2026-09-09 已适配，完整门禁链 + profile 安装冒烟）：其 `Session.append` 仍无法盖章 `ignorable` 标记——已在已发布的 `0.1.5-rc.1` 包上实测，第三参数被静默丢弃，信封字段仅用于存量日志读取——故整条 `0.1.5-alpha` 线在首次追加前即被预检为未盖章，会话日志审计默认停用。`0.1.3-alpha` 线同样沿用 surface-only 追加签名。两条线的日志迁移连已标记的未分类插件事件也拒绝：在 `0.1.3-alpha` 宿主打开日志前 `strip` 掉 v1 审计行，在 `0.1.5-alpha` 宿主迁移前 `strip` 掉 v2 审计行（v3 原生日志只需 `repair`）。 |
+| Harness | DeepSeek Harness `dsh-v0.1.5-rc.2`（2026-09-09 已适配，完整门禁链 + profile 安装冒烟）：其 `Session.append` 仍无法盖章 `ignorable` 标记——已在已发布的 `0.1.5-rc.2` 包上实测，第三参数被静默丢弃，信封字段仅用于存量日志读取——故整条 `0.1.5-alpha` 线在首次追加前即被预检为未盖章，会话日志审计默认停用。`0.1.3-alpha` 线同样沿用 surface-only 追加签名。两条线的日志迁移连已标记的未分类插件事件也拒绝：在 `0.1.3-alpha` 宿主打开日志前 `strip` 掉 v1 审计行，在 `0.1.5-alpha` 宿主迁移前 `strip` 掉 v2 审计行（v3 原生日志只需 `repair`）。 |
 | Node | `^22.19.0 || >=24.0.0` |
 | Platforms | 全部（host + Web 设置客户端） |
 | Model | 任意（deny/ask 原因经工具结果呈现） |

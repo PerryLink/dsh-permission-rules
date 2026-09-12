@@ -27,7 +27,7 @@
 
 | Surface | Status |
 |---|---|
-| Harness | DeepSeek Harness `dsh-v0.1.5-rc.1` (adapted 2026-09-09, full gate chain + profile install smoke): its `Session.append` still cannot stamp the `ignorable` marker — verified on the published `0.1.5-rc.1` package, where the third argument is silently dropped and the envelope field survives for stored-log reads only — so the whole `0.1.5-alpha` line is pre-checked as unmarked and session-log audit stays disabled by default. The `0.1.3-alpha` line keeps the same surface-only append signature. Both lines' log migrations refuse unclassified plugin events even when marked, so `strip` v1 audit rows before a `0.1.3-alpha` host opens the log and v2 audit rows before a `0.1.5-alpha` host migrates it (native v3 logs only need `repair`). |
+| Harness | DeepSeek Harness `dsh-v0.1.5-rc.2` (adapted 2026-09-09, full gate chain + profile install smoke): its `Session.append` still cannot stamp the `ignorable` marker — verified on the published `0.1.5-rc.2` package, where the third argument is silently dropped and the envelope field survives for stored-log reads only — so the whole `0.1.5-alpha` line is pre-checked as unmarked and session-log audit stays disabled by default. The `0.1.3-alpha` line keeps the same surface-only append signature. Both lines' log migrations refuse unclassified plugin events even when marked, so `strip` v1 audit rows before a `0.1.3-alpha` host opens the log and v2 audit rows before a `0.1.5-alpha` host migrates it (native v3 logs only need `repair`). |
 | Node | `^22.19.0 || >=24.0.0` |
 | Platforms | All (host + web settings client) |
 | Model | Any (deny/ask reasons surface through tool results) |
