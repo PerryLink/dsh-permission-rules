@@ -11,6 +11,17 @@
 import { z } from 'zod'
 import type { InvocationDescriptor } from '@deepseek-ai/dsh-typert-protocol'
 
+/**
+ * Strict wire codec carrying BOTH published and checkout faces: the `schema`
+ * field feeds the npm-published 0.1.5-rc.2 line, while `create` feeds the
+ * 0.1.6-alpha.2+ line, whose typert-loader requires the factory on every
+ * codec and materializes schemas lazily on first use. Built through a
+ * variable, so neither typecheck ruler flags the other face's field as excess.
+ */
+function strictWire<T>(typeSymbol: string, schema: T) {
+  return Object.freeze({ ...{ mode: 'strict' as const, typeSymbol, schema }, create: () => schema })
+}
+
 /** The three network policy modes (wire vocabulary). */
 export type NetworkModeWire = 'deny-all' | 'whitelist' | 'allow-all'
 
@@ -230,11 +241,7 @@ export const NETWORK_STATUS_DESCRIPTOR = Object.freeze({
   method: 'networkStatus',
   invocation: Object.freeze({ kind: 'direct' }),
   parameters: Object.freeze([]),
-  result: Object.freeze({
-    mode: 'strict',
-    typeSymbol: 'dsh-permission-rules/types#PermissionRulesSnapshot',
-    schema: PERMISSION_RULES_SNAPSHOT_SCHEMA,
-  }),
+  result: strictWire('dsh-permission-rules/types#PermissionRulesSnapshot', PERMISSION_RULES_SNAPSHOT_SCHEMA),
   sourceLocation: Object.freeze({ file: 'src/wire.ts', line: 1, column: 1 }),
 } as const) satisfies InvocationDescriptor
 
@@ -249,17 +256,9 @@ export const RULES_READ_DESCRIPTOR = Object.freeze({
     name: 'path',
     wire: 'path',
     source: 'json',
-    codec: Object.freeze({
-      mode: 'strict',
-      typeSymbol: 'dsh-permission-rules/types#RulesReadRequestPath',
-      schema: z.string(),
-    }),
+    codec: strictWire('dsh-permission-rules/types#RulesReadRequestPath', z.string()),
   } satisfies InvocationDescriptor['parameters'][number])]),
-  result: Object.freeze({
-    mode: 'strict',
-    typeSymbol: 'dsh-permission-rules/types#RulesReadResult',
-    schema: RULES_READ_SCHEMA,
-  }),
+  result: strictWire('dsh-permission-rules/types#RulesReadResult', RULES_READ_SCHEMA),
   sourceLocation: Object.freeze({ file: 'src/wire.ts', line: 1, column: 1 }),
 } as const) satisfies InvocationDescriptor
 
@@ -275,28 +274,16 @@ export const RULES_SAVE_DESCRIPTOR = Object.freeze({
       name: 'path',
       wire: 'path',
       source: 'json',
-      codec: Object.freeze({
-        mode: 'strict',
-        typeSymbol: 'dsh-permission-rules/types#RulesSaveRequestPath',
-        schema: z.string(),
-      }),
+      codec: strictWire('dsh-permission-rules/types#RulesSaveRequestPath', z.string()),
     } satisfies InvocationDescriptor['parameters'][number]),
     Object.freeze({
       name: 'text',
       wire: 'text',
       source: 'json',
-      codec: Object.freeze({
-        mode: 'strict',
-        typeSymbol: 'dsh-permission-rules/types#RulesSaveRequestText',
-        schema: z.string(),
-      }),
+      codec: strictWire('dsh-permission-rules/types#RulesSaveRequestText', z.string()),
     } satisfies InvocationDescriptor['parameters'][number]),
   ]),
-  result: Object.freeze({
-    mode: 'strict',
-    typeSymbol: 'dsh-permission-rules/types#RulesSaveResult',
-    schema: RULES_SAVE_SCHEMA,
-  }),
+  result: strictWire('dsh-permission-rules/types#RulesSaveResult', RULES_SAVE_SCHEMA),
   sourceLocation: Object.freeze({ file: 'src/wire.ts', line: 1, column: 1 }),
 } as const) satisfies InvocationDescriptor
 
@@ -308,11 +295,7 @@ export const RULES_RELOAD_DESCRIPTOR = Object.freeze({
   method: 'reload',
   invocation: Object.freeze({ kind: 'direct' }),
   parameters: Object.freeze([]),
-  result: Object.freeze({
-    mode: 'strict',
-    typeSymbol: 'dsh-permission-rules/types#RulesReloadResult',
-    schema: RULES_RELOAD_SCHEMA,
-  }),
+  result: strictWire('dsh-permission-rules/types#RulesReloadResult', RULES_RELOAD_SCHEMA),
   sourceLocation: Object.freeze({ file: 'src/wire.ts', line: 1, column: 1 }),
 } as const) satisfies InvocationDescriptor
 
@@ -330,17 +313,9 @@ export const ALLOW_HOST_DESCRIPTOR = Object.freeze({
     name: 'request',
     wire: 'request',
     source: 'json',
-    codec: Object.freeze({
-      mode: 'strict',
-      typeSymbol: 'dsh-permission-rules/types#AllowHostRequest',
-      schema: ALLOW_HOST_REQUEST_SCHEMA,
-    }),
+    codec: strictWire('dsh-permission-rules/types#AllowHostRequest', ALLOW_HOST_REQUEST_SCHEMA),
   } satisfies InvocationDescriptor['parameters'][number])]),
-  result: Object.freeze({
-    mode: 'strict',
-    typeSymbol: 'dsh-permission-rules/types#AllowHostResult',
-    schema: ALLOW_HOST_RESULT_SCHEMA,
-  }),
+  result: strictWire('dsh-permission-rules/types#AllowHostResult', ALLOW_HOST_RESULT_SCHEMA),
   sourceLocation: Object.freeze({ file: 'src/wire.ts', line: 1, column: 1 }),
 } as const) satisfies InvocationDescriptor
 
