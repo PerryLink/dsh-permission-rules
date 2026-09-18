@@ -7,6 +7,7 @@
 ### Fixed
 
 - The `/rules` command now registers before the `attachNetworkProxy()` await in `apply()`, so an uninstall landing while the proxy is starting can no longer drop the command (the async-apply unload window).
+- The Typert wire codecs now carry both published and alpha.2 faces: the `schema` field the `0.1.5-rc.2` line reads, plus the `create()` factory every codec on the `0.1.6-alpha.2`+ line must carry. Without it the alpha.2 typert-loader refused the `dsh-permission-rules#permissionRules/networkStatus` result codec and the plugin's host manifest failed to register, crashing boot.
 
 ### Changed
 

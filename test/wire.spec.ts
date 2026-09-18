@@ -216,7 +216,10 @@ describe('invocation descriptors', () => {
       mode: 'strict',
       typeSymbol: 'dsh-permission-rules/types#PermissionRulesSnapshot',
       schema: PERMISSION_RULES_SNAPSHOT_SCHEMA,
+      create: expect.any(Function),
     })
+    const resultCodec = NETWORK_STATUS_DESCRIPTOR.result as { create?: () => unknown }
+    expect(resultCodec.create?.()).toBe(PERMISSION_RULES_SNAPSHOT_SCHEMA)
     expect(NETWORK_STATUS_DESCRIPTOR.sourceLocation.file).toBe('src/wire.ts')
   })
 
@@ -271,7 +274,10 @@ describe('invocation descriptors', () => {
       mode: 'strict',
       typeSymbol: 'dsh-permission-rules/types#AllowHostResult',
       schema: ALLOW_HOST_RESULT_SCHEMA,
+      create: expect.any(Function),
     })
+    const resultCodec = ALLOW_HOST_DESCRIPTOR.result as { create?: () => unknown }
+    expect(resultCodec.create?.()).toBe(ALLOW_HOST_RESULT_SCHEMA)
   })
 
   it('every descriptor and its nested payloads are frozen (shared codec discipline)', () => {
