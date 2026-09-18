@@ -1653,6 +1653,14 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     return next()
   })
   attachSettingsSection(ctx, runtime, config)
+  // Register before the first await (A02 T10): an uninstall landing while
+  // attachNetworkProxy() is pending would otherwise lose the /rules command.
+  ctx.commands.register({
+    name: 'rules',
+    description: 'list, reload, audit, dry-test, or inspect the network policy of the active permission rules for this workspace',
+    input: { hint: '[list | reload | network | decisions [n] | test [--cwd <dir>] [--env K=V] [--agent <sel>] [--platform <name>] <tool> <json-args>]' },
+    handler: invocation => runtime.command(invocation),
+  })
   if (resolved.network.enabled) await runtime.attachNetworkProxy()
   ctx.inject(['systemPrompt'], (scope) => {
     const systemPrompt = scope.get('systemPrompt') as { context?: (entry: { name: string; order?: number; text: string }) => void } | undefined
@@ -1664,12 +1672,6 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     })
   })
   await ctx.plugin(PermissionRulesRemoteService, { runtime })
-  ctx.commands.register({
-    name: 'rules',
-    description: 'list, reload, audit, dry-test, or inspect the network policy of the active permission rules for this workspace',
-    input: { hint: '[list | reload | network | decisions [n] | test [--cwd <dir>] [--env K=V] [--agent <sel>] [--platform <name>] <tool> <json-args>]' },
-    handler: invocation => runtime.command(invocation),
-  })
 }
 
 /**
