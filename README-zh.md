@@ -77,7 +77,7 @@ Codex 风格的**进程级网络策略**：shell 子进程流量经内置本地 
 - **`allow-all`** —— danger-full-access 预设：放行一切。
 - **`auto`**（默认）—— 跟随沙箱预设；无沙箱策略服务的宿主上解析为 `autoFallback`（`allow-all`）。
 
-- **匹配** —— `match.network` 用 `domains` / `ips` / `ports` / `schemes`（glob、通配符、CIDR、端口范围；数值型 YAML 端口可接受）。`tools/pre-execute` 热路径上的 URL 候选抽取作用于 web 工具参数与嵌入 bash/pwsh 命令文本的 URL；回环目标可按 `loopback` 策略短路规则。IPv4 映射的 IPv6 字面量在匹配前归一化为 IPv4 形式；代理按裁决到的地址建连，不做二次 DNS 解析。
+- **匹配** —— `match.network` 用 `domains` / `ips` / `ports` / `schemes`（glob、通配符、CIDR、端口范围；数值型 YAML 端口可接受）。`tools/pre-execute` 热路径上的 URL 候选抽取作用于 web 工具参数与嵌入 bash/pwsh 命令文本的 URL；回环目标可按 `loopback` 策略短路规则。IPv4 映射的 IPv6 字面量在匹配前归一化为 IPv4 形式；代理按裁决到的地址建连，不做二次 DNS 解析——裁决未解析出任何地址的连接以 502 关闭失败，绝不按名字拨号。
 - **上游链式** —— `network.upstreamProxy`（默认 `off`）把本代理**放行**的连接送上上游代理：CONNECT 向上游要一条隧道（`CONNECT host:port`），纯 HTTP 请求以绝对形式转发给它。被拦截的目标永远到不了上游——它照旧收到本插件的结构化 403。即使配置了上游，两类情况也绝不链式：**回环**目标（本机之外的代理无法路由它的回环），以及由 **`ips` 作用域规则**产生的任何裁决（链式会把主机名交给上游，"连接落在规则看过的地址上"（issue #21）恰恰会在规则真正在意地址的地方不再成立；这些裁决仍按裁决到的地址直连），再加上目标 scheme 没有可用上游的情况。上游自身的主机名是运维配置而非 agent 输入，不参与这些规则的裁决。带凭据的 URL 绝不原样输出：警告、`/rules network` 与设置页快照都会把口令打码（`http://user:***@host:port`）。上游不可达、超时（10 秒）或返回非 2xx 一律 **502**——刻意没有静默回退直连，配置错误因此始终可见。
 - **审计** —— 被拒连接向所属会话追加 `permissionRules/network`（同样的自适应 `ignorable` 门），块计数器与近期拦截在 `/rules network` 与设置页展示。
 - **诊断** —— 被拦截的连接带 `[network: …]` 消息，点名被拦目标、做出裁决的模式或规则，以及处置办法。
@@ -173,6 +173,7 @@ dsh --profile web --dump-config | grep -A4 'id: permission-rules'
 - **不改沙箱。** OS 级沙箱策略属于沙箱接缝，与本插件无关。
 - **响亮地拒绝错误配置。** 未知 YAML 字段、未知 action 与坏模式在加载期被拒绝。
 - **回溯界限。** glob 模式以 `maxGlobStars` 限制无界星号展开；正则模式拒绝嵌套无界量词与量化重叠字面交替。
+- **关闭失败的拨号。** 明文 HTTP 转发与 CONNECT 隧道只连接裁决到的地址；裁决未解析出任何地址的 allow 以 502 关闭失败，而不是按名字拨号（issue #23）。
 
 ## Known limitations
 
