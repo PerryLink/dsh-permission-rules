@@ -556,7 +556,7 @@ describe('CONNECT without an adjudicated address fails closed (issue #21)', () =
 describe('plain-HTTP without an adjudicated address fails closed (issue #23)', () => {
   it('answers 502 instead of dialing the hostname when the adjudication resolved nothing', async () => {
     let dialed = 0
-    const upstream = createServer((req, res) => {
+    const upstream = createServer((_req, res) => {
       dialed += 1
       res.writeHead(200, { 'content-type': 'text/plain' })
       res.end('origin')
