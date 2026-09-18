@@ -546,6 +546,57 @@ describe('CONNECT without an adjudicated address fails closed (issue #21)', () =
 })
 
 /**
+ * Issue #23: the plain-HTTP forward had the same second-resolution hole that
+ * CONNECT had in issue #21 — whenever the adjudication produced no address,
+ * the `lookup` pin was omitted and `http(s).request` dialed the hostname
+ * itself (a second DNS answer the rules never saw). A plain-HTTP allow with
+ * no adjudicated address must fail closed with the same 502 shape, while a
+ * target WITH adjudicated addresses keeps the pinned lookup.
+ */
+describe('plain-HTTP without an adjudicated address fails closed (issue #23)', () => {
+  it('answers 502 instead of dialing the hostname when the adjudication resolved nothing', async () => {
+    let dialed = 0
+    const upstream = createServer((req, res) => {
+      dialed += 1
+      res.writeHead(200, { 'content-type': 'text/plain' })
+      res.end('origin')
+    })
+    await new Promise<void>(resolve => upstream.listen(0, '127.0.0.1', resolve))
+    const address = upstream.address()
+    if (address === null || typeof address === 'string') throw new Error('origin bind failed')
+    const warnings: string[] = []
+    const proxy = await startProxy(() => ({ action: 'allow', matched: false, mode: 'allow-all' }), { logger: { warn: message => warnings.push(message) } })
+    dnsControl.fail = true
+    try {
+      // `localhost` is reachable by name: before the fix the forward dialed it
+      // and the origin answered 200 (a second resolution the rules never saw).
+      const result = await viaProxy(proxy.port, `http://localhost:${address.port}/x`)
+      expect(result.status).toBe(502)
+      expect(result.body).toContain('no adjudicated address for localhost')
+      expect(warnings.some(message => message.includes('no adjudicated address for localhost'))).toBe(true)
+      expect(dialed).toBe(0)
+    } finally {
+      dnsControl.fail = false
+      await proxy.close()
+      await new Promise<void>(resolve => upstream.close(() => resolve()))
+    }
+  })
+
+  it('still forwards a named target through the pinned lookup when the adjudication resolved addresses', async () => {
+    const upstream = await originByName()
+    const proxy = await startProxy(() => ({ action: 'allow', matched: false, mode: 'allow-all' }))
+    try {
+      const result = await viaProxy(proxy.port, `http://localhost:${upstream.port}/pin`)
+      expect(result.status).toBe(200)
+      expect(result.body).toBe('origin:/pin')
+    } finally {
+      await proxy.close()
+      await upstream.close()
+    }
+  })
+})
+
+/**
  * Issue #19 item 2: an ALLOWED connection can be chained through an upstream
  * proxy (`network.upstreamProxy`). What matters is not only that chaining
  * happens, but what the upstream is NEVER asked to do — a blocked target, an

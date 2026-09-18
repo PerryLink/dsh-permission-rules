@@ -342,12 +342,21 @@ export class NetworkProxy {
       // The forwarded connection is pinned to the addresses the decision was
       // made on, so a hostname that re-resolves between adjudication and
       // connect (DNS rebinding) cannot reach an address the rules never
-      // approved.
+      // approved. An allow decision with NO adjudicated address (the name
+      // failed to resolve during adjudication) fails closed here — issue #23:
+      // dialing the name would be a second resolution whose answer the rules
+      // never saw, the same invariant connectUpstream enforces for CONNECT.
       const pinned = pinnedAddresses(adjudicated)
+      if (pinned.length === 0) {
+        this.options.logger.warn(`permission-rules: plain-HTTP upstream refused: no adjudicated address for ${adjudicated.host}`)
+        res.writeHead(502, { 'content-type': 'text/plain; charset=utf-8' })
+        res.end(`[network: upstream error] no adjudicated address for ${adjudicated.host}\n`)
+        return
+      }
       const options: RequestOptions = {
         method: req.method,
         headers: req.headers,
-        ...(pinned.length === 0 ? {} : { lookup: pinnedLookup(pinned) }),
+        lookup: pinnedLookup(pinned),
       }
       proxyReq = (upstream.protocol === 'https:' ? httpsRequest : httpRequest)(upstream, options, onResponse)
     } else {
