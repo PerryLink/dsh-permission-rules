@@ -1,3 +1,21 @@
+## v0.7.3 - 2026-09-18
+
+### Security
+
+- A plain-HTTP allow whose adjudication resolved no address now **fails closed**: the forward answers 502 (`no adjudicated address for <host>`) instead of letting `http(s).request` dial the hostname itself — a second DNS resolution whose answer the rules never saw, the plain-HTTP twin of the issue #21 CONNECT hardening (issue #23). Targets whose adjudication found addresses keep the pinned `lookup`, and the chained branch is untouched.
+
+### Fixed
+
+- The `/rules` command now registers before the `attachNetworkProxy()` await in `apply()`, so an uninstall landing while the proxy is starting can no longer drop the command (the async-apply unload window).
+
+### Changed
+
+- The package now declares the DSH host contract: `engines.dsh` (`>=0.1.2-rc.1 <0.2.0 || >=0.1.5-alpha.1 <0.2.0 || >=0.1.6-0 <0.2.0`) and `manifestVersion: 1`.
+
+### Tests
+
+- Regression: a plain-HTTP target with no adjudicated address answers 502 and never reaches the origin; the adjudicated named-target path still forwards through the pinned lookup.
+
 ## v0.7.2 - 2026-09-12
 
 ### Fixed
