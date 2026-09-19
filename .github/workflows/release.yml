@@ -11,10 +11,6 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
-    # Job-level mapping so the step-level `if: ${{ env.NPM_TOKEN != '' }}`
-    # actually evaluates (step env is invisible to its own `if`).
-    env:
-      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
     steps:
       - uses: actions/checkout@v5
 
@@ -38,13 +34,32 @@ jobs:
       - name: Build and pack
         run: pnpm run pack:check
 
+      # Trusted publishing: the OIDC token (id-token: write above) replaces the
+      # long-lived NPM_TOKEN. The previous shape wrote a token into ~/.npmrc and
+      # gated the step on `env.NPM_TOKEN != ''`; with the secret retired that gate
+      # would silently skip the publish, so both are gone. `registry-url` is not
+      # used either - its empty `_authToken` line makes the registry answer 404 on
+      # PUT instead of letting npm perform the OIDC exchange.
+      - name: Upgrade npm and show what the publish will authenticate with
+        run: |
+          npm install -g npm@^11.5.1
+          echo "npm: $(npm --version)"
+          echo "registry: $(npm config get registry)"
+          if [ -f .npmrc ]; then echo "--- workspace .npmrc ---"; cat .npmrc; else echo "no workspace .npmrc"; fi
+          if [ -n "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]; then echo "OIDC request TOKEN: present"; else echo "OIDC request TOKEN: MISSING"; fi
+
       - name: Publish to npm
         env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-        if: ${{ env.NPM_TOKEN != '' }}
+          # npm's OIDC exchange never throws: without verbose output a failure is
+          # just an unexplained ENEEDAUTH.
+          NPM_CONFIG_LOGLEVEL: verbose
         run: |
-          echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
-          npm publish --provenance
+          version="$(node -p "require('./package.json').version")"
+          if npm view "dsh-permission-rules@${version}" version >/dev/null 2>&1; then
+            echo "dsh-permission-rules@${version} is already published; skipping npm publish"
+          else
+            npm publish --provenance
+          fi
 
       - name: Publish the release artifact
         uses: softprops/action-gh-release@v2
