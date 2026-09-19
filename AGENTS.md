@@ -57,7 +57,7 @@ The repo's `pnpm-workspace.yaml` declares `allowBuilds: { esbuild: true }`: pnpm
 
 ## Checks
 
-`pnpm run typecheck && pnpm run lint && pnpm test && pnpm run test:coverage && pnpm run build && pnpm pack && node scripts/check-readme-sync.mjs`. The build also runs `scripts/verify-client-bundle.mjs` (standalone: `pnpm run verify:client-bundle`), which fails when `lib/client.js` keeps a `require(...)` outside the shell's platform module table.
+`pnpm run typecheck && pnpm run lint && pnpm test && pnpm run test:coverage && pnpm run build && pnpm pack && node scripts/check-readme-sync.mjs`. The build also runs `scripts/verify-client-bundle.mjs` (standalone: `pnpm run verify:client-bundle && pnpm run check:lockfile`), which fails when `lib/client.js` keeps a `require(...)` outside the shell's platform module table.
 
 ## Integration dependency
 
