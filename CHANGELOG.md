@@ -1,3 +1,9 @@
+## [Unreleased]
+
+### Development
+
+- devDependencies now track the host line: every `@deepseek-ai/dsh-*` package is pinned to `0.1.7-alpha.1` (was `0.1.5-rc.2`), `@deepseek-ai/cordis` to `^4.0.3`, `@deepseek-ai/schemastery` to `^3.18.3`, and `@deepseek-ai/cordis-plugin-loader` to `^1.0.4` (the first release that declares the `loader/volatile-update` event). `0.1.5-rc.3` was rejected as the target after reading the published tarballs: it is the last line still carrying the OLD settings contract, and its Schemastery has no `volatile()` at all. The declared `peerDependencies` ranges are unchanged and were not narrowed.
+
 ## v0.7.4 - 2026-09-19
 
 ### Added
