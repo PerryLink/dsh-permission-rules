@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## [0.7.5] - 2026-09-22
+
 ### Changed
 
 - **Adapted to the DeepSeek Harness `dsh-v0.1.7-alpha.1` settings contract, which DELETED `ctx.settings.register`** (the whole `@deepseek-ai/dsh-settings-file` package and the `SettingsProvider` / `installSection` / `SettingsNamespace` / `SettingsScope` API are gone). Its replacement is the schema-level live reference: every `Config` field is now declared volatile, the Loader hands `apply` one live reference per field, and `src/settings.ts` no longer registers a namespace at all — a form's namespace is the profile entry id, chosen by the composition, so the exported `SETTINGS_NAMESPACE` constant is gone with it. The plugin registers its own-page policy through `ctx.settings.configure({ auto: false }, ctx.fiber)`, inside the optional `ctx.inject(['settings'], …)` child, and still reaches the service structurally, so a host that composes no settings service is unaffected and no `@deepseek-ai/dsh-settings` dependency is added.
