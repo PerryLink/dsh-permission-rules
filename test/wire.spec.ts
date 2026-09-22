@@ -215,11 +215,13 @@ describe('invocation descriptors', () => {
     expect(NETWORK_STATUS_DESCRIPTOR.result).toEqual({
       mode: 'strict',
       typeSymbol: 'dsh-permission-rules/types#PermissionRulesSnapshot',
-      schema: PERMISSION_RULES_SNAPSHOT_SCHEMA,
       create: expect.any(Function),
     })
     const resultCodec = NETWORK_STATUS_DESCRIPTOR.result as { create?: () => unknown }
     expect(resultCodec.create?.()).toBe(PERMISSION_RULES_SNAPSHOT_SCHEMA)
+    // The `0.1.7-alpha` TypertCodec declares `create` only; a literal `schema`
+    // face would be dead weight the runtime never reads.
+    expect(Object.hasOwn(NETWORK_STATUS_DESCRIPTOR.result, 'schema')).toBe(false)
     expect(NETWORK_STATUS_DESCRIPTOR.sourceLocation.file).toBe('src/wire.ts')
   })
 
@@ -232,9 +234,9 @@ describe('invocation descriptors', () => {
     if (param === undefined) throw new Error('fixture: rulesRead descriptor has no parameters')
     expect(param).toMatchObject({ name: 'path', wire: 'path', source: 'json' })
     expect(param.codec).toMatchObject({ mode: 'strict', typeSymbol: 'dsh-permission-rules/types#RulesReadRequestPath' })
-    expect(param.codec.schema.safeParse('/ws/rules.yaml').success).toBe(true)
-    expect(param.codec.schema.safeParse(42).success).toBe(false)
-    expect(RULES_READ_DESCRIPTOR.result.schema).toBe(RULES_READ_SCHEMA)
+    expect(param.codec.create().safeParse('/ws/rules.yaml').success).toBe(true)
+    expect(param.codec.create().safeParse(42).success).toBe(false)
+    expect(RULES_READ_DESCRIPTOR.result.create()).toBe(RULES_READ_SCHEMA)
   })
 
   it('RULES_SAVE_DESCRIPTOR declares path and text string parameters in order', () => {
@@ -242,10 +244,10 @@ describe('invocation descriptors', () => {
     expect(RULES_SAVE_DESCRIPTOR.method).toBe('rulesSave')
     expect(RULES_SAVE_DESCRIPTOR.parameters.map(param => param.name)).toEqual(['path', 'text'])
     for (const param of RULES_SAVE_DESCRIPTOR.parameters) {
-      expect(param.codec.schema.safeParse('anything').success).toBe(true)
-      expect(param.codec.schema.safeParse({ nested: true }).success).toBe(false)
+      expect(param.codec.create().safeParse('anything').success).toBe(true)
+      expect(param.codec.create().safeParse({ nested: true }).success).toBe(false)
     }
-    expect(RULES_SAVE_DESCRIPTOR.result.schema).toBe(RULES_SAVE_SCHEMA)
+    expect(RULES_SAVE_DESCRIPTOR.result.create()).toBe(RULES_SAVE_SCHEMA)
   })
 
   it('RULES_RELOAD_DESCRIPTOR declares the zero-parameter reload invocation', () => {
@@ -253,7 +255,7 @@ describe('invocation descriptors', () => {
     expect(RULES_RELOAD_DESCRIPTOR.method).toBe('reload')
     expect(RULES_RELOAD_DESCRIPTOR.invocation).toEqual({ kind: 'direct' })
     expect(RULES_RELOAD_DESCRIPTOR.parameters).toEqual([])
-    expect(RULES_RELOAD_DESCRIPTOR.result.schema).toBe(RULES_RELOAD_SCHEMA)
+    expect(RULES_RELOAD_DESCRIPTOR.result.create()).toBe(RULES_RELOAD_SCHEMA)
   })
 
   it('ALLOW_HOST_DESCRIPTOR declares one request-object parameter and the allow-result codec', () => {
@@ -268,12 +270,11 @@ describe('invocation descriptors', () => {
     if (param === undefined) throw new Error('fixture: allowHost descriptor has no parameters')
     expect(param).toMatchObject({ name: 'request', wire: 'request', source: 'json' })
     expect(param.codec).toMatchObject({ mode: 'strict', typeSymbol: 'dsh-permission-rules/types#AllowHostRequest' })
-    expect(param.codec.schema.safeParse({ host: 'example.com', scheme: null, port: null, cwd: null }).success).toBe(true)
-    expect(param.codec.schema.safeParse('example.com').success).toBe(false)
+    expect(param.codec.create().safeParse({ host: 'example.com', scheme: null, port: null, cwd: null }).success).toBe(true)
+    expect(param.codec.create().safeParse('example.com').success).toBe(false)
     expect(ALLOW_HOST_DESCRIPTOR.result).toEqual({
       mode: 'strict',
       typeSymbol: 'dsh-permission-rules/types#AllowHostResult',
-      schema: ALLOW_HOST_RESULT_SCHEMA,
       create: expect.any(Function),
     })
     const resultCodec = ALLOW_HOST_DESCRIPTOR.result as { create?: () => unknown }

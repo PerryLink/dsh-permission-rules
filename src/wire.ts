@@ -12,14 +12,15 @@ import { z } from 'zod'
 import type { InvocationDescriptor } from '@deepseek-ai/dsh-typert-protocol'
 
 /**
- * Strict wire codec carrying BOTH published and checkout faces: the `schema`
- * field feeds the npm-published 0.1.5-rc.2 line, while `create` feeds the
- * 0.1.6-alpha.2+ line, whose typert-loader requires the factory on every
- * codec and materializes schemas lazily on first use. Built through a
- * variable, so neither typecheck ruler flags the other face's field as excess.
+ * Strict wire codec. `create` is the ONLY schema face the `0.1.7-alpha`
+ * `TypertCodec` declares — it materializes the process-realm schema on first
+ * boundary use — and the typert-loader rejects any codec without it. The
+ * older published lines also carried a literal `schema` field on the codec;
+ * that face is gone from the contract, so carrying it here would be dead
+ * weight (and only the `create` factory is ever consulted at run time).
  */
 function strictWire<T>(typeSymbol: string, schema: T) {
-  return Object.freeze({ ...{ mode: 'strict' as const, typeSymbol, schema }, create: () => schema })
+  return Object.freeze({ mode: 'strict' as const, typeSymbol, create: () => schema })
 }
 
 /** The three network policy modes (wire vocabulary). */
