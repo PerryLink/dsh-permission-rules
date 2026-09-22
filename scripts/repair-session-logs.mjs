@@ -82,14 +82,15 @@ const STORAGE_ROW_TYPES = new Set([
 /**
  * The harness build's generated event vocabulary
  * (`KNOWN_SESSION_EVENT_TYPES`, `packages/core/session/src/known-event-types.ts`,
- * synced with the `0.1.5-rc.1` catalog), plus the v1/v2-only spellings the
+ * synced with the `0.1.7-alpha.1` catalog), plus the v1/v2-only spellings the
  * older generations wrote (`assistant/chunk`, `tool/code-dispatch`,
  * `tool/code-dispatch-start`; V3 renamed the latter two to `tool/ptc-dispatch`
  * and `tool/ptc-dispatch-start`), so every generation scans clean. Rows whose
  * type is outside this set are what the read path refuses when the envelope
  * lacks `ignorable: true`; the scan reports them so nothing is missed.
  * Regenerate this list from the harness checkout when it changes (0.1.5-rc.1
- * added `deliverables/presented` and `subagent/catalog`).
+ * added `deliverables/presented` and `subagent/catalog`; `0.1.7-alpha.1` added
+ * `developer/message`, `image/offload` and `workspace/changes`).
  */
 const KNOWN_SESSION_EVENT_TYPES = new Set([
   'agent-preset/selected',
@@ -109,12 +110,14 @@ const KNOWN_SESSION_EVENT_TYPES = new Set([
   'compaction/start',
   'compaction/summary',
   'deliverables/presented',
+  'developer/message',
   'feedback/message-delete',
   'feedback/message-put',
   'feedback/record',
   'goal/change',
   'hook/invoked',
   'hook/result',
+  'image/offload',
   'llm/retry',
   'llm/retry-started',
   'model/selection',
@@ -153,6 +156,7 @@ const KNOWN_SESSION_EVENT_TYPES = new Set([
   'turn/start',
   'user/message',
   'web/deepseek-search-llm-request',
+  'workspace/changes',
 ])
 
 /**

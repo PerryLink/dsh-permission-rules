@@ -4,6 +4,8 @@
 
 - **The Typert wire codec now carries a single face.** `TypertCodec` on the `0.1.7-alpha` line declares only `create: () => TypertSchema`, and the typert-loader refuses any codec without that factory; the older literal `schema` field is gone from the contract and was never read at run time, so carrying both was dead weight the runtime could not use. Removed, with a regression asserting the field is absent.
 
+- `scripts/repair-session-logs.mjs` carries the `0.1.7-alpha.1` event catalog: `developer/message`, `image/offload` and `workspace/changes` were missing, so rows of those types were misreported as foreign by `scan`/`repair`. The `subagent/catalog` and `tool/code-dispatch` / `tool/code-dispatch-start` spellings stay listed and are deliberately unchanged — the script only READS event types older generations wrote, it never writes one.
+
 ### Development
 
 - devDependencies now track the host line: every `@deepseek-ai/dsh-*` package is pinned to `0.1.7-alpha.1` (was `0.1.5-rc.2`), `@deepseek-ai/cordis` to `^4.0.3`, `@deepseek-ai/schemastery` to `^3.18.3`, and `@deepseek-ai/cordis-plugin-loader` to `^1.0.4` (the first release that declares the `loader/volatile-update` event). `0.1.5-rc.3` was rejected as the target after reading the published tarballs: it is the last line still carrying the OLD settings contract, and its Schemastery has no `volatile()` at all. The declared `peerDependencies` ranges are unchanged and were not narrowed.
