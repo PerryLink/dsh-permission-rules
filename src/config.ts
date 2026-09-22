@@ -3,6 +3,15 @@
  * a validated {@link Config} field changeable from cordis.yml; the
  * resolution step validates the numeric bounds and compiles nothing — rule
  * files are external documents resolved per session cwd at load time.
+ *
+ * Since the `0.1.7-alpha` settings contract every field is declared
+ * `.volatile()`, so the Loader hands `apply` a live reference per field
+ * ({@link LiveConfig}) and the settings surface edits them in place. The
+ * numeric bounds live in the SCHEMA (`min`/`max`/`step`) as well as in
+ * {@link resolveConfig}: the config editor resolves the merged config
+ * against this schema before it persists anything, so an out-of-range value
+ * is still refused at write time — the tradeoff the removed
+ * `settings.register(..., { validate })` callback used to carry.
  * @module dsh-permission-rules/config
  */
 
@@ -98,8 +107,10 @@ export interface Config {
   /**
    * Fallback rule file used when per-cwd discovery finds no rule file.
    * Absolute, or relative to `process.cwd()`. Unset = an empty rule set.
+   * Declared `| undefined` because a live reference to a field the schema
+   * gives no default reports an absent value explicitly.
    */
-  fallbackPath?: string
+  fallbackPath?: string | undefined
   /**
    * How an unreadable/invalid rule file is handled at load: `'fail'` throws
    * (the pending tool call errors loudly; HMR reloads keep the previous
@@ -146,9 +157,9 @@ export interface Config {
    */
   allowUnmarkedAudit?: boolean
   /** Process-level network policy (all optional; defaults inside). */
-  network?: NetworkConfig
+  network?: NetworkConfig | undefined
   /** Built-in high-risk baseline (all optional; defaults inside). */
-  builtin?: BuiltinConfig
+  builtin?: BuiltinConfig | undefined
 }
 
 /** Network config after {@link resolveConfig}: every optional field has its explicit default. */
@@ -195,42 +206,124 @@ export interface ResolvedConfig {
   readonly builtin: ResolvedBuiltinConfig
 }
 
-/** Schemastery schema: the loader validates and fills defaults before `apply`. */
-export const Config: z<Config> = z.object({
-  rulesFile: z.string().default('.dsh/rules.yaml'),
-  fallbackPath: z.string(),
-  badFilePolicy: z.union(['fail', 'ignore-with-warning'] as const).default('fail'),
-  maxRules: z.number().default(256),
-  maxCachedWorkspaces: z.number().default(512),
-  patternMode: z.union(['glob', 'regex'] as const).default('glob'),
-  watch: z.boolean().default(true),
-  watchStabilityThresholdMs: z.number().default(200),
-  language: z.union(['en', 'zh', 'es', 'pt', 'hi'] as const).default('en'),
-  caseInsensitivePaths: z.boolean().default(process.platform === 'win32'),
-  audit: z.union(['all', 'hits'] as const).default('all'),
-  searchUp: z.boolean().default(false),
-  maxGlobStars: z.number().default(2),
-  enforce: z.boolean().default(true),
-  allowUnmarkedAudit: z.boolean().default(false),
-  network: z.object({
+/**
+ * Mark one schema field as a live reference, where the host can.
+ *
+ * `.volatile()` first appeared in `@deepseek-ai/schemastery` 3.18.3, and this
+ * schema is built while the plugin module is evaluated — an unguarded call
+ * would turn every host line the package's peer ranges still advertise
+ * (`0.1.2-rc`, `0.1.5-alpha`, `0.1.6-0`) into a hard mount crash. Probed
+ * instead: on a Schemastery without the method the field stays an ordinary
+ * value, the Loader hands `apply` a plain config ({@link plainConfig} passes
+ * it straight through), and the plugin runs exactly as it did before live
+ * forms existed — only the settings form is unavailable there, which is the
+ * same degradation as a host that composes no settings service at all.
+ * @param schema - the field schema.
+ * @returns the same field schema, live where supported.
+ */
+function live<S extends { volatile(): unknown }>(schema: S): ReturnType<S['volatile']> {
+  const builder = schema as { volatile?: () => ReturnType<S['volatile']> }
+  return typeof builder.volatile === 'function'
+    ? builder.volatile()
+    : (schema as unknown as ReturnType<S['volatile']>)
+}
+
+/**
+ * Schemastery schema: the loader validates and fills defaults before
+ * `apply`. Every field is live (see {@link live}), so on a `0.1.7-alpha`
+ * host the Loader hands `apply` a reference per field and the settings
+ * surface can edit each one in place. `network` and `builtin` are marked
+ * live as WHOLE objects — Schemastery refuses a volatile inside a volatile,
+ * and the only supported shape is a fixed object path.
+ *
+ * The numeric bounds are declared here (not only in {@link resolveConfig})
+ * because the config editor resolves the merged config against THIS schema
+ * before persisting it: an out-of-range edit is refused at write time
+ * instead of disabling the plugin on the next read.
+ */
+export const Config = z.object({
+  rulesFile: live(z.string().default('.dsh/rules.yaml')),
+  fallbackPath: live(z.string()),
+  badFilePolicy: live(z.union(['fail', 'ignore-with-warning'] as const).default('fail')),
+  maxRules: live(z.number().step(1).min(1).default(256)),
+  maxCachedWorkspaces: live(z.number().step(1).min(1).default(512)),
+  patternMode: live(z.union(['glob', 'regex'] as const).default('glob')),
+  watch: live(z.boolean().default(true)),
+  watchStabilityThresholdMs: live(z.number().step(1).min(0).default(200)),
+  language: live(z.union(['en', 'zh', 'es', 'pt', 'hi'] as const).default('en')),
+  caseInsensitivePaths: live(z.boolean().default(process.platform === 'win32')),
+  audit: live(z.union(['all', 'hits'] as const).default('all')),
+  searchUp: live(z.boolean().default(false)),
+  maxGlobStars: live(z.number().step(1).min(1).default(2)),
+  enforce: live(z.boolean().default(true)),
+  allowUnmarkedAudit: live(z.boolean().default(false)),
+  network: live(z.object({
     enabled: z.boolean().default(true),
     mode: z.union(['auto', ...NETWORK_MODES] as const).default('auto'),
     autoFallback: z.union(NETWORK_MODES as [NetworkMode, ...NetworkMode[]]).default('allow-all'),
     unlisted: z.union(['ask', 'deny'] as const).default('ask'),
     proxyBind: z.string().default('127.0.0.1'),
-    proxyPort: z.number().default(0),
-    proxyMaxRecent: z.number().default(100),
+    proxyPort: z.number().step(1).min(0).max(65535).default(0),
+    proxyMaxRecent: z.number().step(1).min(1).default(100),
     loopback: z.union(['allow', 'policy'] as const).default('allow'),
     injectEnv: z.boolean().default(true),
     noProxy: z.union(['clear', 'preserve'] as const).default('clear'),
     upstreamProxy: z.string().default('off'),
     allowHostAction: z.boolean().default(true),
-  }),
-  builtin: z.object({
+  })),
+  builtin: live(z.object({
     enabled: z.boolean().default(true),
     path: z.string(),
-  }),
+  })),
 })
+
+/** The Loader-delivered config: every field is a live reference to its current value. */
+export type LiveConfig = ReturnType<typeof Config>
+
+/** What {@link resolveConfig} accepts: the raw config, or the Loader's live one. */
+export type ConfigInput = Config | LiveConfig
+
+/**
+ * Whether `value` is the Loader's live config rather than a plain one.
+ * `rulesFile` is the discriminator: it always has a schema default, so the
+ * Loader always materializes its reference, plain or absent.
+ * @param value - a raw or live config.
+ * @returns true when the fields are live references.
+ */
+function isLiveConfig(value: ConfigInput): value is LiveConfig {
+  return typeof (value as { rulesFile?: { get?: unknown } }).rulesFile?.get === 'function'
+}
+
+/**
+ * Unwrap the Loader's live references into the plain config
+ * {@link resolveConfig} validates. Reading each reference HERE is what keeps
+ * a caller's config source lazy: call it inside the closure, never at
+ * closure-construction time, or a live edit stops being visible.
+ * @param config - the raw config, or the Loader's live one.
+ * @returns the plain raw config (the input itself when it was already plain).
+ */
+export function plainConfig(config: ConfigInput): Config {
+  if (!isLiveConfig(config)) return config
+  return {
+    rulesFile: config.rulesFile.get(),
+    fallbackPath: config.fallbackPath.get(),
+    badFilePolicy: config.badFilePolicy.get(),
+    maxRules: config.maxRules.get(),
+    maxCachedWorkspaces: config.maxCachedWorkspaces.get(),
+    patternMode: config.patternMode.get(),
+    watch: config.watch.get(),
+    watchStabilityThresholdMs: config.watchStabilityThresholdMs.get(),
+    language: config.language.get(),
+    caseInsensitivePaths: config.caseInsensitivePaths.get(),
+    audit: config.audit.get(),
+    searchUp: config.searchUp.get(),
+    maxGlobStars: config.maxGlobStars.get(),
+    enforce: config.enforce.get(),
+    allowUnmarkedAudit: config.allowUnmarkedAudit.get(),
+    network: config.network.get(),
+    builtin: config.builtin.get(),
+  }
+}
 
 /**
  * Validate raw values and fill explicit defaults. A `maxRules`,
@@ -239,10 +332,15 @@ export const Config: z<Config> = z.object({
  * absolute `rulesFile`, a value outside a closed enum, or a non-boolean
  * flag throws here — misconfiguration fails loud at mount even when the
  * plugin is mounted without the Schemastery loader.
- * @param config - raw (possibly partial) plugin config.
+ *
+ * Accepts the Loader's live config directly and unwraps it through
+ * {@link plainConfig}, so a caller can keep this call inside its config
+ * source and see every live edit on the next read.
+ * @param input - raw (possibly partial) plugin config, or the Loader's live one.
  * @returns the fully resolved config.
  */
-export function resolveConfig(config: Config = {}): ResolvedConfig {
+export function resolveConfig(input: ConfigInput = {}): ResolvedConfig {
+  const config = plainConfig(input)
   const rulesFile = config.rulesFile ?? '.dsh/rules.yaml'
   const searchUp = config.searchUp ?? false
   if (searchUp && isAbsolute(rulesFile)) {

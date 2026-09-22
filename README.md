@@ -29,7 +29,7 @@
 
 | Surface | Status |
 |---|---|
-| Harness | DeepSeek Harness `dsh-v0.1.5-rc.2` (adapted 2026-09-09, full gate chain + profile install smoke): its `Session.append` still cannot stamp the `ignorable` marker — verified on the published `0.1.5-rc.2` package, where the third argument is silently dropped and the envelope field survives for stored-log reads only — so the whole `0.1.5-alpha` line is pre-checked as unmarked and session-log audit stays disabled by default. The `0.1.3-alpha` line keeps the same surface-only append signature. Both lines' log migrations refuse unclassified plugin events even when marked, so `strip` v1 audit rows before a `0.1.3-alpha` host opens the log and v2 audit rows before a `0.1.5-alpha` host migrates it (native v3 logs only need `repair`). |
+| Harness | DeepSeek Harness `dsh-v0.1.7-alpha.1` (adapted 2026-09-22, full gate chain): its plugin config is the live settings contract — every field is declared `.volatile()`, the Loader hands `apply` a live reference per field, and a saved edit is committed into the running references WITHOUT remounting the plugin, with out-of-range values refused by the schema before anything is written. A host whose Schemastery predates `volatile()` (before 3.18.3) still mounts and runs this plugin — the fields simply stay ordinary values and the live config form is unavailable — because the marker is applied through a capability probe rather than assumed. `Session.append` on this line still cannot stamp the `ignorable` marker (its third argument is the surface-intent bag, and the envelope field survives for stored-log reads only), so the whole `0.1.7-alpha` line is pre-checked as unmarked and session-log audit stays disabled by default; the earlier `0.1.5-rc.2` (adapted 2026-09-09) and `0.1.3-alpha` lines keep the same surface-only append signature. Those lines' log migrations refuse unclassified plugin events even when marked, so `strip` v1 audit rows before a `0.1.3-alpha` host opens the log and v2 audit rows before a `0.1.5-alpha` host migrates it (native v3 logs only need `repair`). |
 | Node | `^22.19.0 || >=24.0.0` |
 | Platforms | All (host + web settings client) |
 | Model | Any (deny/ask reasons surface through tool results) |
@@ -107,7 +107,7 @@ dsh --profile web --dump-config | grep -A4 'id: permission-rules'
 
 ## Configuration
 
-All tunables are Schemastery `Config` fields (changeable from cordis.yml). An id-targeted override replaces the whole row — restate every key you need.
+All tunables are Schemastery `Config` fields (changeable from cordis.yml). An id-targeted override replaces the whole row — restate every key you need. On a `0.1.7-alpha` host every field is declared `.volatile()`, so it is ALSO editable in place from the Plugins settings page: the edit is committed into the running references without remounting the plugin, the runtime reads the new value on its next use, and a change to `network.proxyPort`, `proxyBind`, `injectEnv` or `noProxy` rebinds the local proxy immediately. The numeric bounds live in the schema, and the config editor resolves the merged config against that schema before persisting, so an out-of-range value is refused at write time. On a host whose Schemastery predates `volatile()` these fields stay cordis.yml-only.
 
 | Key | Default | Meaning |
 |---|---|---|

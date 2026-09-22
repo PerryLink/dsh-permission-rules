@@ -21,7 +21,7 @@ import type { CommandInvocation, CommandResult } from '@deepseek-ai/dsh-commands
 import type { PreToolDecision, ToolExecution } from '@deepseek-ai/dsh-tools'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import { resolveConfig } from './config.ts'
-import type { Config, ResolvedConfig } from './config.ts'
+import type { LiveConfig, ResolvedConfig } from './config.ts'
 import type { CallId } from './call-id.ts'
 import { insertAllowRule, isWritableHost, normalizeAllowHost, resolveAllowHostTarget } from './allow-host.ts'
 import type { AllowHostInsertion } from './allow-host.ts'
@@ -1639,10 +1639,15 @@ export class PermissionRulesRuntime {
 /**
  * Mount the plugin: resolve config, validate deployment-level rule files,
  * register the pre-execute listener and the `/rules` command.
+ *
+ * The `config` argument is the Loader's LIVE config (every field a
+ * `.volatile()` reference, see {@link LiveConfig}); `resolveConfig` unwraps
+ * it, and the same object is handed to {@link attachSettingsSection} so the
+ * runtime keeps reading the current values instead of a mount-time snapshot.
  * @param ctx - the host context.
- * @param config - raw plugin config.
+ * @param config - the Loader-delivered live plugin config.
  */
-export async function apply(ctx: Context, config: Config): Promise<void> {
+export async function apply(ctx: Context, config: LiveConfig): Promise<void> {
   const resolved = resolveConfig(config)
   const runtime = new PermissionRulesRuntime(ctx, resolved)
   runtime.validateDeploymentFiles()

@@ -155,9 +155,47 @@ describe('network.allowHostAction (issue #19 item 3)', () => {
 
   it('carries the same default in the Schemastery schema the loader uses', () => {
     // A mount through the settings/loader path must agree with a plain-JS mount.
-    const viaSchema = Config({ network: {} }) as { network: { allowHostAction: boolean } }
-    expect(viaSchema.network.allowHostAction).toBe(true)
-    const off = Config({ network: { allowHostAction: false } }) as { network: { allowHostAction: boolean } }
-    expect(off.network.allowHostAction).toBe(false)
+    // Since the `0.1.7-alpha` contract the schema output is LIVE, so the field
+    // is read through its reference.
+    const viaSchema = Config({ network: {} })
+    expect(viaSchema.network.get()?.allowHostAction).toBe(true)
+    const off = Config({ network: { allowHostAction: false } })
+    expect(off.network.get()?.allowHostAction).toBe(false)
+  })
+})
+
+describe('the schema refuses out-of-range values on the write path', () => {
+  // The removed `settings.register(..., { validate })` callback re-ran
+  // resolveConfig before persistence. Its replacement is the schema's own
+  // bounds: the config editor resolves the merged config against THIS schema
+  // before it writes, so these must throw here, not only in resolveConfig.
+  it('rejects every numeric bound the resolver enforces', () => {
+    expect(() => Config({ maxRules: 0 })).toThrow()
+    expect(() => Config({ maxRules: 1.5 })).toThrow()
+    expect(() => Config({ maxCachedWorkspaces: 0 })).toThrow()
+    expect(() => Config({ maxGlobStars: 0 })).toThrow()
+    expect(() => Config({ watchStabilityThresholdMs: -1 })).toThrow()
+    expect(() => Config({ network: { proxyPort: 99999 } })).toThrow()
+    expect(() => Config({ network: { proxyPort: -1 } })).toThrow()
+    expect(() => Config({ network: { proxyMaxRecent: 0 } })).toThrow()
+  })
+
+  it('rejects a value outside a closed enum', () => {
+    expect(() => Config({ badFilePolicy: 'warn' as never })).toThrow()
+    expect(() => Config({ language: 'fr' as never })).toThrow()
+    expect(() => Config({ network: { mode: 'nope' as never } })).toThrow()
+  })
+
+  it('accepts the boundary and the in-range values it must', () => {
+    expect(() => Config({ maxRules: 1, maxGlobStars: 1, watchStabilityThresholdMs: 0 })).not.toThrow()
+    expect(() => Config({ network: { proxyPort: 65535 } })).not.toThrow()
+    expect(() => Config({ network: { proxyPort: 0, mode: 'allow-all' } })).not.toThrow()
+  })
+
+  it('keeps the cross-field searchUp rule out of the schema, so the resolver still owns it', () => {
+    // Schemastery 3.18.3 has no `.check()`, so this one rule cannot be
+    // expressed on the schema and stays a resolveConfig-time failure.
+    expect(() => Config({ searchUp: true, rulesFile: '/etc/rules.yaml' })).not.toThrow()
+    expect(() => resolveConfig({ searchUp: true, rulesFile: '/etc/rules.yaml' })).toThrow(/searchUp/)
   })
 })

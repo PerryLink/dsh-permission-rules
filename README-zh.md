@@ -28,7 +28,7 @@
 
 | Surface | Status |
 |---|---|
-| Harness | DeepSeek Harness `dsh-v0.1.5-rc.2`（2026-09-09 已适配，完整门禁链 + profile 安装冒烟）：其 `Session.append` 仍无法盖章 `ignorable` 标记——已在已发布的 `0.1.5-rc.2` 包上实测，第三参数被静默丢弃，信封字段仅用于存量日志读取——故整条 `0.1.5-alpha` 线在首次追加前即被预检为未盖章，会话日志审计默认停用。`0.1.3-alpha` 线同样沿用 surface-only 追加签名。两条线的日志迁移连已标记的未分类插件事件也拒绝：在 `0.1.3-alpha` 宿主打开日志前 `strip` 掉 v1 审计行，在 `0.1.5-alpha` 宿主迁移前 `strip` 掉 v2 审计行（v3 原生日志只需 `repair`）。 |
+| Harness | DeepSeek Harness `dsh-v0.1.7-alpha.1`（2026-09-22 已适配，完整门禁链）：其插件配置即新的 live settings 契约——每个字段都以 `.volatile()` 声明，Loader 向 `apply` 逐个交付活引用，保存的编辑直接写入运行中的引用、**不重挂插件**，越界值在写入前即被 schema 拒绝。Schemastery 早于 `volatile()`（3.18.3 之前）的宿主仍能挂载并运行本插件——字段退化为普通值、live 配置表单不可用——因为该标记是**能力探测**而非假定存在。本线的 `Session.append` 仍无法盖章 `ignorable` 标记（第三参数是 surface-intent 包，信封字段仅用于存量日志读取），故整条 `0.1.7-alpha` 线在首次追加前即被预检为未盖章，会话日志审计默认停用；更早的 `0.1.5-rc.2`（2026-09-09 已适配）与 `0.1.3-alpha` 线同样沿用 surface-only 追加签名。这些线的日志迁移连已标记的未分类插件事件也拒绝：在 `0.1.3-alpha` 宿主打开日志前 `strip` 掉 v1 审计行，在 `0.1.5-alpha` 宿主迁移前 `strip` 掉 v2 审计行（v3 原生日志只需 `repair`）。 |
 | Node | `^22.19.0 || >=24.0.0` |
 | Platforms | 全部（host + Web 设置客户端） |
 | Model | 任意（deny/ask 原因经工具结果呈现） |
@@ -106,7 +106,7 @@ dsh --profile web --dump-config | grep -A4 'id: permission-rules'
 
 ## Configuration
 
-所有可调项均为 Schemastery `Config` 字段（可在 cordis.yml 中修改）。按 id 覆盖会整行替换——重述你需要的每个键。
+所有可调项均为 Schemastery `Config` 字段（可在 cordis.yml 中修改）。按 id 覆盖会整行替换——重述你需要的每个键。在 `0.1.7-alpha` 宿主上每个字段都以 `.volatile()` 声明，因此还可在 Plugins 设置页就地编辑：编辑直接写入运行中的引用、不重挂插件，运行期在下次读取时取到新值，且改动 `network.proxyPort`、`proxyBind`、`injectEnv` 或 `noProxy` 会立即重绑本地代理。数值边界声明在 schema 上，配置编辑器在持久化前用该 schema 解析合并后的配置，故越界值在写入时即被拒绝。Schemastery 早于 `volatile()` 的宿主上，这些字段只能通过 cordis.yml 修改。
 
 | Key | Default | Meaning |
 |---|---|---|

@@ -1,60 +1,58 @@
 /**
- * Settings-section attachment tests: `attachSettingsSection` registers the
- * whole plugin config under the `permission-rules` namespace with the
- * live/exposed options, points the runtime's config source at the resolved
- * scope, re-runs `resolveConfig` on every write (out-of-range values are
- * refused), and rebinds the network proxy only when a bind/env-relevant
- * knob actually changed. On hosts without a settings service nothing
- * registers and the composition entry keeps serving the config.
+ * Live-configuration wiring tests for the `0.1.7-alpha` settings contract:
+ * `attachSettingsSection` registers this plugin's own-page policy with the
+ * settings service, keeps the runtime's config source pointed at the Loader's
+ * live references (so a committed edit is visible WITHOUT rebuilding the
+ * source), and rebinds the network proxy only when a bind/env-relevant knob
+ * actually changed.
+ *
+ * The live references here are the REAL ones the schema produces, and updates
+ * are committed through the same cross-realm protocol symbol the Loader uses
+ * (`updateVolatile`), so what is exercised is the shipped path rather than a
+ * stand-in shape.
  * @module dsh-permission-rules/test/settings-page
  */
 
 import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { Config } from '../src/config.ts'
-import type { ResolvedConfig } from '../src/config.ts'
+import type { ConfigInput, LiveConfig, NetworkConfig, ResolvedConfig } from '../src/config.ts'
 import type { PermissionRulesRuntime } from '../src/runtime.ts'
-import { SETTINGS_NAMESPACE, attachSettingsSection } from '../src/settings.ts'
+import { attachSettingsSection } from '../src/settings.ts'
 
-/** One recorded `register()` call, mirroring the structural settings-provider shape. */
-interface SettingsRegistration {
-  readonly ns: string
-  readonly schema: unknown
-  readonly options: {
-    base?: unknown
-    expose?: boolean
-    applies?: string
-    validate?: (value: Record<string, unknown>) => void
+/** The cross-realm write hook `cosmokit` puts on every live reference. */
+const VOLATILE_WRITE = Symbol.for('cosmokit.volatile.write')
+
+/** One recorded `configure()` call from the settings service. */
+interface ConfigureCall {
+  readonly presentation: { auto?: boolean }
+  readonly owner: unknown
+}
+
+/** A structural stand-in for the new `ctx.settings` face. */
+class FakeSettings {
+  readonly calls: ConfigureCall[] = []
+
+  configure(presentation: { auto?: boolean }, owner?: unknown): () => void {
+    this.calls.push({ presentation, owner })
+    return () => {
+      const index = this.calls.findIndex(call => call.presentation === presentation)
+      if (index >= 0) this.calls.splice(index, 1)
+    }
   }
 }
 
-/** A structural stand-in for `ctx.settings`: records registrations and replays watch callbacks. */
-class FakeSettings {
-  readonly registrations: SettingsRegistration[] = []
-  private readonly listeners: ((next: unknown, prev: unknown) => void | Promise<void>)[] = []
-
-  constructor(private value: Record<string, unknown>) {}
-
-  register(ns: string, schema: unknown, options: SettingsRegistration['options'] = {}): { get(): Record<string, unknown>; watch(callback: (next: unknown, prev: unknown) => void | Promise<void>): () => void } {
-    this.registrations.push({ ns, schema, options })
-    return {
-      get: () => this.value,
-      watch: callback => {
-        this.listeners.push(callback)
-        return () => {
-          const index = this.listeners.indexOf(callback)
-          if (index >= 0) this.listeners.splice(index, 1)
-        }
-      },
-    }
-  }
-
-  set(value: Record<string, unknown>): void {
-    this.value = value
-  }
-
-  fire(next: Record<string, unknown>, prev: Record<string, unknown>): void {
-    for (const listener of this.listeners) void listener(next, prev)
+/**
+ * Commit a new raw config into the live references, exactly as the Loader's
+ * `_commitVolatile` does: resolve a candidate through the same schema and
+ * write each value into the running reference.
+ */
+function commit(config: LiveConfig, raw: ConfigInput): void {
+  const next = Config(raw as never)
+  for (const key of Object.keys(next) as (keyof LiveConfig)[]) {
+    const source = (next[key] as { get(): unknown }).get()
+    const write = (config[key] as unknown as Record<symbol, ((value: unknown) => void) | undefined>)[VOLATILE_WRITE]
+    write?.(source)
   }
 }
 
@@ -71,86 +69,115 @@ function fakeRuntime(): { runtime: PermissionRulesRuntime; source: { current?: (
   return { runtime, source, rebind }
 }
 
+/** Build the live config a `0.1.7-alpha` Loader would hand `apply`. */
+function liveConfig(raw: ConfigInput = {}): LiveConfig {
+  return Config(raw as never) as LiveConfig
+}
+
 describe('attachSettingsSection', () => {
-  it('registers the namespace with the Config schema and live/exposed options, then binds the config source', async () => {
+  it('registers the own-page policy with the settings service', async () => {
     const ctx = new Context()
-    const provider = new FakeSettings({ language: 'en' })
-    ctx.provide('settings', provider as never)
+    const settings = new FakeSettings()
+    ctx.provide('settings', settings as never)
+    const { runtime } = fakeRuntime()
+
+    attachSettingsSection(ctx, runtime, liveConfig())
+    await vi.waitFor(() => expect(settings.calls).toHaveLength(1))
+
+    // `auto: false` is what keeps the service from generating a second form:
+    // this plugin ships its own settings page.
+    expect(settings.calls[0]?.presentation).toEqual({ auto: false })
+    expect(settings.calls[0]?.owner).toBe(ctx.fiber)
+  })
+
+  it('keeps the config source LAZY: a committed edit is visible without rebuilding it', () => {
+    const ctx = new Context()
     const { runtime, source } = fakeRuntime()
-    const entry = { rulesFile: '.dsh/rules.yaml' }
-    attachSettingsSection(ctx, runtime, entry)
-    await vi.waitFor(() => expect(provider.registrations).toHaveLength(1))
+    const config = liveConfig({ language: 'en' })
 
-    const registration = provider.registrations[0]
-    expect(registration?.ns).toBe(SETTINGS_NAMESPACE)
-    expect(registration?.ns).toBe('permission-rules')
-    expect(registration?.schema).toBe(Config)
-    expect(registration?.options).toMatchObject({ base: entry, expose: true, applies: 'live' })
-    expect(typeof registration?.options.validate).toBe('function')
-
-    // The runtime config source follows the scope's value, resolved like a mount config.
+    attachSettingsSection(ctx, runtime, config)
     expect(source.current).toBeDefined()
     expect(source.current?.().language).toBe('en')
-    provider.set({ language: 'zh', network: { mode: 'deny-all', proxyPort: 0 } })
+
+    const bound = source.current
+    commit(config, { language: 'zh', network: { mode: 'deny-all', proxyPort: 0 } })
+
+    // Same closure, new values: the source reads the references on every call.
+    expect(source.current).toBe(bound)
     expect(source.current?.().language).toBe('zh')
     expect(source.current?.().network.mode).toBe('deny-all')
     expect(source.current?.().network.proxyPort).toBe(0)
   })
 
-  it('re-runs resolveConfig on save, so out-of-range stored values are refused', async () => {
+  it('rebinds the network proxy only when a bind/env-relevant knob changed', () => {
     const ctx = new Context()
-    const provider = new FakeSettings({})
-    ctx.provide('settings', provider as never)
-    const { runtime } = fakeRuntime()
-    attachSettingsSection(ctx, runtime, {})
-    await vi.waitFor(() => expect(provider.registrations).toHaveLength(1))
-    const validate = provider.registrations[0]?.options.validate
-    expect(validate).toBeDefined()
-    expect(() => validate?.({ network: { proxyPort: 99999 } })).toThrow(TypeError)
-    expect(() => validate?.({ maxRules: 0 })).toThrow(TypeError)
-    expect(() => validate?.({ language: 'xx' })).toThrow(TypeError)
-    expect(() => validate?.({ network: { proxyPort: 0, mode: 'allow-all' } })).not.toThrow()
-  })
-
-  it('rebinds the network proxy only when a bind/env-relevant knob changed', async () => {
-    const ctx = new Context()
-    const provider = new FakeSettings({})
-    ctx.provide('settings', provider as never)
     const { runtime, rebind } = fakeRuntime()
-    attachSettingsSection(ctx, runtime, {})
-    await vi.waitFor(() => expect(provider.registrations).toHaveLength(1))
+    const config = liveConfig()
+    attachSettingsSection(ctx, runtime, config)
 
-    provider.fire({ network: { proxyPort: 9000 } }, { network: { proxyPort: 0 } })
-    provider.fire({ network: { proxyBind: '127.0.0.2' } }, { network: { proxyBind: '127.0.0.1' } })
-    provider.fire({ network: { injectEnv: true } }, { network: { injectEnv: false } })
-    provider.fire({ network: { noProxy: 'preserve' } }, { network: { noProxy: 'clear' } })
+    const steps: NetworkConfig[] = [
+      { proxyPort: 9000 },
+      { proxyPort: 9000, proxyBind: '127.0.0.2' },
+      { proxyPort: 9000, proxyBind: '127.0.0.2', injectEnv: false },
+      { proxyPort: 9000, proxyBind: '127.0.0.2', injectEnv: false, noProxy: 'preserve' },
+    ]
+    for (const step of steps) {
+      commit(config, { network: step })
+      ctx.emit('loader/volatile-update', [['network']])
+    }
     expect(rebind).toHaveBeenCalledTimes(4)
 
     // A pure mode change needs no rebind — web-tool gating reads config per call.
-    provider.fire({ network: { mode: 'deny-all' } }, { network: { mode: 'allow-all' } })
-    provider.fire({ mode: 'allow-all' }, { mode: 'deny-all' })
+    commit(config, {
+      network: { proxyPort: 9000, proxyBind: '127.0.0.2', injectEnv: false, noProxy: 'preserve', mode: 'deny-all' },
+    })
+    ctx.emit('loader/volatile-update', [['network', 'mode']])
+    // A rule-file change is read live too.
+    commit(config, {
+      rulesFile: '.dsh/other.yaml',
+      network: { proxyPort: 9000, proxyBind: '127.0.0.2', injectEnv: false, noProxy: 'preserve', mode: 'deny-all' },
+    })
+    ctx.emit('loader/volatile-update', [['rulesFile']])
     expect(rebind).toHaveBeenCalledTimes(4)
   })
 
-  it('registers nothing and leaves the composition config in charge when settings is absent', async () => {
+  it('reports an unusable live edit instead of throwing out of the listener', () => {
     const ctx = new Context()
-    const { runtime, source } = fakeRuntime()
-    attachSettingsSection(ctx, runtime, {})
-    // The inject plugin never activates without the service; ticks settle any queued work.
-    await Promise.resolve()
-    await Promise.resolve()
-    expect(source.current).toBeUndefined()
-    expect(runtime).toBeDefined()
+    const { runtime } = fakeRuntime()
+    const config = liveConfig()
+    attachSettingsSection(ctx, runtime, config)
+    const warn = vi.spyOn(ctx.logger, 'warn').mockImplementation(() => undefined)
+
+    // `searchUp` + an absolute rulesFile is the one rule the schema cannot
+    // express, so it reaches the listener as a resolvable-but-invalid config.
+    // The Loader swallows a listener throw into a generic warning; this must
+    // be named in the plugin's own vocabulary and must not escape.
+    commit(config, { searchUp: true, rulesFile: '/etc/rules.yaml' })
+    expect(() => ctx.emit('loader/volatile-update', [['searchUp']])).not.toThrow()
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('searchUp cannot be combined'))
+    warn.mockRestore()
   })
 
-  it('tolerates a settings service whose resolved value is undefined (nothing registers)', async () => {
+  it('leaves the composition config in charge when no settings service is composed', () => {
     const ctx = new Context()
-    ctx.provide('settings', undefined as never)
     const { runtime, source } = fakeRuntime()
-    attachSettingsSection(ctx, runtime, {})
-    await Promise.resolve()
-    await Promise.resolve()
-    expect(source.current).toBeUndefined()
+    const config = liveConfig({ language: 'zh' })
+
+    attachSettingsSection(ctx, runtime, config)
+
+    // The references ARE the entry's values, so the source is bound either
+    // way: a host without a settings service keeps serving the config.
+    expect(source.current?.().language).toBe('zh')
+  })
+
+  it('tolerates a service without configure (a host that predates the live contract)', () => {
+    const ctx = new Context()
+    ctx.provide('settings', { register: () => undefined } as never)
+    const { runtime, source } = fakeRuntime()
+
+    attachSettingsSection(ctx, runtime, liveConfig({ language: 'es' }))
+
+    expect(source.current?.().language).toBe('es')
     expect(runtime).toBeDefined()
   })
 })
