@@ -6,6 +6,8 @@
 
 - `scripts/repair-session-logs.mjs` carries the `0.1.7-alpha.1` event catalog: `developer/message`, `image/offload` and `workspace/changes` were missing, so rows of those types were misreported as foreign by `scan`/`repair`. The `subagent/catalog` and `tool/code-dispatch` / `tool/code-dispatch-start` spellings stay listed and are deliberately unchanged — the script only READS event types older generations wrote, it never writes one.
 
+- `scripts/loader-runner.mjs` installs a stderr log exporter. cordis's logger only BUFFERS by default, and the Loader reports an entry that fails to import or to resolve its config through `ctx.logger` instead of rejecting `loader.await()`; with no sink installed, the composition suite's "fails loud through the Loader for a Schemastery type error" case observed only a silently missing plugin instead of the reported reason.
+
 ### Development
 
 - devDependencies now track the host line: every `@deepseek-ai/dsh-*` package is pinned to `0.1.7-alpha.1` (was `0.1.5-rc.2`), `@deepseek-ai/cordis` to `^4.0.3`, `@deepseek-ai/schemastery` to `^3.18.3`, and `@deepseek-ai/cordis-plugin-loader` to `^1.0.4` (the first release that declares the `loader/volatile-update` event). `0.1.5-rc.3` was rejected as the target after reading the published tarballs: it is the last line still carrying the OLD settings contract, and its Schemastery has no `volatile()` at all. The declared `peerDependencies` ranges are unchanged and were not narrowed.

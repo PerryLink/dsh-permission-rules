@@ -31,6 +31,28 @@ const configPath = resolve(configArgument)
 const configRequire = createRequire(resolve(import.meta.dirname, '../package.json'))
 
 const ctx = new Context()
+
+// cordis's logger only BUFFERS by default — a minimal composition installs no
+// console exporter — and the Loader reports an entry that fails to import or
+// to resolve its config through `ctx.logger` instead of rejecting
+// `loader.await()`. Without a sink such a failure is a silent no-op (the row
+// simply never mounts), which is the opposite of what this runner exists to
+// prove, so mirror every record to stderr. `levels.default` admits every
+// severity; the Loader logs these failures at `error`.
+ctx.logger.exporter({
+  colors: false,
+  levels: { default: 3 },
+  export: (message) => {
+    const text = message.args
+      .map((arg) => {
+        if (arg instanceof Error) return arg.stack ?? arg.message
+        return typeof arg === 'string' ? arg : JSON.stringify(arg)
+      })
+      .join(' ')
+    process.stderr.write(`[${message.type}] ${message.name}: ${text}\n`)
+  },
+})
+
 try {
   ctx.baseUrl = `${pathToFileURL(dirname(configPath)).href}/`
   await ctx.plugin(Loader)
