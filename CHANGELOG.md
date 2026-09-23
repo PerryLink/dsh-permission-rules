@@ -1,4 +1,17 @@
-## [Unreleased]
+## v0.7.7 - 2026-09-23
+
+### Changed
+
+- Move the `@deepseek-ai/dsh-*` dev/test pins to the published `0.1.7-alpha.2` line and record `0.1.7-alpha.2` in `dshWorkshop.compatibility.dshVersions`; the monthly Compat workflow now installs the `0.1.7-alpha.2` host (`dsh-base` + `dsh-headless`) instead of `0.1.6-alpha.2`. The `@deepseek-ai/cordis` and `@deepseek-ai/schemastery` pins move to `^4.0.4` / `^3.18.3`.
+- Append the fourth host clause `|| >=0.1.7-0 <0.2.0` to `engines.dsh` and to all ten `@deepseek-ai/dsh-*` peer ranges. Under semver's prerelease rule a range whose only prerelease comparators sit on earlier tuples cannot admit a later alpha, so the three-clause band excluded the very host line this release targets. No previously supported host line is dropped.
+
+### Fixed
+
+- Declare `@deepseek-ai/dsh-system-prompt` as a dev/test dependency at `0.1.7-alpha.2`. `test/composition.spec.ts` composes a Loader fixture that names the package, so the fixture depended on a package this repo never declared — it resolved only while some other edge happened to place it in the tree. The declaration makes the fixture's dependency explicit and pins it to the same line as the rest of the dev/test peers.
+
+### Docs
+
+- Correct `AGENTS.md`: the `test/` layout entry described the installed peers as pinned to `0.1.7-alpha.1` dev dependencies; they now carry `0.1.7-alpha.2`. The adjacent `scripts/repair-session-logs.mjs` entry still says its session-event catalog is synced with the `0.1.7-alpha.1` catalog, which is accurate — that script carries its own frozen copy and was not regenerated in this release.
 
 ## v0.7.6 - 2026-09-22
 
