@@ -82,7 +82,7 @@ const STORAGE_ROW_TYPES = new Set([
 /**
  * The harness build's generated event vocabulary
  * (`KNOWN_SESSION_EVENT_TYPES`, `packages/core/session/src/known-event-types.ts`,
- * synced with the `0.1.7-alpha.1` catalog), plus the v1/v2-only spellings the
+ * synced with the `0.1.7-alpha.2` catalog), plus the v1/v2-only spellings the
  * older generations wrote (`assistant/chunk`, `tool/code-dispatch`,
  * `tool/code-dispatch-start`; V3 renamed the latter two to `tool/ptc-dispatch`
  * and `tool/ptc-dispatch-start`), so every generation scans clean. Rows whose
@@ -91,6 +91,10 @@ const STORAGE_ROW_TYPES = new Set([
  * Regenerate this list from the harness checkout when it changes (0.1.5-rc.1
  * added `deliverables/presented` and `subagent/catalog`; `0.1.7-alpha.1` added
  * `developer/message`, `image/offload` and `workspace/changes`).
+ * Re-verified against the `0.1.7-alpha.2` catalog on 2026-09-23: this set holds
+ * all 59 of the host's entries plus exactly the three v1/v2-only spellings
+ * above, so `0.1.7-alpha.2` added nothing to collect and the extra three are
+ * deliberate (they are READ to classify old logs, never written).
  */
 const KNOWN_SESSION_EVENT_TYPES = new Set([
   'agent-preset/selected',
