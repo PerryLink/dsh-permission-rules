@@ -517,7 +517,7 @@ All notable changes to dsh-permission-rules are recorded here, newest first.
 
 ## [Unreleased]
 
-## [0.7.9] - 2026-09-25
+## v0.7.9 - 2026-09-25
 
 ### Changed
 
