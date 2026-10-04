@@ -1,16 +1,18 @@
 /**
  * Host-capability degradation for the audit envelope's `ignorable` marker:
  * hosts whose `Session.append` predates the marker (the released rc.1–rc.7
- * lines) or ships the alpha.5 surface (the `0.1.2-rc` line and every
- * `0.1.N-alpha` line from `0.1.2` through `0.1.5`) write audit events
- * UNMARKED, which makes sessions unresumable on stricter harness builds. The
- * runtime must detect such hosts BEFORE the first append (peer
+ * lines) or ships the alpha.5 surface (the `0.1.2-rc` line, every
+ * `0.1.N-alpha` line from `0.1.2` through `0.1.5`, and every `0.2`
+ * prerelease — the `0.2.1-alpha.1` line the host pins moved to) write audit
+ * events UNMARKED, which makes sessions unresumable on stricter harness
+ * builds. The runtime must detect such hosts BEFORE the first append (peer
  * version) and re-check the first append's returned envelope, then disable
  * session-log audit with a one-time warning unless
- * `allowUnmarkedAudit: true` opts back in. The pinned `0.1.5-alpha.1` peers
- * cannot stamp the marker either, so the real-mount regression below
- * exercises the gate against the actual installed peer; the other lines are
- * simulated through the runtime's `peerVersion` seam.
+ * `allowUnmarkedAudit: true` opts back in. The pinned `0.2.1-alpha.1` peers
+ * cannot stamp the marker either — their `append` reads only
+ * `sourceEventSeqs`/`surfaceOp` and freezes the envelope — so the real-mount
+ * regression below exercises the gate against the actual installed peer; the
+ * other lines are simulated through the runtime's `peerVersion` seam.
  * @module dsh-permission-rules/test/audit-support.spec
  */
 
@@ -20,11 +22,18 @@ import { isUnmarkedHostVersion } from '../src/runtime.ts'
 import type { PermissionRulesRuntime } from '../src/runtime.ts'
 import { dispatchPreExecute, makeExec, mountHarness, removeWorkspace, tempWorkspace } from './harness.ts'
 
-/** Version-line classification for the known-unmarked rc.1–rc.7 peers of the 0.1.0 and 0.1.1 lines, every rc build in minor 2+, every alpha build in minor 2+ (the read-path-refusing 0.1.2-alpha line through the non-stamping 0.1.5-alpha line), and nothing else. */
+/** Version-line classification for the known-unmarked rc.1–rc.7 peers of the 0.1.0 and 0.1.1 lines, every rc build in minor 2+, every alpha build in minor 2+ (the read-path-refusing 0.1.2-alpha line through the non-stamping 0.1.5-alpha line), and every 0.2 PRERELEASE (the `0.2.1-alpha.1` host line, whose `append` reads only `sourceEventSeqs`/`surfaceOp` and can therefore never stamp `ignorable` either), and nothing else. */
 describe('isUnmarkedHostVersion', () => {
-  it('flags the 0.1.0/0.1.1 rc.1–rc.7 lines, later rc minors, and every alpha line from 0.1.2 through 0.1.5, and nothing else', () => {
+  it('flags the 0.1.0/0.1.1 rc.1–rc.7 lines, later rc minors, every alpha line from 0.1.2 through 0.1.5, and nothing else', () => {
     for (const version of ['0.1.0-rc.1', '0.1.0-rc.6', '0.1.0-rc.7', '0.1.1-rc.1', '0.1.1-rc.2', '0.1.1-rc.7', '0.1.2-rc.1', '0.1.2-rc.2', '0.1.3-rc.1', '0.1.10-rc.1', '0.1.2-alpha-1', '0.1.2-alpha.1', '0.1.2-alpha.2', '0.1.3-alpha.1', '0.1.3-alpha.2', '0.1.4-alpha.1', '0.1.5-alpha.1', '0.1.5-alpha.2', '0.1.10-alpha.1']) expect(isUnmarkedHostVersion(version)).toBe(true)
-    for (const version of ['0.1.0-rc.8', '0.1.0-rc.10', '0.1.1-rc.8', '0.1.1-rc.10', '0.1.0', '0.2.0', '0.1.0-rc.6-pre', '0.1.2-alpha', '0.1.2-beta.1', '0.1.2', '0.1.3-alpha', '0.1.3-beta.1', '0.1.3', '0.1.4-alpha', '0.1.4', '0.1.5', '0.1.5-alpha', 'garbage']) expect(isUnmarkedHostVersion(version)).toBe(false)
+    // The 0.2 prereleases are unmarked for the same structural reason as the
+    // alpha.5 surface: `append(type, data, ...opts)` keeps only
+    // `opts[0].sourceEventSeqs`/`opts[0].surfaceOp` and freezes the envelope,
+    // so there is no code path that could stamp `ignorable`. Verified on the
+    // installed `0.2.1-alpha.1` peer; the STABLE 0.2.x releases stay out of
+    // this branch on purpose (the append probe settles them).
+    for (const version of ['0.2.0-alpha.1', '0.2.0-rc.1', '0.2.1-alpha.1', '0.2.1-alpha.2', '0.2.1-rc.1', '0.2.10-alpha.1']) expect(isUnmarkedHostVersion(version)).toBe(true)
+    for (const version of ['0.1.0-rc.8', '0.1.0-rc.10', '0.1.1-rc.8', '0.1.1-rc.10', '0.1.0', '0.2.0', '0.2.1', '0.3.0-alpha.1', '0.1.0-rc.6-pre', '0.1.2-alpha', '0.1.2-beta.1', '0.1.2', '0.1.3-alpha', '0.1.3-beta.1', '0.1.3', '0.1.4-alpha', '0.1.4', '0.1.5', '0.1.5-alpha', '0.2.1-alpha', '0.2.1-beta.1', 'garbage']) expect(isUnmarkedHostVersion(version)).toBe(false)
   })
 })
 
@@ -80,13 +89,14 @@ describe('audit host-capability degradation', () => {
     }
   })
 
-  it('the installed unmarked peer (0.1.5-alpha.1) writes NO audit row: the version pre-check fires before the first append', async () => {
+  it('the installed unmarked peer (0.2.1-alpha.1) writes NO audit row: the version pre-check fires before the first append', async () => {
     const cwd = tempWorkspace()
     // No peerVersion mock — this is the real pinned peer, whose
-    // Session.append accepts the third argument and silently drops it (the
-    // returned envelope carries no `ignorable`). That is exactly the host the
-    // pre-check must classify as unmarked, or the first decision would land
-    // an unmarked row and make the session unresumable.
+    // Session.append accepts the third argument and silently drops it (its
+    // only reads are `sourceEventSeqs`/`surfaceOp`, and the returned envelope
+    // carries no `ignorable`). That is exactly the host the pre-check must
+    // classify as unmarked, or the first decision would land an unmarked row
+    // and make the session unresumable.
     const harness = await mountHarness({ allowUnmarkedAudit: false }, { cwd })
     const runtime = harness.ctx.get('permissionRulesRuntime') as PermissionRulesRuntime
     const peer = (runtime as unknown as { peerVersion(): string | null }).peerVersion()

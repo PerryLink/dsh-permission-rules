@@ -23,7 +23,10 @@
  * predates the marker (the `0.1.0-rc.6` line) or keeps the later
  * surface-only signature (the `0.1.2-rc`, `0.1.3-alpha` and `0.1.5-alpha`
  * lines — verified on the published `0.1.5-alpha.1` package, whose envelope
- * field survives for stored-log reads only) silently DROP the options bag:
+ * field survives for stored-log reads only — and every `0.2` prerelease,
+ * verified on the published `0.2.1-alpha.1` package, whose `append` reads
+ * only `sourceEventSeqs`/`surfaceOp` and freezes the envelope) silently
+ * DROP the options bag:
  * the event then lands UNMARKED and makes the session unresumable on hosts
  * with required-on-read semantics (`SessionFormatUnsupportedError`).
  * The runtime detects this at first use (peer version pre-check plus a
@@ -135,7 +138,8 @@ export interface AuditNetworkBlock {
  * exists only on host builds that expose the `ignorable` envelope-marker
  * surface (post-rc.6 `@deepseek-ai/dsh-session`); an rc.6 host — and, since
  * the alpha.5 surface, every `0.1.2-rc`, `0.1.3-alpha` and `0.1.5-alpha`
- * build — accepts the call but silently drops the third argument: the event
+ * build, plus every `0.2` prerelease — accepts the call but silently drops
+ * the third argument: the event
  * is appended WITHOUT the marker, which is exactly what breaks later resume
  * on stricter hosts. The runtime treats the marker as optional-but-probed:
  * see {@link isMarkedAuditEvent}.

@@ -1721,18 +1721,38 @@ export async function apply(ctx: Context, config: LiveConfig): Promise<void> {
  *   every alpha build in minor 2 and later (`0.1.2-alpha` through
  *   `0.1.5-alpha` and any later line: the marker surface was reintroduced
  *   for stored-log reads, never for `Session.append`).
+ * - Every PRERELEASE of the `0.2` line is treated as unmarked as well
+ *   (verified on the published `0.2.1-alpha.1` package, the line the host
+ *   pins moved to): its `append(type, data, ...opts)` reads ONLY
+ *   `opts[0].sourceEventSeqs` and `opts[0].surfaceOp` and freezes the
+ *   envelope to `{ type, seq, time, data, ...surfaceMetadata }`, so like the
+ *   alpha.5 surface it has no code path that can stamp `ignorable` at all.
+ *   Classifying it as possibly-marker-aware is what let the first decision
+ *   land an unmarked row (this repo's suite caught it on the real installed
+ *   peer). The rest of the line follows `0.1`: `0.2.x-alpha.*` and
+ *   `0.2.x-rc.*` are marked unsafe, while a `0.2.0`/`0.2.1` STABLE release
+ *   and every `0.3`+ prerelease stay classified as possibly-marker-aware and
+ *   are settled by the append probe, so a restored marker surface is adopted
+ *   without a new release here.
  *   Non-matching (later stable or unresolvable) versions are treated as
  *   possibly-marker-aware and verified by the append probe.
  * @param version - the installed peer version string.
  * @returns true for the known-unsafe rc.1–rc.7 lines of `0.1.0` and
- *   `0.1.1`, every rc build in minor 2 and later, and every alpha build in
- *   minor 2 and later (`0.1.2-alpha` through `0.1.5-alpha`).
+ *   `0.1.1`, every rc and alpha build in minor 2 and later (`0.1.2-alpha`
+ *   through `0.1.5-alpha`), and every `0.2` prerelease (the
+ *   `0.2.1-alpha.1` line the host pins moved to).
  */
 export function isUnmarkedHostVersion(version: string): boolean {
   const v = version.trim()
   const rc = /^0\.1\.([0-9]+)-rc\.(\d+)$/.exec(v)
   if (rc !== null) return Number(rc[1]) >= 2 || Number(rc[2]) <= 7
-  return /^0\.1\.(?:[2-9]|[1-9]\d)-alpha[.-]\d+$/.test(v)
+  if (/^0\.1\.(?:[2-9]|[1-9]\d)-alpha[.-]\d+$/.test(v)) return true
+  // The 0.2 line: `append` reads only `sourceEventSeqs`/`surfaceOp` and freezes
+  // the envelope, so no prerelease of it can stamp `ignorable` either. The
+  // STABLE `0.2.x` release stays out of this branch deliberately — it is
+  // settled by the append probe, so a restored marker surface is adopted
+  // without a new release here.
+  return /^0\.2\.[0-9]+-(?:alpha|rc)[.-]\d+$/.test(v)
 }
 
 /**
