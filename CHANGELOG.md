@@ -517,6 +517,14 @@ All notable changes to dsh-permission-rules are recorded here, newest first.
 
 ## [Unreleased]
 
+### Fixed
+
+- Every `0.2` PRERELEASE is now classified as an unmarked-audit host, so the audit gate fires BEFORE the first append on the `0.2.1-alpha.1` line the host pins moved to. `Session.append` on that line reads only `opts[0].sourceEventSeqs` and `opts[0].surfaceOp` and freezes the envelope to `{ type, seq, time, data, ...surfaceMetadata }`, so — exactly like the alpha.5 surface — it has no code path that could stamp `ignorable`; `isUnmarkedHostVersion()` returned false for it, which classified the line as possibly-marker-aware and let the append probe write one unmarked audit row into the session log before any degradation could be detected (each unmarked row is what makes a session unresumable on stricter builds). The classifier now marks `0.2.x-alpha.*`/`0.2.x-rc.*` unsafe alongside the `0.1` rc/alpha lines; a STABLE `0.2.x` release and every `0.3`+ prerelease stay classified as possibly-marker-aware and are still settled by the append probe, so a restored marker surface is adopted without a new plugin release. Caught by `test/audit-support.spec.ts` against the real installed peer; the version table there gains the `0.2` prerelease rows and `0.2.0`/`0.2.1`/`0.3.0-alpha.1` non-matches.
+
+### Changed
+
+- Host pins move to `0.2.1-alpha.1`; re-verified against that host line. Every `@deepseek-ai/dsh-*` dev/test dependency now pins `0.2.1-alpha.1`, the `dshWorkshop.compatibility.dshVersions` timeline appends `0.2.1-alpha.1`, and the compatibility baseline in every README records the `dsh-v0.2.1-alpha.1` host. The declared host ranges (`engines.dsh` and the `peerDependencies` union) gain the `|| >=0.2.0-0 <0.3.0 || >=0.2.1-0 <0.3.0` clauses: the previous upper bound was `<0.2.0`, which under semver rejects every 0.2.x host, so the probe host itself was not installable. Nothing was narrowed — the `0.1.x` clauses are unchanged, in place and in order.
+
 ## v0.7.9 - 2026-09-25
 
 ### Changed
