@@ -32,7 +32,14 @@ jobs:
 
       - name: Verify the changelog names this version
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          # A tag push names the version in the ref; a workflow_dispatch run on a
+          # branch does not (GITHUB_REF_NAME would be the branch), so fall back to
+          # package.json there.
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="$(node -p "require('./package.json').version")"
+          fi
           grep -q "## v${VERSION}" CHANGELOG.md || { echo "CHANGELOG.md has no '## v${VERSION}' section"; exit 1; }
 
       - name: Build and pack
