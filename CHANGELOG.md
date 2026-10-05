@@ -1,3 +1,10 @@
+## v0.7.14 - 2026-10-05
+
+### Changed
+
+- Correct the release date in the previous section, which was stamped with the literal string `undefined` by the release stamper. No content or behaviour change; the version is bumped only because npm will not republish an existing version.
+
+
 ## v0.7.13 - 2026-10-05
 
 ### Changed
@@ -547,6 +554,10 @@ Adds the versioned five-language **interoperability declaration** to the READMEs
 ### Changed
 
 - Host pins move to `0.1.7-rc.2`; re-verified against that host line. Every `@deepseek-ai/dsh-*` dev/test dependency now pins `0.1.7-rc.2`, the `dshWorkshop.compatibility.dshVersions` timeline appends `0.1.7-rc.2`, and the compatibility baseline in every README records the `dsh-v0.1.7-rc.2` host. The declared host ranges (`engines.dsh` and the `peerDependencies` union) are deliberately **unchanged** — they already admit `0.1.7-rc.2`, and a range is what the manifest accepts, not what has been tested.
+
+## [0.7.14] - undefined
+
+undefined
 
 ## [0.6.13] - 2026-09-09
 
