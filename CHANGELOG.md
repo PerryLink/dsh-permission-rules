@@ -515,9 +515,7 @@ All notable changes to dsh-permission-rules are recorded here, newest first.
 - Rename the four translated READMEs to `README-<lang>.md`. npm selects the package-page readme as the first markdown file matching its `{README,README.*}` glob (`@npmcli/package-json`, publish path), and that glob order puts `README.<lang>.md` ahead of `README.md` — so npm was serving the Simplified-Chinese file for this package too (measured on 15/15 sampled packages of the family). The new names sit outside the glob, so the English source is served again. No content changed apart from the language-switcher link each translation holds to its siblings, and the repo readme gate still passes. Takes effect with the next release; an already-published version cannot gain a corrected readme retroactively.
 - Pin the `@deepseek-ai/dsh-*` dev/test dependencies to the published `0.1.5-rc.2` line and record `0.1.5-rc.2` in `dshWorkshop.compatibility.dshVersions`; the monthly Compat workflow now runs against `0.1.5-rc.2`. The peer range `>=0.1.2-rc.1 <0.2.0 || >=0.1.5-alpha.1 <0.2.0` is unchanged, so no supported host line is dropped.
 
-## [Unreleased]
-
-## [0.7.12] - 2026-10-05
+## v0.7.12 - 2026-10-05
 
 Adds the versioned five-language **interoperability declaration** to the READMEs: the plugin records, against DSH `0.2.0-rc.2`, every injection point it owns and why none of them collide with another plugin — no tool-name, service-key, slot, HTTP-route, patch-layer or global-mutation overlap, and, for each ordering-sensitive event it listens on, that the listener delegates through `next()` so a shared waterfall chain is never short-circuited. Verified by `dsh-plugin-doctor` K10-K14 (checkset `R0-R8+K1-K14+D0-D3,D9+CC1-CC5/3`). Documentation only; no behaviour change.
 
