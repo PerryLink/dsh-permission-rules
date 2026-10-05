@@ -523,7 +523,7 @@ export class PermissionRulesRuntime {
     if (this.auditSupport === 'unsupported') return
     if (this.auditSupport === 'unknown' && !this.config.allowUnmarkedAudit) {
       const version = this.peerVersion()
-      if (version !== null && isUnmarkedHostVersion(version)) {
+      if (version === null || isUnmarkedHostVersion(version)) {
         this.auditSupport = 'unsupported'
         this.warnUnmarkedAuditHost()
         return
@@ -705,7 +705,7 @@ export class PermissionRulesRuntime {
     if (agent === undefined || this.auditSupport === 'unsupported') return
     if (this.auditSupport === 'unknown' && !this.config.allowUnmarkedAudit) {
       const version = this.peerVersion()
-      if (version !== null && isUnmarkedHostVersion(version)) {
+      if (version === null || isUnmarkedHostVersion(version)) {
         this.auditSupport = 'unsupported'
         this.warnUnmarkedAuditHost()
         return

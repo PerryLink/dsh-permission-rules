@@ -517,6 +517,13 @@ All notable changes to dsh-permission-rules are recorded here, newest first.
 
 ## [Unreleased]
 
+## v0.7.11 - 2026-10-05
+
+### Fixed
+
+- An unreadable peer version now fails closed. `peerVersion()` resolves the pinned peer's `package.json` through `createRequire`; inside a profile install that lookup throws `MODULE_NOT_FOUND`, so the runtime saw `null` and the guard `version !== null && isUnmarkedHostVersion(version)` skipped the unmarked-host check entirely. Every process start then landed one unmarked audit row, and each unmarked row is what makes a session unresumable on stricter harness builds. Both call sites -- the decision path and `auditNetworkBlock` -- now read `version === null || isUnmarkedHostVersion(version)`, matching the sibling defend and auto-review plugins, and `test/audit-support.spec.ts` gains the null-version case it was missing (the sibling auto-review spec has one; this repo and defend did not).
+- Residual, by design: a STABLE `0.2.x` host is still classified as possibly-marker-aware, so the append probe still runs once there -- a restored marker surface is adopted without a new plugin release.
+
 ## v0.7.10 - 2026-10-04
 
 ### Fixed

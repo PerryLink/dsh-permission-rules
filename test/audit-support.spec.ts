@@ -75,6 +75,33 @@ describe('audit host-capability degradation', () => {
     }
   })
 
+  it('an unreadable peer version (profile install) fails closed: no audit row, one warning', async () => {
+    const cwd = tempWorkspace()
+    // peerVersion() resolves the pinned peer's package.json through
+    // createRequire; inside a profile install that lookup throws
+    // MODULE_NOT_FOUND, so the runtime sees null. A null version must count as
+    // "could be unmarked" rather than "assume marker-aware": assuming the
+    // latter lands one unmarked row per process start, and every unmarked row
+    // is what makes a session unresumable on stricter harness builds.
+    const harness = await mountHarness({ allowUnmarkedAudit: false }, { cwd })
+    const runtime = harness.ctx.get('permissionRulesRuntime') as PermissionRulesRuntime
+    const warn = vi.spyOn(harness.ctx.logger, 'warn').mockImplementation(() => undefined)
+    const versionSpy = vi.spyOn(runtime as unknown as { peerVersion(): string | null }, 'peerVersion').mockReturnValue(null)
+    try {
+      await dispatchPreExecute(harness.ctx, makeExec({ name: 'bash', arguments: {}, agent: harness.agent }))
+      await dispatchPreExecute(harness.ctx, makeExec({ name: 'glob', arguments: {}, agent: harness.agent }))
+      // No audit event ever entered the session log.
+      expect(harness.session.snapshotEvents().filter(event => event.type === 'permissionRules/decision')).toHaveLength(0)
+      // The warning fired exactly once and explains the degradation.
+      const unmarkedWarnings = warn.mock.calls.filter(([message]) => String(message).includes('ignorable'))
+      expect(unmarkedWarnings).toHaveLength(1)
+    } finally {
+      versionSpy.mockRestore()
+      warn.mockRestore()
+      removeWorkspace(cwd)
+    }
+  })
+
   it('allowUnmarkedAudit: true keeps appending on unmarked hosts without a warning', async () => {
     const cwd = tempWorkspace()
     const harness = await mountHarness({ allowUnmarkedAudit: true }, { cwd })
