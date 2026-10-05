@@ -3,6 +3,10 @@ name: Release
 on:
   push:
     tags: ['v*']
+  # Re-run a release after repairing a credential or the changelog, without
+  # inventing a new version. A version already on the registry is skipped rather
+  # than republished, so this is safe to press.
+  workflow_dispatch:
 
 permissions:
   contents: write
