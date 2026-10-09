@@ -34,6 +34,14 @@ Este plugin faz parte da [família de plugins DSH](https://github.com/PerryLink)
 
 *English:* part of a 40+ plugin family for DeepSeek Harness. If it is useful, **a star helps the next person find it** — nothing is gated behind it.
 
+## What is dsh-permission-rules?
+
+Regras de permissão declarativas estilo Claude Code para o DeepSeek Harness.
+
+Regras decidem o conhecido. Um modelo revisor decide o que não é.
+
+![Demonstração de terminal do dsh-permission-rules: dsh-permission-rules — deny/ask rules in one YAML file](https://raw.githubusercontent.com/PerryLink/dsh-permission-rules/main/docs/assets/dsh-permission-rules-demo.png)
+
 ## Compatibility
 
 | Surface | Status |
@@ -97,8 +105,12 @@ Uma **política de rede em nível de processo** estilo Codex: o tráfego de subp
 ## Quick start
 
 ```sh
+dsh plugin --profile web add github:PerryLink/dsh-permission-rules
+```
+
+```sh
 # 1. install the bundle into your profile
-dsh plugin --profile web add "github:PerryLink/dsh-permission-rules#main"
+dsh plugin --profile web add github:PerryLink/dsh-permission-rules
 
 # or from npm (published releases)
 dsh plugin --profile web add dsh-permission-rules
@@ -109,7 +121,7 @@ dsh --profile web --dump-config | grep -A4 'id: permission-rules'
 
 ## Install & uninstall
 
-- **canal git** (último `main`): `dsh plugin --profile web add "github:PerryLink/dsh-permission-rules#main"` — o script `prepare` compila apenas com dependências de produção.
+- **canal git** (último `main`): `dsh plugin --profile web add github:PerryLink/dsh-permission-rules` — o script `prepare` compila apenas com dependências de produção.
 - **canal npm** (versões publicadas): `dsh plugin --profile web add dsh-permission-rules`.
 - **canal tarball**: `pnpm pack` neste repo, depois `dsh plugin --profile web add ./dsh-permission-rules-<version>.tgz`.
 - **desinstalar**: `dsh plugin --profile web remove dsh-permission-rules`.

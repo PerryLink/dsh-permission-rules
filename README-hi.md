@@ -34,6 +34,14 @@
 
 *English:* part of a 40+ plugin family for DeepSeek Harness. If it is useful, **a star helps the next person find it** — nothing is gated behind it.
 
+## What is dsh-permission-rules?
+
+DeepSeek Harness के लिए Claude Code-शैली की घोषणात्मक अनुमति नियम।
+
+नियम ज्ञात को तय करते हैं। एक समीक्षक मॉडल अज्ञात को तय करता है।
+
+![dsh-permission-rules का टर्मिनल डेमो: dsh-permission-rules — deny/ask rules in one YAML file](https://raw.githubusercontent.com/PerryLink/dsh-permission-rules/main/docs/assets/dsh-permission-rules-demo.png)
+
 ## Compatibility
 
 | Surface | Status |
@@ -97,8 +105,12 @@ Codex-शैली की **प्रक्रिया-स्तरीय न�
 ## Quick start
 
 ```sh
+dsh plugin --profile web add github:PerryLink/dsh-permission-rules
+```
+
+```sh
 # 1. install the bundle into your profile
-dsh plugin --profile web add "github:PerryLink/dsh-permission-rules#main"
+dsh plugin --profile web add github:PerryLink/dsh-permission-rules
 
 # or from npm (published releases)
 dsh plugin --profile web add dsh-permission-rules
@@ -109,7 +121,7 @@ dsh --profile web --dump-config | grep -A4 'id: permission-rules'
 
 ## Install & uninstall
 
-- **git चैनल** (नवीनतम `main`): `dsh plugin --profile web add "github:PerryLink/dsh-permission-rules#main"` — `prepare` स्क्रिप्ट केवल उत्पादन निर्भरताओं से बनाती है।
+- **git चैनल** (नवीनतम `main`): `dsh plugin --profile web add github:PerryLink/dsh-permission-rules` — `prepare` स्क्रिप्ट केवल उत्पादन निर्भरताओं से बनाती है।
 - **npm चैनल** (प्रकाशित रिलीज़): `dsh plugin --profile web add dsh-permission-rules`.
 - **tarball चैनल**: इस रेपो में `pnpm pack`, फिर `dsh plugin --profile web add ./dsh-permission-rules-<version>.tgz`.
 - **uninstall**: `dsh plugin --profile web remove dsh-permission-rules`.
