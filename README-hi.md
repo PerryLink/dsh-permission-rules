@@ -42,6 +42,10 @@ DeepSeek Harness के लिए Claude Code-शैली की घोषण�
 
 ![dsh-permission-rules का टर्मिनल डेमो: dsh-permission-rules — deny/ask rules in one YAML file](https://raw.githubusercontent.com/PerryLink/dsh-permission-rules/main/docs/assets/dsh-permission-rules-demo.png)
 
+![Animated terminal demo of dsh-permission-rules](https://raw.githubusercontent.com/PerryLink/dsh-permission-rules/main/docs/assets/dsh-permission-rules-demo.gif)
+
+*वही रन, एनिमेटेड।*
+
 ## Compatibility
 
 | Surface | Status |

@@ -42,6 +42,10 @@ Regras decidem o conhecido. Um modelo revisor decide o que não é.
 
 ![Demonstração de terminal do dsh-permission-rules: dsh-permission-rules — deny/ask rules in one YAML file](https://raw.githubusercontent.com/PerryLink/dsh-permission-rules/main/docs/assets/dsh-permission-rules-demo.png)
 
+![Animated terminal demo of dsh-permission-rules](https://raw.githubusercontent.com/PerryLink/dsh-permission-rules/main/docs/assets/dsh-permission-rules-demo.gif)
+
+*A mesma execução, animada.*
+
 ## Compatibility
 
 | Surface | Status |
