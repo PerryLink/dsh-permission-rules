@@ -21,6 +21,11 @@
 
 [English](README.md) · [简体中文](README-zh.md) · [Español](README-es.md) · [Português](README-pt.md) · [हिन्दी](README-hi.md)
 
+```sh
+dsh plugin --profile <name> add dsh-permission-rules
+```
+
+
 </div>
 
 ---
@@ -28,6 +33,13 @@
 **📖 इकोसिस्टम नॉलेज बेस** — मापे गए आँकड़े, मार्केटिंग नहीं: [डेवलपमेंट गाइड · चयन डेटा · रखरखाव मानदंड](https://perrylink.github.io/dsh-plugin-guide/)।
 
 <!-- star-cta -->
+## Install & uninstall
+
+- **git चैनल** (नवीनतम `main`): `dsh plugin --profile web add github:PerryLink/dsh-permission-rules` — `prepare` स्क्रिप्ट केवल उत्पादन निर्भरताओं से बनाती है।
+- **npm चैनल** (प्रकाशित रिलीज़): `dsh plugin --profile web add dsh-permission-rules`.
+- **tarball चैनल**: इस रेपो में `pnpm pack`, फिर `dsh plugin --profile web add ./dsh-permission-rules-<version>.tgz`.
+- **uninstall**: `dsh plugin --profile web remove dsh-permission-rules`.
+
 ## ⭐ 如果它帮到了你
 
 यह प्लगइन [DSH प्लगइन परिवार](https://github.com/PerryLink) का हिस्सा है (40+ प्लगइन, सभी Apache-2.0)। अगर यह उपयोगी लगे, तो **एक स्टार दें** — इससे कोई सुविधा अनलॉक नहीं होती, पर अगला व्यक्ति इसे खोज में आसानी से पा लेता है।
@@ -122,13 +134,6 @@ dsh plugin --profile web add dsh-permission-rules
 # 2. restart and verify the row
 dsh --profile web --dump-config | grep -A4 'id: permission-rules'
 ```
-
-## Install & uninstall
-
-- **git चैनल** (नवीनतम `main`): `dsh plugin --profile web add github:PerryLink/dsh-permission-rules` — `prepare` स्क्रिप्ट केवल उत्पादन निर्भरताओं से बनाती है।
-- **npm चैनल** (प्रकाशित रिलीज़): `dsh plugin --profile web add dsh-permission-rules`.
-- **tarball चैनल**: इस रेपो में `pnpm pack`, फिर `dsh plugin --profile web add ./dsh-permission-rules-<version>.tgz`.
-- **uninstall**: `dsh plugin --profile web remove dsh-permission-rules`.
 
 ## Configuration
 

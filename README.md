@@ -22,6 +22,11 @@
 
 [English](README.md) · [简体中文](README-zh.md) · [Español](README-es.md) · [Português](README-pt.md) · [हिन्दी](README-hi.md)
 
+```sh
+dsh plugin --profile <name> add dsh-permission-rules
+```
+
+
 </div>
 
 ---
@@ -29,6 +34,13 @@
 **📖 Ecosystem knowledge base** — measured data, not marketing: [plugin development guide · plugin-selection data · maintenance criteria](https://perrylink.github.io/dsh-plugin-guide/).
 
 <!-- star-cta -->
+## Install & uninstall
+
+- **git channel** (latest `main`): `dsh plugin --profile web add github:PerryLink/dsh-permission-rules` — the `prepare` script builds with production dependencies only.
+- **npm channel** (published releases): `dsh plugin --profile web add dsh-permission-rules`.
+- **tarball channel**: `pnpm pack` in this repo, then `dsh plugin --profile web add ./dsh-permission-rules-<version>.tgz`.
+- **uninstall**: `dsh plugin --profile web remove dsh-permission-rules`.
+
 ## ⭐ 如果它帮到了你
 
 这个插件是 [DSH 插件家族](https://github.com/PerryLink)的一员（40+ 个，全部 Apache-2.0）。如果你在用，**给个 star** —— 它不会解锁任何功能，但会让下一个人在搜索里更容易找到它。
@@ -124,13 +136,6 @@ dsh plugin --profile web add dsh-permission-rules
 # 2. restart and verify the row
 dsh --profile web --dump-config | grep -A4 'id: permission-rules'
 ```
-
-## Install & uninstall
-
-- **git channel** (latest `main`): `dsh plugin --profile web add github:PerryLink/dsh-permission-rules` — the `prepare` script builds with production dependencies only.
-- **npm channel** (published releases): `dsh plugin --profile web add dsh-permission-rules`.
-- **tarball channel**: `pnpm pack` in this repo, then `dsh plugin --profile web add ./dsh-permission-rules-<version>.tgz`.
-- **uninstall**: `dsh plugin --profile web remove dsh-permission-rules`.
 
 ## Configuration
 
