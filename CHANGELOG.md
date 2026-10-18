@@ -1,3 +1,9 @@
+## v0.7.19 - 2026-10-18
+
+### Changed
+
+- Build tools (`tsdown`, `typescript`) and `@types/react` moved to devDependencies; runtime install no longer carries the build chain.
+
 ## v0.7.18 - 2026-10-18
 
 ### Changed
