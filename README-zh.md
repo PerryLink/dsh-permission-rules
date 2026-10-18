@@ -395,7 +395,9 @@ node scripts/check-readme-sync.mjs   # five-language README sync gate (also in C
 
 </details>
 
-</details>## License
+</details>
+
+## License
 
 [Apache License 2.0](LICENSE) © 2026 dsh-permission-rules contributors
 
