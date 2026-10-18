@@ -1,3 +1,9 @@
+## v0.7.20 - 2026-10-18
+
+### Fixed
+
+- 0.7.19 could not be approved from the stage-only workflow; this patch is the same dependency change, published directly from a clean tree.
+
 ## v0.7.19 - 2026-10-18
 
 ### Changed
