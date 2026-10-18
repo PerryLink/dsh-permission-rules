@@ -1,3 +1,9 @@
+## v0.7.18 - 2026-10-18
+
+### Changed
+
+- Compatibility: devDependencies to `0.2.1-rc.2`; add `@deepseek-ai/dsh-working-directory`; `dshVersions` includes `0.2.1-rc.2`; test harness drops the removed `localAgent` field.
+
 ## v0.7.15 - 2026-10-10
 
 ### Changed
