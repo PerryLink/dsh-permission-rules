@@ -40,7 +40,7 @@ Regras de permissão declarativas estilo Claude Code para o DeepSeek Harness.
 
 Regras decidem o conhecido. Um modelo revisor decide o que não é.
 
-![Demonstração de terminal do dsh-permission-rules: dsh-permission-rules — deny/ask rules in one YAML file](https://raw.githubusercontent.com/PerryLink/dsh-permission-rules/main/docs/assets/dsh-permission-rules-demo.png)
+![Demonstração de terminal do dsh-permission-rules: dsh-permission-rules — deny/ask rules in one YAML file](https://raw.githubusercontent.com/PerryLink/dsh-permission-rules/main/docs/assets/dsh-permission-rules-hero.png)
 
 ![Animated terminal demo of dsh-permission-rules](https://raw.githubusercontent.com/PerryLink/dsh-permission-rules/main/docs/assets/dsh-permission-rules-demo.gif)
 

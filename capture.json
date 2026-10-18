@@ -1,0 +1,16 @@
+{
+  "schema": "dsh-capture/v1",
+  "repository": "dsh-permission-rules",
+  "storyboard": [
+    "$ pnpm run build"
+  ],
+  "commands": [
+    "pnpm run build"
+  ],
+  "renderer": "plugins/_archive/growth/2026-10-17/asset-tools/render.mjs",
+  "size": {
+    "hero": "1280x720",
+    "gif": "960x540",
+    "gifSeconds": 4
+  }
+}

@@ -88,6 +88,8 @@ export interface PermissionRulesSnapshot {
    * (`network.allowHostAction`); false hides the button.
    */
   allowHostAction: boolean
+  /** Whether session-log audit can append on this host line. */
+  auditSupport?: 'unknown' | 'supported' | 'unsupported'
 }
 
 /** Strict wire schema for {@link PermissionRulesSnapshot}. */
@@ -121,6 +123,7 @@ export const PERMISSION_RULES_SNAPSHOT_SCHEMA = z.object({
     cwd: z.string().nullable(),
   })),
   allowHostAction: z.boolean(),
+  auditSupport: z.union([z.literal('unknown'), z.literal('supported'), z.literal('unsupported')]).optional(),
   upstream: z.object({
     mode: z.union([z.literal('off'), z.literal('inherit'), z.literal('url')]),
     http: z.string().nullable(),

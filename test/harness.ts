@@ -94,7 +94,6 @@ export function makeSubagents(script: () => ScriptedReview): MockSubagents {
       const behavior = script()
       return {
         id: SessionId('reviewer-session'),
-        localAgent: undefined,
         result: Promise.resolve({
           output: [],
           structured: behavior,

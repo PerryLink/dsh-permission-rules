@@ -286,6 +286,24 @@
 
 # Changelog
 
+## [0.7.18] - 2026-10-18
+
+### Changed
+
+- Compatibility: devDependencies to `0.2.1-rc.2`; add `@deepseek-ai/dsh-working-directory`; `dshVersions` includes `0.2.1-rc.2`; test harness drops the removed `localAgent` field from `SubagentRun`.
+
+## [0.7.17] - 2026-10-18
+
+### Changed
+
+- Add a 1280×720 hero and a 960×540, 4-second terminal GIF rendered from the build output; `screenshots.json` and `capture.json` describe it.
+
+## [0.7.16] - 2026-10-18
+
+### Added
+
+- **The settings page states when session-log audit is disabled.** `permissionRules/networkStatus` now carries `auditSupport`; an unsupported host line renders a red status line instead of leaving `/rules decisions` empty without explanation (C3).
+
 All notable changes to dsh-permission-rules are recorded here, newest first.
 
 ## v0.6.6 - 2026-09-02

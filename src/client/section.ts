@@ -183,6 +183,9 @@ export function PermissionRulesSection({ close, t, ...injected }: PermissionRule
     children.push(React.createElement('div', { key: 'counters', style: ROW },
       React.createElement('span', { style: LABEL }, t('counters')),
       React.createElement('span', { style: VALUE }, `${snapshot.denied} ${t('denied')} · ${snapshot.askBlocked} ${t('askBlocked')}`)))
+    if (snapshot.auditSupport === 'unsupported') {
+      children.push(React.createElement('div', { key: 'audit-disabled', style: NOTICE_ERR }, t('auditDisabled')))
+    }
   }
 
   // Recent blocks.

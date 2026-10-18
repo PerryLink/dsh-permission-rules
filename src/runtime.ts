@@ -903,6 +903,7 @@ export class PermissionRulesRuntime {
     }
     /** Whether the settings page may offer the per-block allow action. */
     readonly allowHostAction: boolean
+    readonly auditSupport?: 'unknown' | 'supported' | 'unsupported'
   } {
     const cfg = this.config.network
     const { mode, sandboxMode } = this.resolveNetworkMode()
@@ -920,6 +921,7 @@ export class PermissionRulesRuntime {
       recent: proxy?.recentBlocks() ?? [],
       upstream: this.upstreamSnapshot(),
       allowHostAction: cfg.allowHostAction,
+      auditSupport: this.auditSupport,
     }
   }
 

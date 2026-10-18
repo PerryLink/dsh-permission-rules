@@ -20,6 +20,7 @@ export type PermissionRulesLocaleKey =
   | 'upstreamInactive'
   | 'upstreamChained'
   | 'counters'
+  | 'auditDisabled'
   | 'denied'
   | 'askBlocked'
   | 'recentTitle'
@@ -61,6 +62,7 @@ export const en: Record<PermissionRulesLocaleKey, string> = {
   upstreamInactive: 'inactive',
   upstreamChained: '{count} chained',
   counters: 'Blocks',
+  auditDisabled: 'Session-log audit is disabled on this host line (it cannot stamp the ignorable marker).',
   denied: 'denied',
   askBlocked: 'ask-blocked',
   recentTitle: 'Recent blocks',
@@ -103,6 +105,7 @@ export const zh: Record<PermissionRulesLocaleKey, string> = {
   upstreamInactive: '未生效',
   upstreamChained: '已链式 {count} 条',
   counters: '拦截',
+  auditDisabled: '本宿主线上会话日志审计已停用（无法打 ignorable 标记）。',
   denied: '拒绝',
   askBlocked: '待审批阻断',
   recentTitle: '近期拦截',

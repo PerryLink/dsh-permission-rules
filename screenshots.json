@@ -1,5 +1,14 @@
-{
-  "screenshots": [
-    "docs/assets/dsh-permission-rules-demo.png"
-  ]
-}
+[
+  {
+    "path": "docs/assets/dsh-permission-rules-hero.png",
+    "kind": "hero",
+    "alt": "dsh-permission-rules build output",
+    "caption": "Real dsh-permission-rules build."
+  },
+  {
+    "path": "docs/assets/dsh-permission-rules-demo.gif",
+    "kind": "demo",
+    "alt": "Animated dsh-permission-rules terminal session",
+    "caption": "The same run, assembled line by line."
+  }
+]

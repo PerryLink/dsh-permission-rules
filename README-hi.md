@@ -40,7 +40,7 @@ DeepSeek Harness के लिए Claude Code-शैली की घोषण�
 
 नियम ज्ञात को तय करते हैं। एक समीक्षक मॉडल अज्ञात को तय करता है।
 
-![dsh-permission-rules का टर्मिनल डेमो: dsh-permission-rules — deny/ask rules in one YAML file](https://raw.githubusercontent.com/PerryLink/dsh-permission-rules/main/docs/assets/dsh-permission-rules-demo.png)
+![dsh-permission-rules का टर्मिनल डेमो: dsh-permission-rules — deny/ask rules in one YAML file](https://raw.githubusercontent.com/PerryLink/dsh-permission-rules/main/docs/assets/dsh-permission-rules-hero.png)
 
 ![Animated terminal demo of dsh-permission-rules](https://raw.githubusercontent.com/PerryLink/dsh-permission-rules/main/docs/assets/dsh-permission-rules-demo.gif)
 
