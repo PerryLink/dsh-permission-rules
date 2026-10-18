@@ -1,6 +1,6 @@
 {
   "name": "dsh-permission-rules",
-  "version": "0.7.18",
+  "version": "0.7.19",
   "description": "Declarative Claude Code-style permission rules plus a Codex-style process-level network policy for DeepSeek Harness: ordered allow/deny/ask rules with tool-name, argument (glob/regex), workspace-path, and network-target (domain/ip/port/scheme) matching on the tools/pre-execute waterfall, a built-in local HTTP/CONNECT proxy governing shell subprocess traffic, three network modes mapped onto the official sandbox presets, full session-log audit, HMR rule reload, and a settings page with a rule editor, block counters, and recent interception lists.",
   "private": false,
   "type": "module",
@@ -156,10 +156,7 @@
     }
   },
   "dependencies": {
-    "@types/react": "18.3.31",
     "chokidar": "^5.0.0",
-    "tsdown": "^0.22.14",
-    "typescript": "^5.9.0",
     "yaml": "^2.8.0",
     "zod": "^4.4.3"
   },
@@ -196,7 +193,10 @@
     "react-dom": "18.3.1",
     "typescript-eslint": "^8.67.0",
     "vitest": "^3.2.0",
-    "@deepseek-ai/dsh-working-directory": "0.2.1-rc.2"
+    "@deepseek-ai/dsh-working-directory": "0.2.1-rc.2",
+    "tsdown": "^0.22.14",
+    "typescript": "^5.9.0",
+    "@types/react": "18.3.31"
   },
   "scripts": {
     "build": "node scripts/prepare.mjs",
