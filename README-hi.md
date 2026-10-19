@@ -288,7 +288,7 @@ node scripts/check-readme-sync.mjs   # five-language README sync gate (also in C
 - [@zl190](https://github.com/zl190) — `0.1.0-rc.7` harness संगतता अंतर की सूचना दी और उसे सत्यापित किया ([PR #9](https://github.com/PerryLink/dsh-permission-rules/pulls/9))।
 - [@cuohua](https://github.com/cuohua) — बताया कि संस्करण-जाँच केवल `0.1.0` को कवर करने के बावजूद `0.1.1-rc` पंक्ति अब भी `ignorable` मार्कर को चुपचाप छोड़ देती है ([#11](https://github.com/PerryLink/dsh-permission-rules/issues/11)); विस्तारित जाँच सीधे उसी विश्लेषण से बनी।
 
-## PerryLink DSH प्लगइन परिवार
+## PerryLink DSH Plugin Family
 
 यह प्रोजेक्ट [PerryLink](https://github.com/PerryLink) के DeepSeek Harness प्लगइन परिवार का हिस्सा है। पूरी सूची नीचे संक्षिप्त रखी गई है ताकि हर README की पहली स्क्रीन छोटी रहे; हर पंक्ति और उसकी स्थिति देखने के लिए इसे खोलें।
 

@@ -286,7 +286,7 @@ Evidencia estática: `dsh-plugin-doctor` K10–K13 dan `pass` en todas las compr
 - [@zl190](https://github.com/zl190) — informó y verificó la brecha de compatibilidad del harness `0.1.0-rc.7` ([PR #9](https://github.com/PerryLink/dsh-permission-rules/pulls/9)).
 - [@cuohua](https://github.com/cuohua) — informó de que la línea `0.1.1-rc` sigue descartando el marcador `ignorable` aunque la compuerta de versión solo cubría `0.1.0` ([#11](https://github.com/PerryLink/dsh-permission-rules/issues/11)); la compuerta ampliada surgió directamente de ese análisis.
 
-## Familia de plugins DSH de PerryLink
+## PerryLink DSH Plugin Family
 
 Este proyecto forma parte de la familia de plugins de DeepSeek Harness de [PerryLink](https://github.com/PerryLink). El registro permanece plegado abajo para que cada README conserve una primera pantalla corta; expándelo para ver cada fila y su estado.
 
