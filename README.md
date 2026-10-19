@@ -280,6 +280,8 @@ Static evidence: `dsh-plugin-doctor` K10–K13 report `pass` for every check on 
 
 ## Contributors
 
+- [@am-i-dead](https://github.com/am-i-dead) — split the client-safe allow-host helpers out of the host-only module (#24).
+
 - [@PerryLink](https://github.com/PerryLink) — creator and maintainer: rule vocabulary and evaluation, runtime, HMR watch, session-log audit, network policy + proxy, and the five-language docs.
 - [@22xuan](https://github.com/22xuan) — the detailed report on rc.6 hosts silently dropping the audit event's `ignorable` marker ([#2](https://github.com/PerryLink/dsh-permission-rules/issues/2)) and the upstream harness discussion; the v0.4.1 runtime host-capability detection and the documentation correction drew directly from that analysis.
 - [@sjh9714](https://github.com/sjh9714) — proposed the shared rule-syntax test-vector corpus ([#4](https://github.com/PerryLink/dsh-permission-rules/issues/4), [#5](https://github.com/PerryLink/dsh-permission-rules/issues/5)), shipped in v0.5.1 as `docs/rule-test-vectors/`, and supplied the AST-decomposition boundary cases on the [design discussion](https://github.com/PerryLink/dsh-permission-rules/discussions/10).
