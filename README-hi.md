@@ -52,9 +52,10 @@ DeepSeek Harness के लिए Claude Code-शैली की घोषण�
 
 नियम ज्ञात को तय करते हैं। एक समीक्षक मॉडल अज्ञात को तय करता है।
 
-![dsh-permission-rules का टर्मिनल डेमो: dsh-permission-rules — deny/ask rules in one YAML file](https://raw.githubusercontent.com/PerryLink/dsh-permission-rules/main/docs/assets/dsh-permission-rules-hero.png)
+![dsh-permission-rules कार्यप्रवाह आरेख: अनुरोध → नीति/समीक्षा → निर्णय।](docs/assets/dsh-permission-rules-flow.svg)
 
-![Animated terminal demo of dsh-permission-rules](https://raw.githubusercontent.com/PerryLink/dsh-permission-rules/main/docs/assets/dsh-permission-rules-demo.gif)
+*कार्यप्रवाह: अनुरोध → नीति/समीक्षा → निर्णय। नीचे के उदाहरण वास्तविक कमांड सतह का उपयोग करते हैं।*
+
 
 *वही रन, एनिमेटेड।*
 
@@ -134,6 +135,18 @@ dsh plugin --profile web add dsh-permission-rules
 # 2. restart and verify the row
 dsh --profile web --dump-config | grep -A4 'id: permission-rules'
 ```
+
+### उदाहरण
+
+ये वास्तविक प्रवेश बिंदु हैं; इंस्टॉल के बाद एक चलाएँ।
+
+#### विस्तृत उदाहरण
+
+- `/rules`
+
+#### संक्षिप्त उदाहरण
+
+- `tools/pre-execute`
 
 ## Configuration
 

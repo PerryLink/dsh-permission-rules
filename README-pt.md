@@ -52,9 +52,10 @@ Regras de permissão declarativas estilo Claude Code para o DeepSeek Harness.
 
 Regras decidem o conhecido. Um modelo revisor decide o que não é.
 
-![Demonstração de terminal do dsh-permission-rules: dsh-permission-rules — deny/ask rules in one YAML file](https://raw.githubusercontent.com/PerryLink/dsh-permission-rules/main/docs/assets/dsh-permission-rules-hero.png)
+![Diagrama de fluxo de dsh-permission-rules: solicitação → política/revisão → veredito.](docs/assets/dsh-permission-rules-flow.svg)
 
-![Animated terminal demo of dsh-permission-rules](https://raw.githubusercontent.com/PerryLink/dsh-permission-rules/main/docs/assets/dsh-permission-rules-demo.gif)
+*Visão geral do fluxo: solicitação → política/revisão → veredito. Os exemplos abaixo usam a superfície real de comandos.*
+
 
 *A mesma execução, animada.*
 
@@ -134,6 +135,18 @@ dsh plugin --profile web add dsh-permission-rules
 # 2. restart and verify the row
 dsh --profile web --dump-config | grep -A4 'id: permission-rules'
 ```
+
+### Exemplos
+
+São os pontos de entrada reais; instale e chame um.
+
+#### Exemplo detalhado
+
+- `/rules`
+
+#### Exemplos breves
+
+- `tools/pre-execute`
 
 ## Configuration
 

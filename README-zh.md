@@ -52,9 +52,10 @@ DeepSeek Harness 的 Claude Code 风格声明式权限规则。
 
 规则裁决已知的。评审模型裁决未知的。
 
-![dsh-permission-rules 终端演示：dsh-permission-rules — deny/ask rules in one YAML file](https://raw.githubusercontent.com/PerryLink/dsh-permission-rules/main/docs/assets/dsh-permission-rules-hero.png)
+![dsh-permission-rules 工作流图：请求 → 策略/复核 → 判定。](docs/assets/dsh-permission-rules-flow.svg)
 
-![Animated terminal demo of dsh-permission-rules](https://raw.githubusercontent.com/PerryLink/dsh-permission-rules/main/docs/assets/dsh-permission-rules-demo.gif)
+*工作流概览：请求 → 策略/复核 → 判定。下面的示例使用实际命令面。*
+
 
 *同一次运行，动图版。*
 
@@ -134,6 +135,18 @@ dsh plugin --profile web add dsh-permission-rules
 # 2. restart and verify the row
 dsh --profile web --dump-config | grep -A4 'id: permission-rules'
 ```
+
+### 示例
+
+以下为插件真实入口；安装后调用一个即可。
+
+#### 详细示例
+
+- `/rules`
+
+#### 简短示例
+
+- `tools/pre-execute`
 
 ## Configuration
 
