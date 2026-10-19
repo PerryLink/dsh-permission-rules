@@ -156,6 +156,22 @@ dsh --profile web --dump-config | grep -A4 'id: permission-rules'
 
 *स्रोत `test/command.spec.ts:204-219 (assertions at :209-213); src/prose.ts:121`*
 
+#### विफलता शाखा
+
+**इनपुट**
+
+~~~text
+/rules test bash {not json
+~~~
+
+**आउटपुट**
+
+~~~text
+Invalid JSON arguments "{not json": the arguments must parse as JSON.
+~~~
+
+*स्रोत `plugins/dsh-permission-rules/src/prose.ts:123; plugins/dsh-permission-rules/src/runtime.ts:1266-1272; plugins/dsh-permission-rules/test/command.spec.ts:221-228`*
+
 #### संक्षिप्त उदाहरण
 
 - `tools/pre-execute`

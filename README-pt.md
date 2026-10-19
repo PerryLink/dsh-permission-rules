@@ -156,6 +156,22 @@ São os pontos de entrada reais; instale e chame um.
 
 *Observado em `test/command.spec.ts:204-219 (assertions at :209-213); src/prose.ts:121`*
 
+#### Ramo de falha
+
+**Entrada**
+
+~~~text
+/rules test bash {not json
+~~~
+
+**Saída**
+
+~~~text
+Invalid JSON arguments "{not json": the arguments must parse as JSON.
+~~~
+
+*Observado em `plugins/dsh-permission-rules/src/prose.ts:123; plugins/dsh-permission-rules/src/runtime.ts:1266-1272; plugins/dsh-permission-rules/test/command.spec.ts:221-228`*
+
 #### Exemplos breves
 
 - `tools/pre-execute`

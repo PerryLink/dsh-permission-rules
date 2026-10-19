@@ -157,6 +157,22 @@ These are the plugin's real entry points; install once, then call one.
 
 *Observed from `test/command.spec.ts:204-219 (assertions at :209-213); src/prose.ts:121`*
 
+#### Failure branch
+
+**Input**
+
+~~~text
+/rules test bash {not json
+~~~
+
+**Output**
+
+~~~text
+Invalid JSON arguments "{not json": the arguments must parse as JSON.
+~~~
+
+*Observed from `plugins/dsh-permission-rules/src/prose.ts:123; plugins/dsh-permission-rules/src/runtime.ts:1266-1272; plugins/dsh-permission-rules/test/command.spec.ts:221-228`*
+
 #### Brief examples
 
 - `tools/pre-execute`

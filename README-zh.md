@@ -156,6 +156,22 @@ dsh --profile web --dump-config | grep -A4 'id: permission-rules'
 
 *来源 `test/command.spec.ts:204-219 (assertions at :209-213); src/prose.ts:121`*
 
+#### 失败分支
+
+**输入**
+
+~~~text
+/rules test bash {not json
+~~~
+
+**输出**
+
+~~~text
+Invalid JSON arguments "{not json": the arguments must parse as JSON.
+~~~
+
+*来源 `plugins/dsh-permission-rules/src/prose.ts:123; plugins/dsh-permission-rules/src/runtime.ts:1266-1272; plugins/dsh-permission-rules/test/command.spec.ts:221-228`*
+
 #### 简短示例
 
 - `tools/pre-execute`
