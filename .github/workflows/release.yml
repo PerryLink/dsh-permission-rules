@@ -87,6 +87,6 @@ jobs:
           fi
 
       - name: Publish the release artifact
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: dsh-permission-rules-*.tgz
