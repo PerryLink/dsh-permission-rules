@@ -142,7 +142,19 @@ Son los puntos de entrada reales; instala y llama a uno.
 
 #### Ejemplo detallado
 
-- `/rules`
+**Comando**
+
+~~~sh
+/rules test bash {"command":"git push origin main","cwd":"src/secrets/app"}
+~~~
+
+**Salida**
+
+~~~text
+"bash" matches rule 1 (deny): 禁止 push 到受保护路径
+~~~
+
+*Observado en `test/command.spec.ts:204-219 (assertions at :209-213); src/prose.ts:121`*
 
 #### Ejemplos breves
 

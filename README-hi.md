@@ -142,7 +142,19 @@ dsh --profile web --dump-config | grep -A4 'id: permission-rules'
 
 #### विस्तृत उदाहरण
 
-- `/rules`
+**कमांड**
+
+~~~sh
+/rules test bash {"command":"git push origin main","cwd":"src/secrets/app"}
+~~~
+
+**आउटपुट**
+
+~~~text
+"bash" matches rule 1 (deny): 禁止 push 到受保护路径
+~~~
+
+*स्रोत `test/command.spec.ts:204-219 (assertions at :209-213); src/prose.ts:121`*
 
 #### संक्षिप्त उदाहरण
 

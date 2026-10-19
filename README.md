@@ -143,7 +143,19 @@ These are the plugin's real entry points; install once, then call one.
 
 #### Detailed example
 
-- `/rules`
+**Command**
+
+~~~sh
+/rules test bash {"command":"git push origin main","cwd":"src/secrets/app"}
+~~~
+
+**Output**
+
+~~~text
+"bash" matches rule 1 (deny): 禁止 push 到受保护路径
+~~~
+
+*Observed from `test/command.spec.ts:204-219 (assertions at :209-213); src/prose.ts:121`*
 
 #### Brief examples
 
