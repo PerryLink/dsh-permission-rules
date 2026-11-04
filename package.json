@@ -52,7 +52,9 @@
         "@deepseek-ai/dsh-client-locale",
         "@deepseek-ai/dsh-client-ui-settings"
       ]
-    }
+    },
+    "capabilities": [],
+    "labels": []
   },
   "dshWorkshop": {
     "schema": "omdsh-workshop-package/v1",
