@@ -496,13 +496,22 @@ describe('polling fallback for WSL drvfs mounts (issue #19 item 1)', () => {
     }
   })
 
-  it('keeps the native watcher on a non-WSL host with a non-drvfs path', async () => {
+  it('keeps the native watcher when the detection stays off (non-WSL host, non-drvfs path)', async () => {
+    // The real detector is host-truth by design: a WSL kernel string lives in
+    // /proc/version, so a WSL runner polls every path no matter where the
+    // workspace sits. Rather than skip this branch on such a host, pin the
+    // plumbing symmetrically with the polling test above: when the detector
+    // says no (the predicates themselves are covered above), chokidar must get
+    // NO polling options.
     const cwd = workspaceWithRules()
     const harness = await mountHarness({ watch: true }, { cwd })
+    const runtime = harness.ctx.get('permissionRulesRuntime') as PermissionRulesRuntime
+    const spy = vi.spyOn(runtime, 'watchPollingFor').mockReturnValue(false)
     try {
       await dispatchPreExecute(harness.ctx, makeExec({ name: 'bash', arguments: {}, agent: harness.agent }))
       expect(watchers.at(-1)?.options?.usePolling).toBeUndefined()
     } finally {
+      spy.mockRestore()
       removeWorkspace(cwd)
     }
   })

@@ -1,3 +1,15 @@
+## [Unreleased]
+
+### Changed
+
+- **Host 0.2.2 line support.** devDependencies move from 0.2.1-rc.2 to 0.2.2-rc.1, cordis to 4.1.0 / include 1.1.0 / loader 1.1.0, and schemastery to ~3.19.0 so a single copy resolves against `@deepseek-ai/dsh-llm` 0.2.2. `engines.dsh` appends `>=0.2.2-0 <0.3.0` (append-only), `engines.node` becomes `^22.19.0 || >=24.9.0`, and `dshWorkshop.compatibility.dshVersions` appends `0.2.2-rc.1`.
+
+### Fixed
+
+- Add `@deepseek-ai/dsh-package-manifest`: `@deepseek-ai/dsh-llm` 0.2.2's published types import it but its manifest does not declare it.
+- **The test harness mounts the session projection registry before the approval service.** On the 0.2.2 line `ApprovalService` injects `sessionProjections` and keeps both the session policy and the open-turn guard in a projection it registers in `[Service.init]`, so mounting the service alone never published it and the auto-review integration specs died on `Cannot read properties of undefined (reading 'request')`. The harness now mounts `SessionProjectionRegistry` between the session store and the approval service, the same order the host composition uses. The plugin itself never calls `ctx.approval` — it only returns `{ kind: 'ask' }` decisions and writes its own audit events — so no plugin-side code change was needed.
+- The polling-fallback spec no longer assumes a non-WSL runner: a WSL kernel string in `/proc/version` makes the real detector poll every path, which is the documented behaviour, so the native-watcher branch is now pinned by mocking the detector off (symmetric with the existing polling test) instead of by the runner's kernel.
+
 ## v0.7.20 - 2026-10-18
 
 ### Fixed

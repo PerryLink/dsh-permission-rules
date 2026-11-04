@@ -1,8 +1,8 @@
 /**
  * Shared test harness: real Cordis Context + real Session/Commands/
- * ApprovalService from the pinned `0.1.2-rc.1` dev peers, scripted
- * subagent/tools mocks for the dsh-auto-review integration, and a minimal
- * fake Agent.
+ * SessionProjectionRegistry/ApprovalService from the pinned `0.2.2-rc.1` dev
+ * peers, scripted subagent/tools mocks for the dsh-auto-review integration,
+ * and a minimal fake Agent.
  * @module dsh-permission-rules/test/harness
  */
 
@@ -18,6 +18,7 @@ import type { UserMessage } from '@deepseek-ai/dsh-llm'
 import SessionStore from '@deepseek-ai/dsh-session'
 import type { Session } from '@deepseek-ai/dsh-session'
 import { SessionId } from '@deepseek-ai/dsh-session'
+import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import type { SubagentRun, SubagentStartRequest } from '@deepseek-ai/dsh-subagent'
 import type { PreToolDecision, ToolExecution } from '@deepseek-ai/dsh-tools'
 import ApprovalService from '@deepseek-ai/dsh-user-approval'
@@ -144,6 +145,12 @@ export async function mountHarness(
   const cwd = options.cwd ?? tempWorkspace()
   const ctx = new Context()
   await ctx.plugin(SessionStore)
+  // The projection registry backs the 0.2.2 approval seam: ApprovalService
+  // injects `sessionProjections` (its policy/turnOpen state is a projection),
+  // so mounting the service without the registry leaves `ctx.approval`
+  // unpublished. This mirrors the host composition order: session →
+  // session-projection → approval.
+  await ctx.plugin(SessionProjectionRegistry)
   const session = ctx.sessions.create(SessionId('harness-session'), { meta: { cwd } })
   session.append('turn/start', { turn: 1 })
   if (options.approval === true) await ctx.plugin(ApprovalService, {})
@@ -157,8 +164,8 @@ export async function mountHarness(
   // libuv assertion (src\win\fs-event.c) on Windows + Node 24 when the
   // dirs are removed mid-test, crashing the coverage worker.
   // Session-log audit is opted IN by default for the same reason: the real
-  // rc.1 peers cannot stamp the envelope marker, but most specs assert on
-  // the audit events landing regardless of host capability, and
+  // 0.2.2-rc.1 prerelease peer cannot stamp the envelope marker, but most
+  // specs assert on the audit events landing regardless of host capability, and
   // `allowUnmarkedAudit: true` skips the version pre-check and the append
   // probe; the degradation default itself is covered by
   // test/audit-support.spec.ts (which simulates the unmarked lines through
