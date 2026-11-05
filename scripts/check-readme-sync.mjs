@@ -2,7 +2,7 @@
 /**
  * README synchronization gate: the five language READMEs must expose the
  * same structure — the same number of `## ` sections and the same
- * config-table keys as the English source of truth — and must document the
+ * config-table keys as the Chinese source of truth — and must document the
  * same `/rules` subcommands. Exits non-zero with a report on drift, so CI
  * refuses a one-language doc update.
  *
@@ -14,7 +14,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
-const files = ['README.md', 'README-zh.md', 'README-es.md', 'README-pt.md', 'README-hi.md']
+const files = ['README.md', 'README.en.md', 'README.es.md', 'README.pt.md', 'README.hi.md']
 const texts = new Map(files.map(file => [file, readFileSync(join(root, file), 'utf8')]))
 
 const sectionCount = text => (text.match(/^## /gm) ?? []).length

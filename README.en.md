@@ -1,0 +1,497 @@
+<div align="center">
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/dsh-permission-rules-flow-dark.svg">
+  <img src="docs/assets/dsh-permission-rules-flow-light.svg" width="100%" alt="dsh-permission-rules data flow: tools/pre-execute → .dsh/rules.yaml (first match) → allow/ask/deny → permissionRules/decision → session log; shell children also traverse an HTTP/CONNECT proxy adjudicated by network rules">
+</picture>
+
+# dsh-permission-rules
+
+**Take back decision authority over tool calls — every allow / deny / ask lives in YAML, deterministic, instant, and auditable.**
+
+A Claude Code-style declarative permission middleware for DeepSeek Harness: rules decide what is known, a reviewer model decides what is not; it also ships a Codex-style process-level network policy and a local proxy that govern shell-subprocess egress.
+
+[Install](#three-step-setup) · [Configuration](#configuration) · [FAQ](#faq) · [简体中文](README.md) · [English](README.en.md) · [Español](README.es.md) · [Português](README.pt.md) · [हिन्दी](README.hi.md)
+
+[![License](https://img.shields.io/badge/license-Apache--2.0-3366CC?style=flat-square&labelColor=2B3245)](LICENSE)
+[![DSH](https://img.shields.io/badge/DSH-%E2%89%A50.1.2%20%3C0.3.0-4B67B4?style=flat-square&labelColor=2B3245)](#compatibility)
+[![npm](https://img.shields.io/npm/v/dsh-permission-rules?style=flat-square&labelColor=2B3245&color=CB3837)](https://www.npmjs.com/package/dsh-permission-rules)
+[![CI](https://img.shields.io/github/actions/workflow/status/PerryLink/dsh-permission-rules/ci.yml?branch=main&label=CI&style=flat-square&labelColor=2B3245)](https://github.com/PerryLink/dsh-permission-rules/actions/workflows/ci.yml)
+[![Node](https://img.shields.io/badge/node-%5E22.19%20%7C%7C%20%3E%3D24.9-339933?style=flat-square&labelColor=2B3245)](#compatibility)
+
+[![Stars](https://img.shields.io/github/stars/PerryLink/dsh-permission-rules?style=flat-square&labelColor=2B3245)](https://github.com/PerryLink/dsh-permission-rules/stargazers)
+[![npm downloads](https://img.shields.io/npm/dm/dsh-permission-rules?style=flat-square&labelColor=2B3245&color=CB3837)](https://www.npmjs.com/package/dsh-permission-rules)
+[![dshfind](https://dshfind.com/api/badge/PerryLink/dsh-permission-rules?metric=downloads)](https://dshfind.com/plugins/PerryLink/dsh-permission-rules?ref=badge)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/PerryLink/dsh-permission-rules/badge)](https://securityscorecards.dev/viewer/?uri=github.com/PerryLink/dsh-permission-rules)
+[![DSH Market](https://img.shields.io/badge/DSH_Market-listed-4B67B4?style=flat-square&labelColor=2B3245)](https://dsh.market/)
+[![Gitee](https://img.shields.io/badge/Gitee-mirror-C71D23?style=flat-square&labelColor=2B3245&logo=gitee)](https://gitee.com/perrylink/dsh-permission-rules)
+
+```sh
+dsh plugin --profile <name> add dsh-permission-rules
+```
+
+</div>
+
+<sub>Community plugin, not affiliated with DeepSeek. Canonical repository: <https://github.com/PerryLink/dsh-permission-rules> (Gitee is a mirror).</sub>
+
+## What it is
+
+`dsh-permission-rules` puts an ordered **`allow` / `deny` / `ask`** rule list in front of every tool call on the `tools/pre-execute` waterfall — deterministic, instant, auditable, and written by you in plain YAML. Rules decide the calls you know; the uncertain ones go to the official approval seam, answered by a reviewer model or a human. A second layer adds a Codex-style process-level network policy: shell-subprocess egress flows through a built-in local HTTP/CONNECT proxy, adjudicated by network rules or by three modes mapped onto the official sandbox presets.
+
+## Three-step setup
+
+1. **Install** (pick one channel):
+
+   ```sh
+   # git channel (latest main; the prepare script builds with production dependencies only)
+   dsh plugin --profile web add github:PerryLink/dsh-permission-rules
+   # npm channel (published releases)
+   dsh plugin --profile web add dsh-permission-rules
+   # tarball channel: pnpm pack in this repo, then
+   dsh plugin --profile web add ./dsh-permission-rules-<version>.tgz
+   ```
+
+2. **Write your first rule** (`.dsh/rules.yaml` at the project root; optional, the built-in high-risk baseline is on by default):
+
+   ```yaml
+   # <project>/.dsh/rules.yaml
+   rules:
+     - match: { tools: [bash, pwsh], params: { command: "git push*" }, paths: ["**/secrets/**"] }
+       action: deny
+       reason: "No pushes from protected paths"
+
+     - match: { tools: [edit, write] }
+       action: ask
+       reason: "File writes need confirmation"
+   ```
+
+3. **Verify it mounts**:
+
+   ```sh
+   # after restarting the profile, confirm the plugin row
+   dsh --profile web --dump-config | grep -A4 'id: permission-rules'
+   # dry-evaluate a hypothetical call on the real command surface; no tool runs
+   /rules test bash {"command":"git push origin main","cwd":"src/secrets/app"}
+   ```
+
+```text
+"bash" matches rule 1 (deny): 禁止 push 到受保护路径
+```
+
+**Uninstall**: `dsh plugin --profile web remove dsh-permission-rules` (or remove the row from the profile patch).
+
+<details>
+<summary>Install from the DSH Desktop market</summary>
+
+Every PerryLink plugin is listed in the built-in DSH Desktop market: **Market → Sources → Add source → paste** `https://perrylink-dsh-catalog.perrylink.workers.dev/catalog-source.json` **→ select**. Installation still requires the market's npm identity check and your confirmation.
+
+</details>
+
+## Core capabilities
+
+`dsh-permission-rules` puts ordered rules in front of every tool call on `tools/pre-execute` — deterministic, instant, auditable:
+
+- **`deny`** blocks the call; the rule's `reason` becomes the model-visible error.
+- **`ask`** rides the official approval seam (mount `dsh-auto-review` for a second-model answerer, or a human answers; with neither, the harness fails closed).
+- **`allow`** (and no-match) strictly delegates via `next()` — downstream listeners are never short-circuited.
+
+Every hit **and** every passthrough is audit-logged as a `permissionRules/decision` session event (log-only — nothing extra is injected into the model context).
+
+- **Rich matching** — tool-name globs (including `mcp__*`), agent-identity selectors (`main` / `subagent` / `preset:*`), argument key/value globs **or** regexes (with `!pattern` negation and an `absent` key dimension), workspace-relative path globs at **any nesting depth**, `when` host conditions (env vars, platform), and **shell command decomposition** (`argv`: command word, argument tokens, pipeline signature) for token-precise command matching.
+- **Built-in high-risk baseline** — a shipped deny/ask ruleset (destructive commands, privilege escalation, download-and-execute, sensitive paths) enabled by default and appended after user rules so a nearer user rule can override it; toggle with `builtin.enabled`.
+- **Hierarchical rule files** — optional `searchUp` merges every `.dsh/rules.yaml` from the session cwd to the filesystem root, nearest first.
+- **Dry-run rollout** — `enforce: false` audits what the policy *would* do while passing every call through.
+- **Hot reload** — Chokidar watch with debounce; a broken edit keeps the previous rules, never crashes. On a WSL host, or for a rule file under `/mnt/<drive>`, the watch switches to polling because native change events are unreliable there.
+- **Fail loud** — invalid YAML, unknown actions/fields, bad globs/regexes, backtracking-prone patterns, or more than `maxRules` rules fail the load.
+
+### Commands & tools surface
+
+| Surface | Kind | Notes |
+|---|---|---|
+| `tools/pre-execute` | listener | First-match allow/deny/ask rules + network URL-candidate extraction |
+| `/rules` | command | `list` · `reload` · `decisions [n]` · `test <tool> <json>` |
+| `permissionRules/decision` | event | Log-only audit for every hit and passthrough |
+| `permissionRules/network` | event | Proxy-layer audit for blocked connections |
+| HTTP/CONNECT proxy | service | Built-in local proxy governing shell subprocess traffic |
+| settings page | client | Network-mode editor, rule editor, block counters, recent interceptions with a per-block allow action |
+
+```text
+/rules                        list the active rules, their source files, and any last-reload error
+/rules list                   explicit alias for the bare listing
+/rules reload                 re-read the rule-file chain for this workspace
+/rules decisions [n]          show the last n permission decisions of this session (default 10)
+/rules test <tool> <json>     dry-evaluate the rules against a hypothetical call
+```
+
+`/rules test` also accepts leading flags: `--cwd <dir>`, `--env KEY=VALUE` (repeatable), `--agent <selector>` (repeatable), and `--platform <name>`. In multi-file chains (e.g. `searchUp`), every listed rule line is attributed to its own source file.
+
+### Examples
+
+These are the plugin's real entry points; install once, then call one.
+
+**Detailed example** — command `/rules test bash {"command":"git push origin main","cwd":"src/secrets/app"}`, output:
+
+```text
+"bash" matches rule 1 (deny): 禁止 push 到受保护路径
+```
+
+*Observed from `test/command.spec.ts:204-219 (assertions at :209-213); src/prose.ts:121`*
+
+**Failure branch** — input `/rules test bash {not json`, output:
+
+```text
+Invalid JSON arguments "{not json": the arguments must parse as JSON.
+```
+
+*Observed from `plugins/dsh-permission-rules/src/prose.ts:123; plugins/dsh-permission-rules/src/runtime.ts:1266-1272; plugins/dsh-permission-rules/test/command.spec.ts:221-228`*
+
+**Brief examples**: `tools/pre-execute` · `/rules test <tool> <json>`
+
+## Rule syntax
+
+```yaml
+# <project>/.dsh/rules.yaml
+rules:
+  - match: { tools: [bash, pwsh], params: { command: "git push*" }, paths: ["**/secrets/**"] }
+    action: deny
+    reason: "No pushes from protected paths"
+
+  - match: { tools: [edit, write] }
+    action: ask
+    reason: "File writes need confirmation"
+```
+
+- **Match dimensions** — `tools` (globs, incl. `mcp__*`), `agents` (`main` / `subagent` / `preset:<name>`; unknown identity never matches — fail closed), `params` (key/value globs or regexes, `!pattern` negation, `absent` key dimension), `paths` (workspace-relative globs extracted at any nesting depth), `when` (`env` var globs/regexes + a closed `platform` list), and `network` (`domains` / `ips` / `ports` / `schemes` — globs, wildcards, CIDRs, port ranges).
+- **Actions** — `allow` / `deny` / `ask`, evaluated in file order, first match wins.
+- **Rule metadata** — `enabled: false` (visible but inert), `description`, `tags`; unknown fields fail the load.
+- **Schema** — a JSON Schema ships at [docs/rules-format.schema.json](docs/rules-format.schema.json) (editor completion via `# yaml-language-server: $schema=...`); the full vocabulary and a 5-rule security baseline live in [docs/rules-format.en.md](docs/rules-format.en.md).
+
+## Network policy
+
+A Codex-style **process-level network policy**: shell subprocess traffic flows through a built-in local **HTTP/CONNECT proxy**, and every connection is decided by ordered network rules or by three modes mapped onto the official sandbox presets:
+
+- **`deny-all`** — the read-only sandbox preset: block all outbound.
+- **`whitelist`** — the workspace-write preset: allow listed targets, `unlisted: ask` (or `deny`) for the rest.
+- **`allow-all`** — the danger-full-access preset: allow everything.
+- **`auto`** (default) — follows the sandbox preset; on hosts without the sandbox-policy service it resolves to `autoFallback` (`allow-all`).
+
+- **Matching** — `match.network` with `domains` / `ips` / `ports` / `schemes` (globs, wildcards, CIDRs, port ranges; numeric YAML ports are accepted). URL-candidate extraction on the `tools/pre-execute` hot path fires on web-tool arguments and URLs embedded in bash/pwsh command text; loopback targets can short-circuit rules per `loopback` policy. IPv4-mapped IPv6 literals are normalized to their IPv4 form before matching, and the proxy connects on the addresses the decision was made on — never a second DNS resolution — a connection whose adjudication resolved no address fails closed (502) instead of dialing the name.
+- **Upstream chaining** — `network.upstreamProxy` (default `off`) sends the connections this proxy **allows** through an upstream proxy: CONNECT asks the upstream for a tunnel (`CONNECT host:port`) and plain-HTTP requests are forwarded to it in absolute form. A blocked target never reaches the upstream — it still gets this plugin's structured 403. Two cases never chain even when an upstream is configured: a **loopback** target (a proxy outside this host cannot route its loopback) and any decision produced by an **`ips`-scoped rule** (chaining hands the hostname to the upstream, so "the connection lands on an address the rules saw" — issue #21 — would stop holding exactly where the rules cared about the address; those decisions keep dialing the adjudicated address directly), plus a target whose scheme has no usable upstream. The upstream's own hostname is operator configuration, not agent input, and is not adjudicated by these rules. A URL carrying credentials is never emitted raw: warnings, `/rules network` and the settings snapshot mask the password (`http://user:***@host:port`). An unreachable upstream, a timeout (10 s), or a non-2xx answer yields **502** — there is deliberately no silent fallback to a direct dial, so a misconfiguration stays visible.
+- **Audit** — denied connections append `permissionRules/network` to the owning session (same adaptive `ignorable` gate), with block counters and recent interceptions in `/rules network` and the settings page.
+- **Diagnosis** — blocked connections carry a `[network: …]` message naming the blocked target, the mode or rule that decided, and the remediation.
+- **Allow from the settings page** — every recent interception offers an **Allow** action. It writes ONE minimal `match: { network: { domains: [<host>] } }` / `action: allow` rule at the **top** (index 0) of the nearest rule file that actually judges that connection: the project file of the workspace the block was attributed to (the absolute `rulesFile` when one is configured), or, for a session-less host-level block, the file the host chain resolves (absolute `rulesFile` → existing `<processCwd>/<rulesFile>` → configured `fallbackPath` → `<processCwd>/<rulesFile>`, created) — and when several workspaces are loaded, the page first offers a picker, because any loaded workspace chain outranks the host chain. Index 0 because rules are first-match-wins: appended after an existing `deny` the rule would be dead text. `domains` only, because that dimension is subdomain-inclusive and port/scheme-agnostic, so the host is not re-blocked on its next port; existing comments and untouched rules survive, and the text goes through the same validation gate as a hand edit. The change takes effect immediately — the cached workspace chains AND the session-less host chain are re-read, so no restart and no `/rules reload` — and the decision is recomputed, so the notice reports the REAL outcome and never claims success while the connection is still blocked. It refuses, leaving the file untouched, an unknown workspace, a target outside the known rule sources, the read-only built-in baseline, and a file it cannot read or parse; an already-allowed connection writes nothing. `network.allowHostAction: false` hides the button and makes the RPC refuse.
+
+## Configuration
+
+All tunables are Schemastery `Config` fields (changeable from cordis.yml). An id-targeted override replaces the whole row — restate every key you need. On a `0.1.7-alpha` host every field is declared `.volatile()`, so it is ALSO editable in place from the Plugins settings page: the edit is committed into the running references without remounting the plugin, the runtime reads the new value on its next use, and a change to `network.proxyPort`, `proxyBind`, `injectEnv` or `noProxy` rebinds the local proxy immediately. The numeric bounds live in the schema, and the config editor resolves the merged config against that schema before persisting, so an out-of-range value is refused at write time. On a host whose Schemastery predates `volatile()` these fields stay cordis.yml-only.
+
+Most-used keys:
+
+| Key | Default | Meaning |
+|---|---|---|
+| `rulesFile` | `.dsh/rules.yaml` | Rule file location; relative = resolved against the calling session's cwd, absolute = global and validated at mount |
+| `fallbackPath` | *(none)* | Rule file used when per-cwd discovery finds nothing; validated at mount |
+| `badFilePolicy` | `fail` | Bad rule file: `fail` errors the pending tool call loudly; `ignore-with-warning` warns and continues empty |
+| `maxRules` | `256` | Hard cap on rule count across the effective source chain |
+| `patternMode` | `glob` | `params`/`paths`/`when.env` pattern flavor: `glob` or `regex` (tool names are always globs) |
+| `watch` | `true` | Chokidar watch + reload on change |
+| `enforce` | `true` | `false` = dry-run mode: deny/ask hits are audit-logged with a `dryRun` marker and every call passes through |
+| `language` | `en` | `/rules` output language: `en`, `zh`, `es`, `pt`, `hi` |
+
+<details>
+<summary>Full configuration table (29 keys)</summary>
+
+| Key | Default | Meaning |
+|---|---|---|
+| `rulesFile` | `.dsh/rules.yaml` | Rule file location; relative = resolved against the calling session's cwd, absolute = global and validated at mount |
+| `fallbackPath` | *(none)* | Rule file used when per-cwd discovery finds nothing; validated at mount |
+| `badFilePolicy` | `fail` | Bad rule file: `fail` errors the pending tool call loudly; `ignore-with-warning` warns and continues empty |
+| `maxRules` | `256` | Hard cap on rule count across the effective source chain |
+| `maxCachedWorkspaces` | `512` | Hard cap on cached per-workspace rule loads (LRU eviction) |
+| `patternMode` | `glob` | `params`/`paths`/`when.env` pattern flavor: `glob` or `regex` (tool names are always globs) |
+| `watch` | `true` | Chokidar watch + reload on change |
+| `watchStabilityThresholdMs` | `200` | Reload debounce window (ms) |
+| `language` | `en` | `/rules` output language: `en`, `zh`, `es`, `pt`, `hi` |
+| `caseInsensitivePaths` | *(win32)* | `paths` patterns and workspace-root comparison ignore ASCII case; `true` on Windows |
+| `audit` | `all` | Audit granularity: `all` logs every hit AND passthrough; `hits` skips passthrough events |
+| `searchUp` | `false` | Walk parent directories from the session cwd and merge every found rule file, nearest first |
+| `maxGlobStars` | `2` | Hard cap on unbounded `*`/`**` quantifiers per glob pattern |
+| `enforce` | `true` | `false` = dry-run mode: deny/ask hits are audit-logged with a `dryRun` marker and every call passes through |
+| `allowUnmarkedAudit` | `false` | Pre-marker hosts drop the `ignorable` marker; the plugin disables session-log audit with a warning. Set `true` to opt back in |
+| `network.enabled` | `true` | Master switch for the proxy, env injection, and web-tool mode defaults |
+| `network.mode` | `auto` | Policy mode: `auto` follows the sandbox preset, or `deny-all` / `whitelist` / `allow-all` |
+| `network.autoFallback` | `allow-all` | Mode used when `auto` has no sandbox-policy service |
+| `network.unlisted` | `ask` | Whitelist-mode handling of targets no rule matched: `ask` or `deny` |
+| `network.proxyBind` | `127.0.0.1` | Local proxy bind address (loopback only) |
+| `network.proxyPort` | `0` | Local proxy port; `0` picks a free ephemeral port |
+| `network.proxyMaxRecent` | `100` | Cap on recent-block records kept for the settings page |
+| `network.loopback` | `allow` | Loopback targets: `allow` (Codex parity) or `policy` |
+| `network.injectEnv` | `true` | Whether proxy environment variables are injected for subprocesses |
+| `network.noProxy` | `clear` | Subprocess NO_PROXY handling: `clear` enforces the policy or `preserve` |
+| `network.upstreamProxy` | `off` | Upstream proxy for connections this plugin ALLOWS: `off` dials directly, `inherit` reuses the launch environment's proxy names, or an explicit `http(s)://` proxy URL |
+| `network.allowHostAction` | `true` | Settings-page per-block "allow this host" action: `false` hides the Allow button and makes the `permissionRules/allowHost` RPC refuse (the rule editor is not affected) |
+| `builtin.enabled` | `true` | Built-in high-risk baseline: `false` disables the shipped deny/ask ruleset entirely |
+| `builtin.path` | *(shipped)* | Replacement baseline file (absolute, or relative to `process.cwd()`); validated at mount |
+
+</details>
+
+## FAQ
+
+<details>
+<summary>Where do rule files live? Will the plugin write to my files?</summary>
+
+Rules are read from disk: `.dsh/rules.yaml` at the project root, or the configured `rulesFile` / `fallbackPath`, merged upwards under `searchUp`. The normal adjudication path writes no rule data. The only write surfaces are the settings-page rule editor and the "Allow" action — the latter writes one minimal allow rule at the top of a known rule source and re-runs the same parse/compile validation as a hand edit (see "Network policy").
+
+</details>
+
+<details>
+<summary>What happens to ask without dsh-auto-review mounted?</summary>
+
+`ask` rides the official approval seam: with `dsh-auto-review` mounted, a read-only second model answers; otherwise a human does; with neither, the harness fails closed and the call is never silently allowed. This plugin itself never spawns subagents or calls models — producing an `ask` decision is the end of its work.
+
+</details>
+
+<details>
+<summary>Does this proxy intercept the host's own outbound requests?</summary>
+
+No. The injected proxy environment covers **spawned shell children** and any consumer that reads the proxy names at request time. It does **not** cover the host process's own `fetch`-based traffic: the launcher installs undici's global dispatcher from the launch environment before the first plugin mounts, and that dispatcher routes by its policy rather than by the environment. Provider endpoints therefore need no allow rule, and `network.injectEnv: false` does not take the host process out of anything. Measured 2026-09-10 on Node 22; reproduce with `scripts/host-egress-probe.mjs`.
+
+</details>
+
+<details>
+<summary>How much does it cost on the hot path?</summary>
+
+Rule evaluation is an in-memory first-match walk — no model calls, no network requests; hits and passthroughs only append session audit. A failed watch warns and keeps the previous rules. For large rule sets, set `audit: hits` to skip passthrough events, or bound the load with `maxRules` / `maxCachedWorkspaces`.
+
+</details>
+
+<details>
+<summary>Does it fight other plugins over events, command names, or slots?</summary>
+
+No. Tool names are namespaced and no bare name is taken; the service keys `permissionRules` / `permissionRulesRuntime` are not a built-in seam and are provided by no surveyed high-star plugin; it registers no client slot and no `webServer` prefix, and its patch only `insert`s its own row; shared events always delegate through `next()`. The point-by-point argument is in "Interoperability with other DSH plugins".
+
+</details>
+
+## Security boundaries
+
+- **Policy, not a kernel.** `paths` candidates come only from a documented set of argument keys (at any nesting depth, depth-capped), and only workspace-relative paths match.
+- **No reviewer here.** The plugin never spawns subagents or calls models — producing an `ask` decision is the end of its work.
+- **No sandbox changes.** OS-level sandbox policy belongs to the sandbox seam, not this plugin.
+- **Loud misconfiguration.** Unknown YAML fields, unknown actions, and bad patterns are rejected at load.
+- **Backtracking bounds.** Glob patterns are capped at `maxGlobStars` unbounded star expansions; regex-mode patterns reject nested unbounded quantifiers and quantified overlapping literal alternations.
+- **Fail-closed dialing.** Plain-HTTP forwards and CONNECT tunnels connect only to adjudicated addresses; an allow whose adjudication resolved no address fails closed with 502 instead of dialing the name (issue #23).
+
+## Permissions & data
+
+- **Permissions**: declares `files:read`, `files:watch`, `files:write`, `session:append`, and `network:outbound` in its workshop manifest. `ask` decisions ride the official approval seam — nothing is re-implemented or bypassed.
+- **Data**: rule files are read from disk; normal adjudication writes no rule data — the only write surfaces are the settings-page rule editor and the "Allow" action. No model calls, no reviewer subagents.
+- **Session log**: `permissionRules/decision` is never injected into the model context and is appended with the envelope's `ignorable: true` marker so any harness build loads the log.
+
+## Known limitations
+
+- **Audit marker on pre-marker and refusing hosts.** `permissionRules/decision` is appended with `ignorable: true`; hosts whose `Session.append` predates the marker (the `0.1.0-rc.1`–`rc.7` and `0.1.1-rc.1`–`rc.7` lines) silently drop it, the `0.1.2-rc` line ships the alpha.5 surface (no append option writes the marker), the `0.1.2-alpha` line refuses plugin events on read even when marked, and the `0.1.3-alpha` and `0.1.5-alpha` lines keep the same surface-only append signature (verified on the published `0.1.3-alpha.1`/`0.1.5-alpha.1` packages) — the runtime pre-checks all of these before the first append and disables session-log audit with a one-time warning. Cross-generation migration refuses marked audit rows too: the `0.1.3-alpha` v1→v2 gate refuses unknown v1 events, and the `0.1.5-alpha` v2→v3 gate refuses every unclassified event (its inventory is frozen to the released v2 vocabulary), so `strip` v1 rows before a 0.1.3 host opens the log and v2 rows before upgrading to a 0.1.5 host. Native v3 logs accept marked plugin rows, so they only need `repair`. Set `allowUnmarkedAudit: true` to opt back in; repair already-written logs with `scripts/repair-session-logs.mjs` (its `strip` mode removes audit rows where the marker cannot help).
+- **Path candidates are heuristic.** Only the documented argument keys feed path matching, and workspace-relative matching is ASCII-case-insensitive only when `caseInsensitivePaths` is on.
+- **Globs are a conservative subset.** No brace expansion — write two patterns, or use regex mode.
+- **The regex backtracking guard is structural, not exhaustive.** Prefer glob mode for untrusted files.
+- **The host's own outbound requests do not go through this proxy.** The injected proxy environment covers **spawned shell children** — which is what the injection is for — and any consumer that reads the proxy names at request time. It does **not** cover the host process's own `fetch`-based traffic: the launcher installs undici's global dispatcher from the **launch environment** before the first plugin mounts, that dispatcher routes by its policy rather than by the environment, and Node samples the proxy environment at start — so a plugin mounting later cannot redirect it. Consequences: provider endpoints do **not** need an allow rule, and `network.injectEnv: false` does not take the host process out of anything. Measured 2026-09-10 on Node 22; reproduce with `scripts/host-egress-probe.mjs`.
+- **Upstream chaining covers only what reaches this proxy.** On `dsh-v0.1.7-alpha.1` and later, the harness's own launch-time proxy policy and its subprocess environment overlay can take precedence over the proxy names this plugin injects, so `network.upstreamProxy` describes what happens to the connections this proxy handles — it is not a claim about every outbound path in the host process.
+
+## Interoperability with other DSH plugins
+
+Verified against **DSH `0.2.0-rc.2`** (the runtime this README ships for) and the high-star plugin set surveyed on 2026-10-05.
+
+This plugin **does not interfere** with other plugins, including the widely installed high-star ones:
+
+- **No tool-name collision.** Every tool is namespaced; no bare name owned by a shipped tool or another plugin is registered.
+- **No service-key collision.** It provides `permissionRules`, `permissionRulesRuntime`; those keys are not a built-in seam and are not provided by any surveyed high-star plugin.
+- **No slot collision.** It registers no client slot key, so it cannot contend for a `shadows-shipped-ui` seat.
+- **No HTTP route collision.** It registers no `webServer` prefix.
+- **No patch-layer collision.** The bundle patch only `insert`s its own row; it never overrides a built-in row's `config`.
+- **No global mutation.** It does not patch prototypes, rewrite `process.env`, or replace the global fetch dispatcher.
+
+**Shared event listeners are non-interfering by construction.** It observes the ordering-sensitive events `tools/post-execute`, `tools/pre-execute` with `ctx.on()` — Cordis's broadcast registration, where every listener runs and none can starve another. **Every listener here delegates through `next()`**, so the chain is never short-circuited, and a mutation is applied to the value `next()` produced rather than returned in its place:
+
+- `tools/post-execute` — also used by `cc-safety-net` (1576★).
+- `tools/pre-execute` — also used by `cc-safety-net` (1576★).
+
+Static evidence: `dsh-plugin-doctor` K10–K13 report `pass` for every check on this repository.
+
+## Collaborating with dsh-auto-review
+
+- `dsh-permission-rules` produces `ask`; `dsh-auto-review` answers on the `approval/request` waterfall with a read-only second-model verdict (or delegates to humans). Mount both for the full closed loop.
+- Integration-tested: `permissionRules/decision` → `approval/asked` → `autoReview/verdict` → `approval/decided`, with the reviewer replaced by a scripted mock.
+- The `never` approval policy and every fail-closed guarantee of the official harness stay untouched.
+
+## Session log repair
+
+Session logs written before the `ignorable` marker existed can be refused by newer harness builds (`SessionFormatUnsupportedError`). The shipped `scripts/repair-session-logs.mjs` rewrites only the targeted audit rows to carry `ignorable: true`, frame-preserving, with backups:
+
+```sh
+node scripts/repair-session-logs.mjs scan [--home DIR]      # report foreign rows, change nothing
+node scripts/repair-session-logs.mjs repair [--home DIR] [--dry-run]
+node scripts/repair-session-logs.mjs strip [--home DIR] [--dry-run]
+```
+
+`--home` defaults to `$DSH_HOME/sessions` (or `~/.dsh/sessions`). Every generation-addressed log is discovered by its canonical basename — `session.jsonl`, `session.v2.jsonl`, `session.v3.jsonl`, each optionally `.zstd`-compressed — so pick the mode by generation:
+
+- **v3 (`session.v3.jsonl`, written natively by the `0.1.5-alpha` line)** — the read path accepts marked plugin rows, so `repair` is enough.
+- **v2 (`session.v2.jsonl`, written by the `0.1.3-alpha` line)** — `repair` opens it on the host that wrote it, but the `0.1.5-alpha` v2→v3 migration refuses every unclassified event even when marked: run `strip` on v2 logs **before** upgrading to a `0.1.5-alpha` host.
+- **v1 (`session.jsonl`)** — the `0.1.3-alpha` v1→v2 migration refuses unknown v1 events even when marked: run `strip` before a 0.1.3-or-later host first opens the log.
+
+## Compatibility
+
+| Surface | Status |
+|---|---|
+| Harness | DeepSeek Harness `dsh-v0.2.1-alpha.1` (adapted 2026-09-22, full gate chain): its plugin config is the live settings contract — every field is declared `.volatile()`, the Loader hands `apply` a live reference per field, and a saved edit is committed into the running references WITHOUT remounting the plugin, with out-of-range values refused by the schema before anything is written. A host whose Schemastery predates `volatile()` (before 3.18.3) still mounts and runs this plugin — the fields simply stay ordinary values and the live config form is unavailable — because the marker is applied through a capability probe rather than assumed. `Session.append` on this line still cannot stamp the `ignorable` marker (its third argument is the surface-intent bag, and the envelope field survives for stored-log reads only), so the whole `0.2-alpha` line is pre-checked as unmarked and session-log audit stays disabled by default — `append` reads only `sourceEventSeqs`/`surfaceOp` and freezes the envelope, so it has no code path that could stamp the marker; the earlier `0.1.7-alpha` (adapted 2026-09-22), `0.1.5-rc.2` (adapted 2026-09-09) and `0.1.3-alpha` lines keep the same surface-only append signature, and every `0.2` prerelease is classified with them (a STABLE `0.2.x` release is left to the append probe, so a restored marker surface is adopted without a new plugin release). Those lines' log migrations refuse unclassified plugin events even when marked, so `strip` v1 audit rows before a `0.1.3-alpha` host opens the log and v2 audit rows before a `0.1.5-alpha` host migrates it (native v3 logs only need `repair`). |
+| Node | `^22.19.0 || >=24.9.0` |
+| Platforms | All (host + web settings client) |
+| Model | Any (deny/ask reasons surface through tool results) |
+
+## Ecosystem & quality
+
+- [Gitee mirror](https://gitee.com/perrylink/dsh-permission-rules) (sync mirror; GitHub is canonical)
+- [dshfind plugin page](https://dshfind.com/plugins/PerryLink/dsh-permission-rules) (installs and ranking)
+- [OpenSSF Scorecard report](https://securityscorecards.dev/viewer/?uri=github.com/PerryLink/dsh-permission-rules) (driven by [.github/workflows/scorecard.yml](.github/workflows/scorecard.yml))
+- [dsh-plugin-doctor verification report](https://github.com/PerryLink/dsh-plugin-doctor#verified-徽章) (K10–K13 all `pass`)
+- [DSH Market](https://dsh.market/) (listed)
+- **1024 store channel**: `npm i -g dsh1024` once, then `dsh1024 plugin --profile web add dsh-permission-rules` (counts toward the [deepseek1024.com](https://deepseek1024.com) install ranking)
+- [Ecosystem knowledge base](https://perrylink.github.io/dsh-plugin-guide/) — measured data, not marketing: plugin development guide · plugin-selection data · maintenance criteria
+
+## Development
+
+```sh
+pnpm install            # node ^22.19 || >=24.9
+pnpm run typecheck      # tsc, src + tests
+pnpm run lint           # eslint, src + tests + scripts
+pnpm test               # vitest: 24 spec files
+pnpm run test:coverage  # coverage gate (90/80/90/90)
+pnpm run build          # tsc declarations + tsdown bundles (lib/)
+pnpm run pack:check     # build + pack (the published artifact)
+node scripts/check-readme-sync.mjs   # five-language README sync gate (also in CI)
+```
+
+See [VERIFICATION.md](VERIFICATION.md) for the headless end-to-end verification record. README images are generated programmatically by [`scripts/gen-readme-assets.py`](scripts/gen-readme-assets.py) (Python + Pillow font probe; a no-UI plugin gets light/dark SVG) and are safe to re-run.
+
+Topics: `dsh`, `dsh-plugin`, `deepseek-harness`, `permission`, `policy`, `allow-deny-ask`, `approval`, `safety`, `network`, `network-policy`, `proxy`
+
+## Family & thanks
+
+This project is part of the DeepSeek Harness plugin family from [PerryLink](https://github.com/PerryLink) (all Apache-2.0). If it is useful, **a star helps the next person find it** — nothing is gated behind it.
+
+- [@PerryLink](https://github.com/PerryLink) — creator and maintainer: rule vocabulary and evaluation, runtime, HMR watch, session-log audit, network policy + proxy, and the five-language docs.
+- [@am-i-dead](https://github.com/am-i-dead) — split the client-safe allow-host helpers out of the host-only module (#24).
+- [@22xuan](https://github.com/22xuan) — the detailed report on rc.6 hosts silently dropping the audit event's `ignorable` marker ([#2](https://github.com/PerryLink/dsh-permission-rules/issues/2)) and the upstream harness discussion; the v0.4.1 runtime host-capability detection and the documentation correction drew directly from that analysis.
+- [@sjh9714](https://github.com/sjh9714) — proposed the shared rule-syntax test-vector corpus ([#4](https://github.com/PerryLink/dsh-permission-rules/issues/4), [#5](https://github.com/PerryLink/dsh-permission-rules/issues/5)), shipped in v0.5.1 as `docs/rule-test-vectors/`, and supplied the AST-decomposition boundary cases on the [design discussion](https://github.com/PerryLink/dsh-permission-rules/discussions/10).
+- [@weipeng1999](https://github.com/weipeng1999) — the AST-based command-decomposition feature proposal ([#8](https://github.com/PerryLink/dsh-permission-rules/issues/8)) behind the design discussion.
+- [@alexchenzl](https://github.com/alexchenzl) — the DSH Directory listing request ([#7](https://github.com/PerryLink/dsh-permission-rules/issues/7)).
+- [@zl190](https://github.com/zl190) — reported and verified the `0.1.0-rc.7` harness compatibility gap ([PR #9](https://github.com/PerryLink/dsh-permission-rules/pulls/9)).
+- [@cuohua](https://github.com/cuohua) — reported that the `0.1.1-rc` line still drops the `ignorable` marker even though the version gate covered only `0.1.0` ([#11](https://github.com/PerryLink/dsh-permission-rules/issues/11)); the widened gate drew directly from that analysis.
+
+<details>
+<summary>Expand all plugins</summary>
+
+| Plugin | Status |
+|---|---|
+| **[dsh-aqua-input-check](https://github.com/PerryLink/dsh-aqua-input-check)** |  |
+| **[dsh-archive-check](https://github.com/PerryLink/dsh-archive-check)** |  |
+| **[dsh-auto-review](https://github.com/PerryLink/dsh-auto-review)** |  |
+| **[dsh-autotier](https://github.com/PerryLink/dsh-autotier)** | 🧊 FROZEN — see the repo README |
+| **[dsh-bid-ca-precheck](https://github.com/PerryLink/dsh-bid-ca-precheck)** |  |
+| **[dsh-bid-qual-check](https://github.com/PerryLink/dsh-bid-qual-check)** |  |
+| **[dsh-cert-mcp](https://github.com/PerryLink/dsh-cert-mcp)** | 🧊 FROZEN — see the repo README |
+| **[dsh-checkpoint-rewind](https://github.com/PerryLink/dsh-checkpoint-rewind)** |  |
+| **[dsh-click](https://github.com/PerryLink/dsh-click)** |  |
+| **[dsh-composer-history](https://github.com/PerryLink/dsh-composer-history)** |  |
+| **[dsh-contract-stance](https://github.com/PerryLink/dsh-contract-stance)** |  |
+| **[dsh-customs-doc-check](https://github.com/PerryLink/dsh-customs-doc-check)** |  |
+| **[dsh-data-quality](https://github.com/PerryLink/dsh-data-quality)** | 🧊 FROZEN — see the repo README |
+| **[dsh-demurrage-ledger](https://github.com/PerryLink/dsh-demurrage-ledger)** |  |
+| **[dsh-doublecheck](https://github.com/PerryLink/dsh-doublecheck)** |  |
+| **[dsh-drill-script-check](https://github.com/PerryLink/dsh-drill-script-check)** |  |
+| **[dsh-eia-guide-check](https://github.com/PerryLink/dsh-eia-guide-check)** |  |
+| **[dsh-emergency-plan](https://github.com/PerryLink/dsh-emergency-plan)** |  |
+| **[dsh-essay-rubric-check](https://github.com/PerryLink/dsh-essay-rubric-check)** |  |
+| **[dsh-evidence-check](https://github.com/PerryLink/dsh-evidence-check)** |  |
+| **[dsh-export-ctl-check](https://github.com/PerryLink/dsh-export-ctl-check)** |  |
+| **[dsh-fast](https://github.com/PerryLink/dsh-fast)** |  |
+| **[dsh-fmea-table-check](https://github.com/PerryLink/dsh-fmea-table-check)** |  |
+| **[dsh-forecast-penalty](https://github.com/PerryLink/dsh-forecast-penalty)** |  |
+| **[dsh-fund-research](https://github.com/PerryLink/dsh-fund-research)** |  |
+| **[dsh-github](https://github.com/PerryLink/dsh-github)** |  |
+| **[dsh-gongwen-flow-check](https://github.com/PerryLink/dsh-gongwen-flow-check)** |  |
+| **[dsh-gongwen-word-check](https://github.com/PerryLink/dsh-gongwen-word-check)** |  |
+| **[dsh-guard-plan-qc](https://github.com/PerryLink/dsh-guard-plan-qc)** |  |
+| **[dsh-hazchem-check](https://github.com/PerryLink/dsh-hazchem-check)** |  |
+| **[dsh-hazplan-check](https://github.com/PerryLink/dsh-hazplan-check)** |  |
+| **[dsh-hidden-risk-map](https://github.com/PerryLink/dsh-hidden-risk-map)** |  |
+| **[dsh-hs-classify](https://github.com/PerryLink/dsh-hs-classify)** |  |
+| **[dsh-icd-rule-check](https://github.com/PerryLink/dsh-icd-rule-check)** |  |
+| **[dsh-industry-research](https://github.com/PerryLink/dsh-industry-research)** |  |
+| **[dsh-lawcite-adapter](https://github.com/PerryLink/dsh-lawcite-adapter)** |  |
+| **[dsh-laya](https://github.com/PerryLink/dsh-laya)** |  |
+| **[dsh-lc-doc-check](https://github.com/PerryLink/dsh-lc-doc-check)** |  |
+| **[dsh-learning-gap-check](https://github.com/PerryLink/dsh-learning-gap-check)** |  |
+| **[dsh-library](https://github.com/PerryLink/dsh-library)** |  |
+| **[dsh-local-ai](https://github.com/PerryLink/dsh-local-ai)** |  |
+| **[dsh-lsp-actions](https://github.com/PerryLink/dsh-lsp-actions)** |  |
+| **[dsh-mask](https://github.com/PerryLink/dsh-mask)** |  |
+| **[dsh-mcp-panel](https://github.com/PerryLink/dsh-mcp-panel)** |  |
+| **[dsh-medrec-qc](https://github.com/PerryLink/dsh-medrec-qc)** |  |
+| **[dsh-memento](https://github.com/PerryLink/dsh-memento)** | 🧊 FROZEN — see the repo README |
+| **[dsh-nsfc-form-check](https://github.com/PerryLink/dsh-nsfc-form-check)** |  |
+| **[dsh-nurse-record-check](https://github.com/PerryLink/dsh-nurse-record-check)** |  |
+| **[dsh-observe](https://github.com/PerryLink/dsh-observe)** |  |
+| **[dsh-origin-rvc-check](https://github.com/PerryLink/dsh-origin-rvc-check)** |  |
+| **[dsh-ota-review-check](https://github.com/PerryLink/dsh-ota-review-check)** |  |
+| **[dsh-output-styles](https://github.com/PerryLink/dsh-output-styles)** |  |
+| **[dsh-paper-doc-adapter](https://github.com/PerryLink/dsh-paper-doc-adapter)** |  |
+| **[dsh-permission-rules](https://github.com/PerryLink/dsh-permission-rules)** |  |
+| **[dsh-permit-report-check](https://github.com/PerryLink/dsh-permit-report-check)** |  |
+| **[dsh-pipeline-check](https://github.com/PerryLink/dsh-pipeline-check)** |  |
+| **[dsh-pleading-draft](https://github.com/PerryLink/dsh-pleading-draft)** |  |
+| **[dsh-plugin-doctor](https://github.com/PerryLink/dsh-plugin-doctor)** | 🚫 RETIRED (repo archived) |
+| **[dsh-plugin-guide](https://github.com/PerryLink/dsh-plugin-guide)** |  |
+| **[dsh-plugin-kit](https://github.com/PerryLink/dsh-plugin-kit)** | 🚫 RETIRED (repo archived) |
+| **[dsh-plugin-upgrade](https://github.com/PerryLink/dsh-plugin-upgrade)** | 🚫 RETIRED (repo archived) |
+| **[dsh-policy-brief-draft](https://github.com/PerryLink/dsh-policy-brief-draft)** |  |
+| **[dsh-power-loss-split](https://github.com/PerryLink/dsh-power-loss-split)** |  |
+| **[dsh-power-ticket-check](https://github.com/PerryLink/dsh-power-ticket-check)** |  |
+| **[dsh-ppap-check](https://github.com/PerryLink/dsh-ppap-check)** |  |
+| **[dsh-protest-deadline](https://github.com/PerryLink/dsh-protest-deadline)** |  |
+| **[dsh-railway-window](https://github.com/PerryLink/dsh-railway-window)** |  |
+| **[dsh-repair-order-qc](https://github.com/PerryLink/dsh-repair-order-qc)** |  |
+| **[dsh-research-report](https://github.com/PerryLink/dsh-research-report)** |  |
+| **[dsh-review-reply-check](https://github.com/PerryLink/dsh-review-reply-check)** |  |
+| **[dsh-rulefile-check](https://github.com/PerryLink/dsh-rulefile-check)** |  |
+| **[dsh-safety-brief-check](https://github.com/PerryLink/dsh-safety-brief-check)** |  |
+| **[dsh-score](https://github.com/PerryLink/dsh-score)** | 🧊 FROZEN — see the repo README |
+| **[dsh-session-sync](https://github.com/PerryLink/dsh-session-sync)** |  |
+| **[dsh-site-log-check](https://github.com/PerryLink/dsh-site-log-check)** |  |
+| **[dsh-skill-pack-security](https://github.com/PerryLink/dsh-skill-pack-security)** |  |
+| **[dsh-soe-decision-check](https://github.com/PerryLink/dsh-soe-decision-check)** |  |
+| **[dsh-soilwater-check](https://github.com/PerryLink/dsh-soilwater-check)** |  |
+| **[dsh-sop-sync-check](https://github.com/PerryLink/dsh-sop-sync-check)** |  |
+| **[dsh-spc-gbt-adapter](https://github.com/PerryLink/dsh-spc-gbt-adapter)** |  |
+| **[dsh-talk](https://github.com/PerryLink/dsh-talk)** |  |
+| **[dsh-tender-extract](https://github.com/PerryLink/dsh-tender-extract)** |  |
+| **[dsh-tender-matrix](https://github.com/PerryLink/dsh-tender-matrix)** |  |
+| **[dsh-test-drive](https://github.com/PerryLink/dsh-test-drive)** |  |
+| **[dsh-ticktick](https://github.com/PerryLink/dsh-ticktick)** | 🚫 RETIRED (repo archived) |
+| **[dsh-translate](https://github.com/PerryLink/dsh-translate)** |  |
+| **[dsh-warranty-calc](https://github.com/PerryLink/dsh-warranty-calc)** |  |
+| **[dsh-budget](https://github.com/PerryLink/dsh-budget)** | 🧊 FROZEN — see the repo README |
+| **[dsh-claude-move](https://github.com/PerryLink/dsh-claude-move)** | 🧊 FROZEN — see the repo README |
+| **[dsh-defend](https://github.com/PerryLink/dsh-defend)** | 🧊 FROZEN — see the repo README |
+| **[dsh-draw](https://github.com/PerryLink/dsh-draw)** | 🧊 FROZEN — see the repo README |
+| **[dsh-reach](https://github.com/PerryLink/dsh-reach)** | 🧊 FROZEN — see the repo README |
+| **[dsh-background-agents](https://github.com/PerryLink/dsh-background-agents)** | 🚫 RETIRED (repo archived) |
+| **[dsh-session-pin](https://github.com/PerryLink/dsh-session-pin)** | 🚫 RETIRED (repo archived) |
+| **[dsh-team-rooms](https://github.com/PerryLink/dsh-team-rooms)** | 🚫 RETIRED (repo archived) |
+
+</details>
+
+## License
+
+[LICENSE](LICENSE) (Apache License 2.0) © 2026 dsh-permission-rules contributors
+
+<p align="center"><sub>Apache-2.0 · Community plugin, not affiliated with DeepSeek.</sub></p>

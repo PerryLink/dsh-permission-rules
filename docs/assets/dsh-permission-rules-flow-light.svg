@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="440" viewBox="0 0 1200 440" role="img" aria-label="dsh-permission-rules data flow">
+<title>dsh-permission-rules data flow</title>
+<rect width="1200" height="440" rx="18" fill="#ffffff"/>
+<text x="56" y="60" fill="#1f2328" font-family="ui-sans-serif,system-ui,sans-serif" font-size="30" font-weight="700">dsh-permission-rules</text>
+<text x="56" y="94" fill="#57606a" font-family="ui-monospace,monospace" font-size="15">tools/pre-execute · ordered allow / deny / ask · YAML</text>
+<line x1="56" y1="118" x2="1144" y2="118" stroke="#d0d7de"/>
+<rect x="30" y="140" width="130" height="104" rx="14" fill="#f6f8fa" stroke="#d0d7de" stroke-width="2"/>
+<text x="95" y="180" fill="#1f2328" text-anchor="middle" font-family="ui-monospace,monospace" font-size="14" font-weight="700">tool call</text>
+<text x="95" y="208" fill="#57606a" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10.5">arguments</text>
+<path d="M169 192H182" stroke="#57606a" stroke-width="2.5"/>
+<path d="M176 186l7 6-7 6" fill="none" stroke="#57606a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="196" y="140" width="145" height="104" rx="14" fill="#f6f8fa" stroke="#4B67B4" stroke-width="2"/>
+<text x="268" y="180" fill="#1f2328" text-anchor="middle" font-family="ui-monospace,monospace" font-size="13" font-weight="700">tools/pre-execute</text>
+<text x="268" y="208" fill="#57606a" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10.5">waterfall</text>
+<path d="M350 192H363" stroke="#57606a" stroke-width="2.5"/>
+<path d="M357 186l7 6-7 6" fill="none" stroke="#57606a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="377" y="140" width="145" height="104" rx="14" fill="#f6f8fa" stroke="#4B67B4" stroke-width="2"/>
+<text x="449" y="180" fill="#1f2328" text-anchor="middle" font-family="ui-monospace,monospace" font-size="12" font-weight="700">.dsh/rules.yaml</text>
+<text x="449" y="208" fill="#57606a" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10.5">first match wins</text>
+<path d="M531 192H544" stroke="#57606a" stroke-width="2.5"/>
+<path d="M538 186l7 6-7 6" fill="none" stroke="#57606a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="558" y="140" width="190" height="104" rx="14" fill="#f6f8fa" stroke="#d0d7de" stroke-width="2"/>
+<text x="653" y="180" fill="#1f2328" text-anchor="middle" font-family="ui-monospace,monospace" font-size="12" font-weight="700">allow · ask · deny</text>
+<text x="653" y="208" fill="#57606a" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10.5">next() · approval · reason</text>
+<path d="M757 192H770" stroke="#57606a" stroke-width="2.5"/>
+<path d="M764 186l7 6-7 6" fill="none" stroke="#57606a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="784" y="140" width="215" height="104" rx="14" fill="#f6f8fa" stroke="{'light': '#16a34a', 'dark': '#3fb950'}" stroke-width="2"/>
+<text x="891" y="180" fill="#1f2328" text-anchor="middle" font-family="ui-monospace,monospace" font-size="13" font-weight="700">permissionRules/decision</text>
+<text x="891" y="208" fill="#57606a" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10.5">audit · log-only</text>
+<path d="M1008 192H1021" stroke="#57606a" stroke-width="2.5"/>
+<path d="M1015 186l7 6-7 6" fill="none" stroke="#57606a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="1035" y="140" width="135" height="104" rx="14" fill="#f6f8fa" stroke="#d0d7de" stroke-width="2"/>
+<text x="1102" y="180" fill="#1f2328" text-anchor="middle" font-family="ui-monospace,monospace" font-size="13" font-weight="700">session log</text>
+<text x="1102" y="208" fill="#57606a" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10.5">ignorable</text>
+<circle cx="627" cy="224" r="4.5" fill="#16a34a"/>
+<circle cx="653" cy="224" r="4.5" fill="#bc4c00"/>
+<circle cx="679" cy="224" r="4.5" fill="#dc2626"/>
+<text x="56" y="278" fill="#57606a" font-family="ui-monospace,monospace" font-size="12">network policy</text>
+<rect x="81" y="296" width="220" height="84" rx="12" fill="#f6f8fa" stroke="#d0d7de" stroke-width="1.5"/>
+<text x="191" y="330" fill="#1f2328" text-anchor="middle" font-family="ui-monospace,monospace" font-size="11.5" font-weight="700">shell child</text>
+<text x="191" y="354" fill="#57606a" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10.5">spawned process</text>
+<path d="M309 338H339" stroke="#57606a" stroke-width="2.5"/>
+<path d="M333 332l7 6-7 6" fill="none" stroke="#57606a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="357" y="296" width="220" height="84" rx="12" fill="#f6f8fa" stroke="#d0d7de" stroke-width="1.5"/>
+<text x="467" y="330" fill="#1f2328" text-anchor="middle" font-family="ui-monospace,monospace" font-size="11.5" font-weight="700">HTTP/CONNECT proxy</text>
+<text x="467" y="354" fill="#57606a" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10.5">127.0.0.1 · proxyPort</text>
+<path d="M585 338H615" stroke="#57606a" stroke-width="2.5"/>
+<path d="M609 332l7 6-7 6" fill="none" stroke="#57606a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="633" y="296" width="230" height="84" rx="12" fill="#f6f8fa" stroke="#d0d7de" stroke-width="1.5"/>
+<text x="748" y="330" fill="#1f2328" text-anchor="middle" font-family="ui-monospace,monospace" font-size="11.5" font-weight="700">domains · ips · ports · schemes</text>
+<text x="748" y="354" fill="#57606a" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10.5">network rules or mode</text>
+<path d="M871 338H901" stroke="#57606a" stroke-width="2.5"/>
+<path d="M895 332l7 6-7 6" fill="none" stroke="#57606a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="919" y="296" width="200" height="84" rx="12" fill="#f6f8fa" stroke="#d0d7de" stroke-width="1.5"/>
+<text x="1019" y="330" fill="#1f2328" text-anchor="middle" font-family="ui-monospace,monospace" font-size="11.5" font-weight="700">403 · upstream</text>
+<text x="1019" y="354" fill="#57606a" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10.5">blocked | allowed</text>
+<text x="56" y="418" fill="#57606a" font-family="ui-monospace,monospace" font-size="12">builtin · searchUp · watch · enforce: false · /rules test · /rules reload</text>
+</svg>

@@ -1,92 +1,153 @@
 <div align="center">
 
-# 🛡️ dsh-permission-rules
-- **1024 store channel**: `npm i -g dsh1024` once, then `dsh1024 plugin --profile web add dsh-permission-rules` (counts toward the [deepseek1024.com](https://deepseek1024.com) install ranking).
-[![Gitee](https://img.shields.io/badge/Gitee-mirror-c71d23?logo=gitee)](https://gitee.com/perrylink/dsh-permission-rules)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/dsh-permission-rules-flow-dark.svg">
+  <img src="docs/assets/dsh-permission-rules-flow-light.svg" width="100%" alt="dsh-permission-rules 数据流：tools/pre-execute → .dsh/rules.yaml（首个匹配）→ allow/ask/deny → permissionRules/decision → 会话日志；shell 子进程另经 HTTP/CONNECT 代理按网络规则裁决">
+</picture>
+
+# dsh-permission-rules
+
+**把工具调用的裁决权拿回自己手里——每一条 allow / deny / ask 都写在 YAML 里，确定、即时、可审计。**
+
+面向 DeepSeek Harness 的 Claude Code 风格声明式权限中间件：规则裁决已知的，评审模型裁决未知的；另带一套 Codex 风格的进程级网络策略与本地代理，管住 shell 子进程的出站流量。
+
+[安装](#三步上手) · [配置](#配置) · [FAQ](#faq) · [简体中文](README.md) · [English](README.en.md) · [Español](README.es.md) · [Português](README.pt.md) · [हिन्दी](README.hi.md)
+
+[![License](https://img.shields.io/badge/license-Apache--2.0-3366CC?style=flat-square&labelColor=2B3245)](LICENSE)
+[![DSH](https://img.shields.io/badge/DSH-%E2%89%A50.1.2%20%3C0.3.0-4B67B4?style=flat-square&labelColor=2B3245)](#兼容性)
+[![npm](https://img.shields.io/npm/v/dsh-permission-rules?style=flat-square&labelColor=2B3245&color=CB3837)](https://www.npmjs.com/package/dsh-permission-rules)
+[![CI](https://img.shields.io/github/actions/workflow/status/PerryLink/dsh-permission-rules/ci.yml?branch=main&label=CI&style=flat-square&labelColor=2B3245)](https://github.com/PerryLink/dsh-permission-rules/actions/workflows/ci.yml)
+[![Node](https://img.shields.io/badge/node-%5E22.19%20%7C%7C%20%3E%3D24.9-339933?style=flat-square&labelColor=2B3245)](#兼容性)
+
+[![Stars](https://img.shields.io/github/stars/PerryLink/dsh-permission-rules?style=flat-square&labelColor=2B3245)](https://github.com/PerryLink/dsh-permission-rules/stargazers)
+[![npm downloads](https://img.shields.io/npm/dm/dsh-permission-rules?style=flat-square&labelColor=2B3245&color=CB3837)](https://www.npmjs.com/package/dsh-permission-rules)
 [![dshfind](https://dshfind.com/api/badge/PerryLink/dsh-permission-rules?metric=downloads)](https://dshfind.com/plugins/PerryLink/dsh-permission-rules?ref=badge)
-[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/PerryLink/dsh-permission-rules/badge)](https://api.securityscorecards.dev/projects/github.com/PerryLink/dsh-permission-rules)
-
-**Claude Code-style declarative permission rules for DeepSeek Harness.**
-
-*Rules decide what is known. A reviewer model decides what is not.*
-
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
-[![DSH plugin](https://img.shields.io/badge/dsh--plugin-✅-green)](https://github.com/topics/dsh-plugin)
-[![dsh-doctor](https://raw.githubusercontent.com/PerryLink/dsh-plugin-doctor/main/badges/PerryLink__dsh-permission-rules.svg)](https://github.com/PerryLink/dsh-plugin-doctor#verified-徽章)
-[![DSH Market](https://raw.githubusercontent.com/2BingLing/dsh-market/master/assets/readme/badge-top-rated.svg)](https://dsh.market/)
-[![Node](https://img.shields.io/badge/node-%5E22.19%20%7C%7C%20%3E%3D24-brightgreen.svg)](#)
-[![CI](https://img.shields.io/github/actions/workflow/status/PerryLink/dsh-permission-rules/ci.yml?branch=main&label=CI)](https://github.com/PerryLink/dsh-permission-rules/actions)
-[![Version](https://img.shields.io/github/v/tag/PerryLink/dsh-permission-rules?label=version)](https://github.com/PerryLink/dsh-permission-rules/releases)
-[![npm version](https://img.shields.io/npm/v/dsh-permission-rules)](https://www.npmjs.com/package/dsh-permission-rules)
-[![npm downloads](https://img.shields.io/npm/dm/dsh-permission-rules)](https://www.npmjs.com/package/dsh-permission-rules)
-
-[English](README.md) · [简体中文](README-zh.md) · [Español](README-es.md) · [Português](README-pt.md) · [हिन्दी](README-hi.md)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/PerryLink/dsh-permission-rules/badge)](https://securityscorecards.dev/viewer/?uri=github.com/PerryLink/dsh-permission-rules)
+[![DSH Market](https://img.shields.io/badge/DSH_Market-listed-4B67B4?style=flat-square&labelColor=2B3245)](https://dsh.market/)
+[![Gitee](https://img.shields.io/badge/Gitee-mirror-C71D23?style=flat-square&labelColor=2B3245&logo=gitee)](https://gitee.com/perrylink/dsh-permission-rules)
 
 ```sh
 dsh plugin --profile <name> add dsh-permission-rules
 ```
 
-
 </div>
 
----
+<sub>社区插件，与 DeepSeek 官方无关。唯一仓库：<https://github.com/PerryLink/dsh-permission-rules>（Gitee 为镜像）。</sub>
 
-**📖 Ecosystem knowledge base** — measured data, not marketing: [plugin development guide · plugin-selection data · maintenance criteria](https://perrylink.github.io/dsh-plugin-guide/).
+## 它是什么
 
-<!-- star-cta -->
-## Install & uninstall
+`dsh-permission-rules` 在 `tools/pre-execute` waterfall 上为每次工具调用前置一份有序的 **`allow` / `deny` / `ask`** 规则列表——确定、即时、可审计，由你用纯 YAML 编写。规则裁决已知的调用；没把握的交给官方审批接缝，由评审模型或人裁决。它另外带一层 Codex 风格的进程级网络策略：shell 子进程的出站流量经内置本地 HTTP/CONNECT 代理，由网络规则或映射到官方沙箱预设的三档模式裁决。
 
-- **git channel** (latest `main`): `dsh plugin --profile web add github:PerryLink/dsh-permission-rules` — the `prepare` script builds with production dependencies only.
-- **npm channel** (published releases): `dsh plugin --profile web add dsh-permission-rules`.
-- **tarball channel**: `pnpm pack` in this repo, then `dsh plugin --profile web add ./dsh-permission-rules-<version>.tgz`.
-- **uninstall**: `dsh plugin --profile web remove dsh-permission-rules`.
+## 三步上手
 
-## ⭐ 如果它帮到了你
+1. **安装**（三选一）：
 
-这个插件是 [DSH 插件家族](https://github.com/PerryLink)的一员（95 个，全部 Apache-2.0）。如果你在用，**给个 star** —— 它不会解锁任何功能，但会让下一个人在搜索里更容易找到它。
+   ```sh
+   # git 通道（最新 main；prepare 脚本只用生产依赖构建）
+   dsh plugin --profile web add github:PerryLink/dsh-permission-rules
+   # npm 通道（已发布版本）
+   dsh plugin --profile web add dsh-permission-rules
+   # tarball 通道：本仓库 pnpm pack 后
+   dsh plugin --profile web add ./dsh-permission-rules-<version>.tgz
+   ```
 
-*English:* part of a 95 plugin family for DeepSeek Harness. If it is useful, **a star helps the next person find it** — nothing is gated behind it.
+2. **写第一条规则**（项目根的 `.dsh/rules.yaml`；不写也能用，内置高危基线默认开启）：
 
+   ```yaml
+   # <project>/.dsh/rules.yaml
+   rules:
+     - match: { tools: [bash, pwsh], params: { command: "git push*" }, paths: ["**/secrets/**"] }
+       action: deny
+       reason: "No pushes from protected paths"
 
-## What is dsh-permission-rules?
+     - match: { tools: [edit, write] }
+       action: ask
+       reason: "File writes need confirmation"
+   ```
 
-Claude Code-style declarative permission rules for DeepSeek Harness.
+3. **验证已生效**：
 
-Rules decide what is known. A reviewer model decides what is not.
+   ```sh
+   # 重启 profile 后确认插件行已挂载
+   dsh --profile web --dump-config | grep -A4 'id: permission-rules'
+   # 用真实命令面试跑一条假设调用，不执行任何工具
+   /rules test bash {"command":"git push origin main","cwd":"src/secrets/app"}
+   ```
 
-![Workflow diagram for dsh-permission-rules: request → policy / review → verdict.](docs/assets/dsh-permission-rules-flow.svg)
+```text
+"bash" matches rule 1 (deny): 禁止 push 到受保护路径
+```
 
-*Workflow overview: request → policy / review → verdict. The examples below use the real command surface.*
+**卸载**：`dsh plugin --profile web remove dsh-permission-rules`（或从 profile patch 删掉该行）。
 
+<details>
+<summary>从 DSH Desktop 市场安装</summary>
 
+所有 PerryLink 插件均可在 DSH Desktop 内置市场中浏览：**市场 → 来源 → 添加来源 → 粘贴** `https://perrylink-dsh-catalog.perrylink.workers.dev/catalog-source.json` **→ 选中**。安装仍需通过市场的 npm 身份校验与你的确认。
 
-## Compatibility
+</details>
 
-| Surface | Status |
-|---|---|
-| Harness | DeepSeek Harness `dsh-v0.2.1-alpha.1` (adapted 2026-09-22, full gate chain): its plugin config is the live settings contract — every field is declared `.volatile()`, the Loader hands `apply` a live reference per field, and a saved edit is committed into the running references WITHOUT remounting the plugin, with out-of-range values refused by the schema before anything is written. A host whose Schemastery predates `volatile()` (before 3.18.3) still mounts and runs this plugin — the fields simply stay ordinary values and the live config form is unavailable — because the marker is applied through a capability probe rather than assumed. `Session.append` on this line still cannot stamp the `ignorable` marker (its third argument is the surface-intent bag, and the envelope field survives for stored-log reads only), so the whole `0.2-alpha` line is pre-checked as unmarked and session-log audit stays disabled by default — `append` reads only `sourceEventSeqs`/`surfaceOp` and freezes the envelope, so it has no code path that could stamp the marker; the earlier `0.1.7-alpha` (adapted 2026-09-22), `0.1.5-rc.2` (adapted 2026-09-09) and `0.1.3-alpha` lines keep the same surface-only append signature, and every `0.2` prerelease is classified with them (a STABLE `0.2.x` release is left to the append probe, so a restored marker surface is adopted without a new plugin release). Those lines' log migrations refuse unclassified plugin events even when marked, so `strip` v1 audit rows before a `0.1.3-alpha` host opens the log and v2 audit rows before a `0.1.5-alpha` host migrates it (native v3 logs only need `repair`). |
-| Node | `^22.19.0 || >=24.0.0` |
-| Platforms | All (host + web settings client) |
-| Model | Any (deny/ask reasons surface through tool results) |
+## 核心能力
 
-## What you get
+`dsh-permission-rules` 在 `tools/pre-execute` 上为每次工具调用前置有序规则——确定、即时、可审计：
 
-`dsh-permission-rules` puts an ordered **`allow` / `deny` / `ask`** rule list in front of every tool call on the `tools/pre-execute` waterfall — deterministic, instant, auditable, and written by you in plain YAML:
+- **`deny`** 阻断调用；规则的 `reason` 成为模型可见的错误。
+- **`ask`** 走官方审批接缝（挂载 `dsh-auto-review` 用第二模型作答，或由人作答；两者皆无时 harness 失败关闭）。
+- **`allow`**（及未命中）严格经 `next()` 委托——下游监听器绝不会被短路。
 
-- **`deny`** blocks the call; the rule's `reason` becomes the model-visible error.
-- **`ask`** rides the official approval seam (mount `dsh-auto-review` for a second-model answerer, or a human answers; with neither, the harness fails closed).
-- **`allow`** (and no-match) strictly delegates via `next()` — downstream listeners are never short-circuited.
+每次命中**和**每次透传都作为 `permissionRules/decision` 会话事件审计落盘（仅日志——不会向模型上下文额外注入任何内容）。
 
-Every hit **and** every passthrough is audit-logged as a `permissionRules/decision` session event (log-only — nothing extra is injected into the model context).
+- **丰富匹配** —— 工具名 glob（含 `mcp__*`）、agent 身份选择器（`main` / `subagent` / `preset:*`）、参数键/值 glob **或** 正则（含 `!pattern` 取反与 `absent` 键维度）、**任意嵌套深度**的工作区相对路径 glob、`when` 宿主条件（环境变量、平台），以及 **shell 命令分解**（`argv`：命令词、参数 token、管道签名）用于 token 级精确命令匹配。
+- **内置高危基线** —— 随附的 deny/ask 规则集（破坏性命令、权限提升、下载即执行、敏感路径），默认开启并追加在用户规则之后（更近的用户规则可覆盖）；用 `builtin.enabled` 开关。
+- **分层规则文件** —— 可选 `searchUp` 从会话 cwd 到文件系统根合并每个 `.dsh/rules.yaml`，就近优先。
+- **试运行上线** —— `enforce: false` 审计策略*会*做什么，同时放行每个调用。
+- **热重载** —— Chokidar 监听带去抖；损坏的编辑保留旧规则、绝不崩溃。在 WSL 主机上（或规则文件位于 `/mnt/<盘符>` 下时）监听切换为轮询，因为该处的原生变更事件不可靠。
+- **失败大声** —— 非法 YAML、未知 action/字段、坏 glob/正则、易回溯模式或超过 `maxRules` 的规则在加载期失败。
 
-- **Rich matching** — tool-name globs (including `mcp__*`), agent-identity selectors (`main` / `subagent` / `preset:*`), argument key/value globs **or** regexes (with `!pattern` negation and an `absent` key dimension), workspace-relative path globs at **any nesting depth**, `when` host conditions (env vars, platform), and **shell command decomposition** (`argv`: command word, argument tokens, pipeline signature) for token-precise command matching.
-- **Built-in high-risk baseline** — a shipped deny/ask ruleset (destructive commands, privilege escalation, download-and-execute, sensitive paths) enabled by default and appended after user rules so a nearer user rule can override it; toggle with `builtin.enabled`.
-- **Hierarchical rule files** — optional `searchUp` merges every `.dsh/rules.yaml` from the session cwd to the filesystem root, nearest first.
-- **Dry-run rollout** — `enforce: false` audits what the policy *would* do while passing every call through.
-- **Hot reload** — Chokidar watch with debounce; a broken edit keeps the previous rules, never crashes. On a WSL host, or for a rule file under `/mnt/<drive>`, the watch switches to polling because native change events are unreliable there.
-- **Fail loud** — invalid YAML, unknown actions/fields, bad globs/regexes, backtracking-prone patterns, or more than `maxRules` rules fail the load.
+### 命令与工具面
 
-## Rule syntax
+| 表面 | 类型 | 说明 |
+|---|---|---|
+| `tools/pre-execute` | listener | 首个匹配的 allow/deny/ask 规则 + 网络 URL 候选抽取 |
+| `/rules` | command | `list` · `reload` · `decisions [n]` · `test <tool> <json>` |
+| `permissionRules/decision` | event | 每次命中与透传的仅日志审计 |
+| `permissionRules/network` | event | 被拒连接的代理层审计 |
+| HTTP/CONNECT proxy | service | 治理 shell 子进程流量的内置本地代理 |
+| settings page | client | 网络模式编辑器、规则编辑器、块计数器、近期拦截（每条可一键放行） |
+
+```text
+/rules                        list the active rules, their source files, and any last-reload error
+/rules list                   explicit alias for the bare listing
+/rules reload                 re-read the rule-file chain for this workspace
+/rules decisions [n]          show the last n permission decisions of this session (default 10)
+/rules test <tool> <json>     dry-evaluate the rules against a hypothetical call
+```
+
+`/rules test` 也接受前置标志：`--cwd <dir>`、`--env KEY=VALUE`（可重复）、`--agent <selector>`（可重复）与 `--platform <name>`。在多文件链（如 `searchUp`）中，每条列出的规则行都归属到其自身源文件。
+
+### 示例
+
+以下为插件真实入口；安装后调用一个即可。
+
+**详细示例** — 命令 `/rules test bash {"command":"git push origin main","cwd":"src/secrets/app"}`，输出：
+
+```text
+"bash" matches rule 1 (deny): 禁止 push 到受保护路径
+```
+
+*Observed from `test/command.spec.ts:204-219 (assertions at :209-213); src/prose.ts:121`*
+
+**失败分支** — 输入 `/rules test bash {not json`，输出：
+
+```text
+Invalid JSON arguments "{not json": the arguments must parse as JSON.
+```
+
+*Observed from `plugins/dsh-permission-rules/src/prose.ts:123; plugins/dsh-permission-rules/src/runtime.ts:1266-1272; plugins/dsh-permission-rules/test/command.spec.ts:221-228`*
+
+**简短示例**：`tools/pre-execute` · `/rules test <tool> <json>`
+
+## 规则语法
 
 ```yaml
 # <project>/.dsh/rules.yaml
@@ -100,258 +161,250 @@ rules:
     reason: "File writes need confirmation"
 ```
 
-- **Match dimensions** — `tools` (globs, incl. `mcp__*`), `agents` (`main` / `subagent` / `preset:<name>`; unknown identity never matches — fail closed), `params` (key/value globs or regexes, `!pattern` negation, `absent` key dimension), `paths` (workspace-relative globs extracted at any nesting depth), `when` (`env` var globs/regexes + a closed `platform` list), and `network` (`domains` / `ips` / `ports` / `schemes` — globs, wildcards, CIDRs, port ranges).
-- **Actions** — `allow` / `deny` / `ask`, evaluated in file order, first match wins.
-- **Rule metadata** — `enabled: false` (visible but inert), `description`, `tags`; unknown fields fail the load.
-- **Schema** — a JSON Schema ships at [docs/rules-format.schema.json](docs/rules-format.schema.json) (editor completion via `# yaml-language-server: $schema=...`); the full vocabulary and a 5-rule security baseline live in [docs/rules-format.en.md](docs/rules-format.en.md).
+- **匹配维度** —— `tools`（glob，含 `mcp__*`）、`agents`（`main` / `subagent` / `preset:<name>`；未知身份永不匹配——失败关闭）、`params`（键/值 glob 或正则，`!pattern` 取反，`absent` 键维度）、`paths`（任意嵌套深度抽取的工作区相对 glob）、`when`（`env` 变量 glob/正则 + 封闭 `platform` 列表），以及 `network`（`domains` / `ips` / `ports` / `schemes`——glob、通配符、CIDR、端口范围）。
+- **动作** —— `allow` / `deny` / `ask`，按文件顺序求值，首个命中胜出。
+- **规则元数据** —— `enabled: false`（可见但失效）、`description`、`tags`；未知字段加载失败。
+- **Schema** —— JSON Schema 见 [docs/rules-format.schema.json](docs/rules-format.schema.json)（编辑器补全 `# yaml-language-server: $schema=...`）；完整词汇表与 5 条安全基线见 [docs/rules-format.md](docs/rules-format.md)。
 
-## Network policy
+## 网络策略
 
-A Codex-style **process-level network policy**: shell subprocess traffic flows through a built-in local **HTTP/CONNECT proxy**, and every connection is decided by ordered network rules or by three modes mapped onto the official sandbox presets:
+Codex 风格的**进程级网络策略**：shell 子进程流量经内置本地 **HTTP/CONNECT 代理**，每个连接由有序网络规则或映射到官方沙箱预设的三档模式裁决：
 
-- **`deny-all`** — the read-only sandbox preset: block all outbound.
-- **`whitelist`** — the workspace-write preset: allow listed targets, `unlisted: ask` (or `deny`) for the rest.
-- **`allow-all`** — the danger-full-access preset: allow everything.
-- **`auto`** (default) — follows the sandbox preset; on hosts without the sandbox-policy service it resolves to `autoFallback` (`allow-all`).
+- **`deny-all`** —— 只读沙箱预设：阻断所有出站。
+- **`whitelist`** —— workspace-write 预设：放行列表目标，其余按 `unlisted: ask`（或 `deny`）。
+- **`allow-all`** —— danger-full-access 预设：放行一切。
+- **`auto`**（默认）—— 跟随沙箱预设；无沙箱策略服务的宿主上解析为 `autoFallback`（`allow-all`）。
 
-- **Matching** — `match.network` with `domains` / `ips` / `ports` / `schemes` (globs, wildcards, CIDRs, port ranges; numeric YAML ports are accepted). URL-candidate extraction on the `tools/pre-execute` hot path fires on web-tool arguments and URLs embedded in bash/pwsh command text; loopback targets can short-circuit rules per `loopback` policy. IPv4-mapped IPv6 literals are normalized to their IPv4 form before matching, and the proxy connects on the addresses the decision was made on — never a second DNS resolution — a connection whose adjudication resolved no address fails closed (502) instead of dialing the name.
-- **Upstream chaining** — `network.upstreamProxy` (default `off`) sends the connections this proxy **allows** through an upstream proxy: CONNECT asks the upstream for a tunnel (`CONNECT host:port`) and plain-HTTP requests are forwarded to it in absolute form. A blocked target never reaches the upstream — it still gets this plugin's structured 403. Two cases never chain even when an upstream is configured: a **loopback** target (a proxy outside this host cannot route its loopback) and any decision produced by an **`ips`-scoped rule** (chaining hands the hostname to the upstream, so "the connection lands on an address the rules saw" — issue #21 — would stop holding exactly where the rules cared about the address; those decisions keep dialing the adjudicated address directly), plus a target whose scheme has no usable upstream. The upstream's own hostname is operator configuration, not agent input, and is not adjudicated by these rules. A URL carrying credentials is never emitted raw: warnings, `/rules network` and the settings snapshot mask the password (`http://user:***@host:port`). An unreachable upstream, a timeout (10 s), or a non-2xx answer yields **502** — there is deliberately no silent fallback to a direct dial, so a misconfiguration stays visible.
-- **Audit** — denied connections append `permissionRules/network` to the owning session (same adaptive `ignorable` gate), with block counters and recent interceptions in `/rules network` and the settings page.
-- **Diagnosis** — blocked connections carry a `[network: …]` message naming the blocked target, the mode or rule that decided, and the remediation.
-- **Allow from the settings page** — every recent interception offers an **Allow** action. It writes ONE minimal `match: { network: { domains: [<host>] } }` / `action: allow` rule at the **top** (index 0) of the nearest rule file that actually judges that connection: the project file of the workspace the block was attributed to (the absolute `rulesFile` when one is configured), or, for a session-less host-level block, the file the host chain resolves (absolute `rulesFile` → existing `<processCwd>/<rulesFile>` → configured `fallbackPath` → `<processCwd>/<rulesFile>`, created) — and when several workspaces are loaded, the page first offers a picker, because any loaded workspace chain outranks the host chain. Index 0 because rules are first-match-wins: appended after an existing `deny` the rule would be dead text. `domains` only, because that dimension is subdomain-inclusive and port/scheme-agnostic, so the host is not re-blocked on its next port; existing comments and untouched rules survive, and the text goes through the same validation gate as a hand edit. The change takes effect immediately — the cached workspace chains AND the session-less host chain are re-read, so no restart and no `/rules reload` — and the decision is recomputed, so the notice reports the REAL outcome and never claims success while the connection is still blocked. It refuses, leaving the file untouched, an unknown workspace, a target outside the known rule sources, the read-only built-in baseline, and a file it cannot read or parse; an already-allowed connection writes nothing. `network.allowHostAction: false` hides the button and makes the RPC refuse.
+- **匹配** —— `match.network` 用 `domains` / `ips` / `ports` / `schemes`（glob、通配符、CIDR、端口范围；数值型 YAML 端口可接受）。`tools/pre-execute` 热路径上的 URL 候选抽取作用于 web 工具参数与嵌入 bash/pwsh 命令文本的 URL；回环目标可按 `loopback` 策略短路规则。IPv4 映射的 IPv6 字面量在匹配前归一化为 IPv4 形式；代理按裁决到的地址建连，不做二次 DNS 解析——裁决未解析出任何地址的连接以 502 关闭失败，绝不按名字拨号。
+- **上游链式** —— `network.upstreamProxy`（默认 `off`）把本代理**放行**的连接送上上游代理：CONNECT 向上游要一条隧道（`CONNECT host:port`），纯 HTTP 请求以绝对形式转发给它。被拦截的目标永远到不了上游——它照旧收到本插件的结构化 403。即使配置了上游，两类情况也绝不链式：**回环**目标（本机之外的代理无法路由它的回环），以及由 **`ips` 作用域规则**产生的任何裁决（链式会把主机名交给上游，"连接落在规则看过的地址上"（issue #21）恰恰会在规则真正在意地址的地方不再成立；这些裁决仍按裁决到的地址直连），再加上目标 scheme 没有可用上游的情况。上游自身的主机名是运维配置而非 agent 输入，不参与这些规则的裁决。带凭据的 URL 绝不原样输出：警告、`/rules network` 与设置页快照都会把口令打码（`http://user:***@host:port`）。上游不可达、超时（10 秒）或返回非 2xx 一律 **502**——刻意没有静默回退直连，配置错误因此始终可见。
+- **审计** —— 被拒连接向所属会话追加 `permissionRules/network`（同样的自适应 `ignorable` 门），块计数器与近期拦截在 `/rules network` 与设置页展示。
+- **诊断** —— 被拦截的连接带 `[network: …]` 消息，点名被拦目标、做出裁决的模式或规则，以及处置办法。
+- **设置页放行** —— 每条近期拦截都提供**放行**动作：它在真正裁决该连接的最近一个规则文件的**最前面**（索引 0）写入一条最小的 `match: { network: { domains: [<主机>] } }` / `action: allow` 规则——被拦截连接所归属工作区的项目文件（配置了绝对 `rulesFile` 时即该文件）；对无会话归属的宿主级拦截，则写宿主链解析出的文件（绝对 `rulesFile` → 已存在的 `<processCwd>/<rulesFile>` → 配置的 `fallbackPath` → `<processCwd>/<rulesFile>`，不存在则创建）。加载了多个工作区时，页面先提供工作区选择器——任何已加载的工作区链都优先于宿主链。之所以放在索引 0：规则首个匹配生效，追加在既有 `deny` 之后只会成为死文本。只写 `domains`：该维度包含子域且与端口/scheme 无关，因此同一主机在下一个端口上不会被重新拦截；既有注释与未改动规则原样保留，文本与手工编辑走同一道校验门。写入即刻生效——缓存的工作区链**与**无会话宿主链都会重读，无需重启、无需 `/rules reload`——随后重新计算裁决，因此提示报告的是**真实**结果，绝不在连接仍被拦截时声称成功。以下情况一律拒绝且磁盘文件分毫不动：未知工作区、不在已知规则源内的目标、只读的内置基线、无法读取或解析的文件；连接已被放行时不写入任何内容。`network.allowHostAction: false` 隐藏按钮并让 RPC 拒绝。
 
-## Quick start
+## 配置
 
-```sh
-dsh plugin --profile web add github:PerryLink/dsh-permission-rules
-```
+所有可调项均为 Schemastery `Config` 字段（可在 cordis.yml 中修改）。按 id 覆盖会整行替换——重述你需要的每个键。在 `0.1.7-alpha` 宿主上每个字段都以 `.volatile()` 声明，因此还可在 Plugins 设置页就地编辑：编辑直接写入运行中的引用、不重挂插件，运行期在下次读取时取到新值，且改动 `network.proxyPort`、`proxyBind`、`injectEnv` 或 `noProxy` 会立即重绑本地代理。数值边界声明在 schema 上，配置编辑器在持久化前用该 schema 解析合并后的配置，故越界值在写入时即被拒绝。Schemastery 早于 `volatile()` 的宿主上，这些字段只能通过 cordis.yml 修改。
 
-```sh
-# 1. install the bundle into your profile
-dsh plugin --profile web add github:PerryLink/dsh-permission-rules
+最常用键：
 
-# or from npm (published releases)
-dsh plugin --profile web add dsh-permission-rules
-
-# 2. restart and verify the row
-dsh --profile web --dump-config | grep -A4 'id: permission-rules'
-```
-
-### Examples
-
-These are the plugin's real entry points; install once, then call one.
-
-#### Detailed example
-
-**Command**
-
-~~~sh
-/rules test bash {"command":"git push origin main","cwd":"src/secrets/app"}
-~~~
-
-**Output**
-
-~~~text
-"bash" matches rule 1 (deny): 禁止 push 到受保护路径
-~~~
-
-*Observed from `test/command.spec.ts:204-219 (assertions at :209-213); src/prose.ts:121`*
-
-#### Failure branch
-
-**Input**
-
-~~~text
-/rules test bash {not json
-~~~
-
-**Output**
-
-~~~text
-Invalid JSON arguments "{not json": the arguments must parse as JSON.
-~~~
-
-*Observed from `plugins/dsh-permission-rules/src/prose.ts:123; plugins/dsh-permission-rules/src/runtime.ts:1266-1272; plugins/dsh-permission-rules/test/command.spec.ts:221-228`*
-
-#### Brief examples
-
-- `tools/pre-execute`
-
-## Configuration
-
-All tunables are Schemastery `Config` fields (changeable from cordis.yml). An id-targeted override replaces the whole row — restate every key you need. On a `0.1.7-alpha` host every field is declared `.volatile()`, so it is ALSO editable in place from the Plugins settings page: the edit is committed into the running references without remounting the plugin, the runtime reads the new value on its next use, and a change to `network.proxyPort`, `proxyBind`, `injectEnv` or `noProxy` rebinds the local proxy immediately. The numeric bounds live in the schema, and the config editor resolves the merged config against that schema before persisting, so an out-of-range value is refused at write time. On a host whose Schemastery predates `volatile()` these fields stay cordis.yml-only.
-
-| Key | Default | Meaning |
+| 键 | 默认值 | 含义 |
 |---|---|---|
-| `rulesFile` | `.dsh/rules.yaml` | Rule file location; relative = resolved against the calling session's cwd, absolute = global and validated at mount |
-| `fallbackPath` | *(none)* | Rule file used when per-cwd discovery finds nothing; validated at mount |
-| `badFilePolicy` | `fail` | Bad rule file: `fail` errors the pending tool call loudly; `ignore-with-warning` warns and continues empty |
-| `maxRules` | `256` | Hard cap on rule count across the effective source chain |
-| `maxCachedWorkspaces` | `512` | Hard cap on cached per-workspace rule loads (LRU eviction) |
-| `patternMode` | `glob` | `params`/`paths`/`when.env` pattern flavor: `glob` or `regex` (tool names are always globs) |
-| `watch` | `true` | Chokidar watch + reload on change |
-| `watchStabilityThresholdMs` | `200` | Reload debounce window (ms) |
-| `language` | `en` | `/rules` output language: `en`, `zh`, `es`, `pt`, `hi` |
-| `caseInsensitivePaths` | *(win32)* | `paths` patterns and workspace-root comparison ignore ASCII case; `true` on Windows |
-| `audit` | `all` | Audit granularity: `all` logs every hit AND passthrough; `hits` skips passthrough events |
-| `searchUp` | `false` | Walk parent directories from the session cwd and merge every found rule file, nearest first |
-| `maxGlobStars` | `2` | Hard cap on unbounded `*`/`**` quantifiers per glob pattern |
-| `enforce` | `true` | `false` = dry-run mode: deny/ask hits are audit-logged with a `dryRun` marker and every call passes through |
-| `allowUnmarkedAudit` | `false` | Pre-marker hosts drop the `ignorable` marker; the plugin disables session-log audit with a warning. Set `true` to opt back in |
-| `network.enabled` | `true` | Master switch for the proxy, env injection, and web-tool mode defaults |
-| `network.mode` | `auto` | Policy mode: `auto` follows the sandbox preset, or `deny-all` / `whitelist` / `allow-all` |
-| `network.autoFallback` | `allow-all` | Mode used when `auto` has no sandbox-policy service |
-| `network.unlisted` | `ask` | Whitelist-mode handling of targets no rule matched: `ask` or `deny` |
-| `network.proxyBind` | `127.0.0.1` | Local proxy bind address (loopback only) |
-| `network.proxyPort` | `0` | Local proxy port; `0` picks a free ephemeral port |
-| `network.proxyMaxRecent` | `100` | Cap on recent-block records kept for the settings page |
-| `network.loopback` | `allow` | Loopback targets: `allow` (Codex parity) or `policy` |
-| `network.injectEnv` | `true` | Whether proxy environment variables are injected for subprocesses |
-| `network.noProxy` | `clear` | Subprocess NO_PROXY handling: `clear` enforces the policy or `preserve` |
-| `network.upstreamProxy` | `off` | Upstream proxy for connections this plugin ALLOWS: `off` dials directly, `inherit` reuses the launch environment's proxy names, or an explicit `http(s)://` proxy URL |
-| `network.allowHostAction` | `true` | Settings-page per-block "allow this host" action: `false` hides the Allow button and makes the `permissionRules/allowHost` RPC refuse (the rule editor is not affected) |
-| `builtin.enabled` | `true` | Built-in high-risk baseline: `false` disables the shipped deny/ask ruleset entirely |
-| `builtin.path` | *(shipped)* | Replacement baseline file (absolute, or relative to `process.cwd()`); validated at mount |
+| `rulesFile` | `.dsh/rules.yaml` | 规则文件位置；相对 = 相对调用会话 cwd 解析，绝对 = 全局并在挂载时校验 |
+| `fallbackPath` | *(none)* | 按 cwd 发现无果时使用的规则文件；挂载时校验 |
+| `badFilePolicy` | `fail` | 坏规则文件：`fail` 响亮地令待处理工具调用出错；`ignore-with-warning` 警告并空继续 |
+| `maxRules` | `256` | 生效源链上规则总数的硬上限 |
+| `patternMode` | `glob` | `params`/`paths`/`when.env` 模式风格：`glob` 或 `regex`（工具名始终为 glob） |
+| `watch` | `true` | Chokidar 监听 + 变更重载 |
+| `enforce` | `true` | `false` = 试运行：deny/ask 命中带 `dryRun` 标记审计，每个调用都透传 |
+| `language` | `en` | `/rules` 输出语言：`en`、`zh`、`es`、`pt`、`hi` |
 
-## Tools & surfaces
+<details>
+<summary>完整配置表（29 个键）</summary>
 
-| Surface | Kind | Notes |
+| 键 | 默认值 | 含义 |
 |---|---|---|
-| `tools/pre-execute` | listener | First-match allow/deny/ask rules + network URL-candidate extraction |
-| `/rules` | command | `list` · `reload` · `decisions [n]` · `test <tool> <json>` |
-| `permissionRules/decision` | event | Log-only audit for every hit and passthrough |
-| `permissionRules/network` | event | Proxy-layer audit for blocked connections |
-| HTTP/CONNECT proxy | service | Built-in local proxy governing shell subprocess traffic |
-| settings page | client | Network-mode editor, rule editor, block counters, recent interceptions with a per-block allow action |
+| `rulesFile` | `.dsh/rules.yaml` | 规则文件位置；相对 = 相对调用会话 cwd 解析，绝对 = 全局并在挂载时校验 |
+| `fallbackPath` | *(none)* | 按 cwd 发现无果时使用的规则文件；挂载时校验 |
+| `badFilePolicy` | `fail` | 坏规则文件：`fail` 响亮地令待处理工具调用出错；`ignore-with-warning` 警告并空继续 |
+| `maxRules` | `256` | 生效源链上规则总数的硬上限 |
+| `maxCachedWorkspaces` | `512` | 缓存的工作区规则加载硬上限（LRU 逐出） |
+| `patternMode` | `glob` | `params`/`paths`/`when.env` 模式风格：`glob` 或 `regex`（工具名始终为 glob） |
+| `watch` | `true` | Chokidar 监听 + 变更重载 |
+| `watchStabilityThresholdMs` | `200` | 重载去抖窗口（毫秒） |
+| `language` | `en` | `/rules` 输出语言：`en`、`zh`、`es`、`pt`、`hi` |
+| `caseInsensitivePaths` | *(win32)* | `paths` 模式与工作区根比较忽略 ASCII 大小写；Windows 上为 `true` |
+| `audit` | `all` | 审计粒度：`all` 记录每次命中与透传；`hits` 跳过透传事件 |
+| `searchUp` | `false` | 从会话 cwd 向上遍历父目录并合并每个找到的规则文件，就近优先 |
+| `maxGlobStars` | `2` | 每个 glob 模式无界 `*`/`**` 量词的硬上限 |
+| `enforce` | `true` | `false` = 试运行：deny/ask 命中带 `dryRun` 标记审计，每个调用都透传 |
+| `allowUnmarkedAudit` | `false` | 前标记宿主丢弃 `ignorable` 标记；插件以一次性警告禁用会话日志审计。设 `true` 重新启用 |
+| `network.enabled` | `true` | 代理、环境注入与 web 工具模式默认的总开关 |
+| `network.mode` | `auto` | 策略模式：`auto` 跟随沙箱预设，或 `deny-all` / `whitelist` / `allow-all` |
+| `network.autoFallback` | `allow-all` | `auto` 无沙箱策略服务时使用的模式 |
+| `network.unlisted` | `ask` | 白名单模式下未命中规则目标：`ask` 或 `deny` |
+| `network.proxyBind` | `127.0.0.1` | 本地代理绑定地址（仅回环） |
+| `network.proxyPort` | `0` | 本地代理端口；`0` 选空闲临时端口 |
+| `network.proxyMaxRecent` | `100` | 设置页保留的近期拦截记录上限 |
+| `network.loopback` | `allow` | 回环目标：`allow`（Codex 对齐）或 `policy` |
+| `network.injectEnv` | `true` | 是否为子进程注入代理环境变量 |
+| `network.noProxy` | `clear` | 子进程 NO_PROXY 处理：`clear` 强制策略或 `preserve` |
+| `network.upstreamProxy` | `off` | 本插件**放行**连接的上游代理：`off` 直连、`inherit` 沿用启动环境的代理名，或显式 `http(s)://` 代理 URL |
+| `network.allowHostAction` | `true` | 设置页逐条「放行」动作：`false` 隐藏「放行」按钮并让 `permissionRules/allowHost` RPC 拒绝（规则编辑器不受影响） |
+| `builtin.enabled` | `true` | 内置高危基线：`false` 完全禁用随附的 deny/ask 规则集 |
+| `builtin.path` | *(随附)* | 替换基线文件（绝对路径，或相对 `process.cwd()`）；挂载时校验 |
 
-```
-/rules                        list the active rules, their source files, and any last-reload error
-/rules list                   explicit alias for the bare listing
-/rules reload                 re-read the rule-file chain for this workspace
-/rules decisions [n]          show the last n permission decisions of this session (default 10)
-/rules test <tool> <json>     dry-evaluate the rules against a hypothetical call
-```
+</details>
 
-`/rules test` also accepts leading flags: `--cwd <dir>`, `--env KEY=VALUE` (repeatable), `--agent <selector>` (repeatable), and `--platform <name>`. In multi-file chains (e.g. `searchUp`), every listed rule line is attributed to its own source file.
+## FAQ
 
-## Permissions & data
+<details>
+<summary>规则文件存在哪？插件会不会乱写我的文件？</summary>
 
-- **Permissions**: declares `files:read`, `files:watch`, `files:write`, `session:append`, and `network:outbound` in its workshop manifest. `ask` decisions ride the official approval seam — nothing is re-implemented or bypassed.
-- **Data**: rule files are read from disk; no rule data is written. No model calls, no reviewer subagents.
-- **Session log**: `permissionRules/decision` is never injected into the model context and is appended with the envelope's `ignorable: true` marker so any harness build loads the log.
+规则从磁盘读取：项目根的 `.dsh/rules.yaml`，或配置的 `rulesFile` / `fallbackPath`，`searchUp` 时逐级向上合并。常规裁决路径不写任何规则数据。唯一的写面是设置页的规则编辑器，以及「放行」动作——后者只向已知规则源的最前面写一条最小 allow 规则，写前重新走一遍与手工编辑相同的解析/编译校验（详见「网络策略」）。
 
-## Security boundaries
+</details>
 
-- **Policy, not a kernel.** `paths` candidates come only from a documented set of argument keys (at any nesting depth, depth-capped), and only workspace-relative paths match.
-- **No reviewer here.** The plugin never spawns subagents or calls models — producing an `ask` decision is the end of its work.
-- **No sandbox changes.** OS-level sandbox policy belongs to the sandbox seam, not this plugin.
-- **Loud misconfiguration.** Unknown YAML fields, unknown actions, and bad patterns are rejected at load.
-- **Backtracking bounds.** Glob patterns are capped at `maxGlobStars` unbounded star expansions; regex-mode patterns reject nested unbounded quantifiers and quantified overlapping literal alternations.
-- **Fail-closed dialing.** Plain-HTTP forwards and CONNECT tunnels connect only to adjudicated addresses; an allow whose adjudication resolved no address fails closed with 502 instead of dialing the name (issue #23).
+<details>
+<summary>没有挂载 dsh-auto-review 时，ask 会怎样？</summary>
 
-## Known limitations
+`ask` 走官方审批接缝：挂了 `dsh-auto-review` 就由只读的第二模型裁决，否则由人作答；两者都不存在时 harness 失败关闭，调用不会静默放行。本插件自己绝不生成子代理、不调用模型——产出 `ask` 就是它工作的终点。
 
-- **Audit marker on pre-marker and refusing hosts.** `permissionRules/decision` is appended with `ignorable: true`; hosts whose `Session.append` predates the marker (the `0.1.0-rc.1`–`rc.7` and `0.1.1-rc.1`–`rc.7` lines) silently drop it, the `0.1.2-rc` line ships the alpha.5 surface (no append option writes the marker), the `0.1.2-alpha` line refuses plugin events on read even when marked, and the `0.1.3-alpha` and `0.1.5-alpha` lines keep the same surface-only append signature (verified on the published `0.1.3-alpha.1`/`0.1.5-alpha.1` packages) — the runtime pre-checks all of these before the first append and disables session-log audit with a one-time warning. Cross-generation migration refuses marked audit rows too: the `0.1.3-alpha` v1→v2 gate refuses unknown v1 events, and the `0.1.5-alpha` v2→v3 gate refuses every unclassified event (its inventory is frozen to the released v2 vocabulary), so `strip` v1 rows before a 0.1.3 host opens the log and v2 rows before upgrading to a 0.1.5 host. Native v3 logs accept marked plugin rows, so they only need `repair`. Set `allowUnmarkedAudit: true` to opt back in; repair already-written logs with `scripts/repair-session-logs.mjs` (its `strip` mode removes audit rows where the marker cannot help).
-- **Path candidates are heuristic.** Only the documented argument keys feed path matching, and workspace-relative matching is ASCII-case-insensitive only when `caseInsensitivePaths` is on.
-- **Globs are a conservative subset.** No brace expansion — write two patterns, or use regex mode.
-- **The regex backtracking guard is structural, not exhaustive.** Prefer glob mode for untrusted files.
-- **The host's own outbound requests do not go through this proxy.** The injected proxy environment covers **spawned shell children** — which is what the injection is for — and any consumer that reads the proxy names at request time. It does **not** cover the host process's own `fetch`-based traffic: the launcher installs undici's global dispatcher from the **launch environment** before the first plugin mounts, that dispatcher routes by its policy rather than by the environment, and Node samples the proxy environment at start — so a plugin mounting later cannot redirect it. Consequences: provider endpoints do **not** need an allow rule, and `network.injectEnv: false` does not take the host process out of anything. Measured 2026-09-10 on Node 22; reproduce with `scripts/host-egress-probe.mjs`.
-- **Upstream chaining covers only what reaches this proxy.** On `dsh-v0.1.7-alpha.1` and later, the harness's own launch-time proxy policy and its subprocess environment overlay can take precedence over the proxy names this plugin injects, so `network.upstreamProxy` describes what happens to the connections this proxy handles — it is not a claim about every outbound path in the host process.
+</details>
 
-## Collaborating with dsh-auto-review
+<details>
+<summary>宿主自身的出站请求会被这个代理拦住吗？</summary>
 
-- `dsh-permission-rules` produces `ask`; `dsh-auto-review` answers on the `approval/request` waterfall with a read-only second-model verdict (or delegates to humans). Mount both for the full closed loop.
-- Integration-tested: `permissionRules/decision` → `approval/asked` → `autoReview/verdict` → `approval/decided`, with the reviewer replaced by a scripted mock.
-- The `never` approval policy and every fail-closed guarantee of the official harness stay untouched.
+不会。注入的代理环境覆盖**派生的 shell 子进程**，以及在请求时读取代理变量名的消费者；**不覆盖**宿主进程自身基于 `fetch` 的流量——launcher 在第一个插件挂载前就用启动环境装好了 undici 的全局 dispatcher，该 dispatcher 按策略而非按环境路由。因此供应商端点不需要允许规则，`network.injectEnv: false` 也不会把宿主进程移出任何东西。2026-09-10 实测于 Node 22，可用 `scripts/host-egress-probe.mjs` 复现。
 
-## Session log repair
+</details>
 
-Session logs written before the `ignorable` marker existed can be refused by newer harness builds (`SessionFormatUnsupportedError`). The shipped `scripts/repair-session-logs.mjs` rewrites only the targeted audit rows to carry `ignorable: true`, frame-preserving, with backups:
+<details>
+<summary>热路径上的性能开销多大？</summary>
+
+规则求值是纯内存的首个匹配遍历，不调模型、不发网络请求；命中的裁决与透传只追加会话审计。监听失败只告警并保留旧规则；规则文件多时可把 `audit` 设为 `hits` 跳过透传事件，或用 `maxRules` / `maxCachedWorkspaces` 设定上限。
+
+</details>
+
+<details>
+<summary>会和其他插件抢事件、命令名或 slot 吗？</summary>
+
+不会。工具名带命名空间、不占裸名，服务键 `permissionRules` / `permissionRulesRuntime` 不是内置 seam，也不注册客户端 slot 与 `webServer` 前缀，patch 只 `insert` 自己那一行；共享事件一律经 `next()` 委托。逐条论证见「与其他 DSH 插件的互操作性」。
+
+</details>
+
+## 安全边界
+
+- **是策略，不是内核。** `paths` 候选只来自一组文档化的参数键（任意嵌套深度、有深度上限），且仅工作区相对路径匹配。
+- **这里没有评审者。** 插件绝不生成子代理或调用模型——产出 `ask` 决策就是其工作的终点。
+- **不改沙箱。** OS 级沙箱策略属于沙箱接缝，与本插件无关。
+- **响亮地拒绝错误配置。** 未知 YAML 字段、未知 action 与坏模式在加载期被拒绝。
+- **回溯界限。** glob 模式以 `maxGlobStars` 限制无界星号展开；正则模式拒绝嵌套无界量词与量化重叠字面交替。
+- **关闭失败的拨号。** 明文 HTTP 转发与 CONNECT 隧道只连接裁决到的地址；裁决未解析出任何地址的 allow 以 502 关闭失败，而不是按名字拨号（issue #23）。
+
+## 权限与数据
+
+- **权限**：workshop 清单声明 `files:read`、`files:watch`、`files:write`、`session:append` 与 `network:outbound`。`ask` 决策走官方审批接缝——不重实现、不绕过。
+- **数据**：规则文件从磁盘读取；常规裁决不写任何规则数据，唯一的写面是设置页的规则编辑器与「放行」动作。无模型调用、无评审子代理。
+- **会话日志**：`permissionRules/decision` 绝不注入模型上下文，并以信封的 `ignorable: true` 标记追加，任何 harness 构建都能加载日志。
+
+## 已知限制
+
+- **前标记宿主与拒绝型宿主上的审计标记。** `permissionRules/decision` 以 `ignorable: true` 追加；`Session.append` 早于该标记的宿主（`0.1.0-rc.1`–`rc.7` 与 `0.1.1-rc.1`–`rc.7` 线）静默丢弃它，`0.1.2-rc` 线沿用 alpha.5 表面（append 无任何选项能写该标记），`0.1.2-alpha` 线在读取时连已标记的插件事件也拒绝，`0.1.3-alpha` 与 `0.1.5-alpha` 线同样沿用 surface-only 追加签名（已在已发布的 `0.1.3-alpha.1`/`0.1.5-alpha.1` 包上核验）——运行时在首次追加前即预检这些线并以一次性警告禁用会话日志审计。跨代迁移同样拒绝已标记的审计行：`0.1.3-alpha` 的 v1→v2 门拒绝未知 v1 事件，`0.1.5-alpha` 的 v2→v3 门拒绝一切未分类事件（其清单冻结为已发布 v2 词汇），故在 0.1.3 宿主打开日志前 `strip` v1 行、在升级到 0.1.5 宿主前 `strip` v2 行。v3 原生日志接受已标记的插件行，只需 `repair`。设 `allowUnmarkedAudit: true` 重新启用；用 `scripts/repair-session-logs.mjs` 修复已写日志（标记无济于事的宿主用其 `strip` 模式移除审计行）。
+- **路径候选是启发式的。** 只有文档化的参数键参与路径匹配，且工作区相对匹配仅在 `caseInsensitivePaths` 开启时忽略 ASCII 大小写。
+- **glob 是保守子集。** 无花括号展开——写两个模式，或用正则模式。
+- **正则回溯守卫是结构性的、非穷尽的。** 对不可信文件优先用 glob 模式。
+- **宿主自身的出站请求不经过本代理。** 注入的代理环境覆盖**派生的 shell 子进程**（这正是注入的用途），以及在请求时读取代理变量名的消费者；它**不覆盖**宿主进程自身基于 `fetch` 的流量——launcher 在第一个插件挂载之前就用**启动环境**装好了 undici 的全局 dispatcher，该 dispatcher 按策略而非按环境路由，且 Node 在启动时采样代理环境，因此后挂载的插件无法改变它。结论：供应商端点**不需要**允许规则，`network.injectEnv: false` 也不会把宿主进程移出任何东西。2026-09-10 实测于 Node 22；用 `scripts/host-egress-probe.mjs` 可复现。
+- **链式只覆盖到达本代理的流量。** 在 `dsh-v0.1.7-alpha.1` 及之后的宿主上，harness 自身的启动期代理策略与其子进程环境覆盖可能优先于本插件注入的代理名，因此 `network.upstreamProxy` 描述的是本代理所处理连接的去向——它不是关于宿主进程每一条出站路径的断言。
+
+## 与其他 DSH 插件的互操作性
+
+已对照 **DSH `0.2.0-rc.2`**（本 README 面向的运行时）与 2026-10-05 实测的高星插件集验证。
+
+本插件**不干扰**其他插件，包括广泛安装的高星插件：
+
+- **无工具名冲突。** 所有工具都带命名空间，不占用任何已被内置工具或其他插件持有的裸名。
+- **无服务键冲突。** 只提供 `permissionRules`, `permissionRulesRuntime`；该键既不是内置 seam，也没有被任何已调研的高星插件提供。
+- **无 slot 冲突。** 不注册客户端 slot key，因此不参与 `shadows-shipped-ui` 座位争抢。
+- **无 HTTP 路由冲突。** 不注册任何 `webServer` 前缀。
+- **无 patch 层冲突。** 组合包 patch 只 `insert` 自己那一行，从不覆写内置行的 `config`。
+- **无全局改写。** 不改原型、不改写 `process.env`、不替换全局 fetch dispatcher。
+
+**共享事件监听器在构造上就不互相干扰。** 它用 `ctx.on()` 监听顺序敏感事件 `tools/post-execute`, `tools/pre-execute` —— Cordis 的**广播**语义：每个监听器都会运行，任何一个都无法饿死其他监听器。**此处每个监听器都通过 `next()` 委托**，因此链条绝不会被短路；改写作用在 `next()` 产出的值上，而不是用它顶替返回：
+
+- `tools/post-execute` — also used by `cc-safety-net` (1576★).
+- `tools/pre-execute` — also used by `cc-safety-net` (1576★).
+
+静态证据：`dsh-plugin-doctor` 的 K10–K13 在本仓全部为 `pass`。
+
+## 与 dsh-auto-review 协作
+
+- `dsh-permission-rules` 产出 `ask`；`dsh-auto-review` 在 `approval/request` waterfall 上以只读第二模型裁决作答（或委托给人）。两者都挂载即得完整闭环。
+- 集成测试：`permissionRules/decision` → `approval/asked` → `autoReview/verdict` → `approval/decided`，评审者以脚本化 mock 替换。
+- 官方 harness 的 `never` 审批策略与每个失败关闭保证保持不变。
+
+## 会话日志修复
+
+在 `ignorable` 标记出现之前写入的会话日志可能被较新 harness 构建拒绝（`SessionFormatUnsupportedError`）。随附的 `scripts/repair-session-logs.mjs` 仅重写目标审计行以携带 `ignorable: true`，保帧、带备份：
 
 ```sh
-node scripts/repair-session-logs.mjs scan [--home DIR]      # report foreign rows, change nothing
+node scripts/repair-session-logs.mjs scan [--home DIR]      # 报告外来行，不改任何内容
 node scripts/repair-session-logs.mjs repair [--home DIR] [--dry-run]
 node scripts/repair-session-logs.mjs strip [--home DIR] [--dry-run]
 ```
 
-`--home` defaults to `$DSH_HOME/sessions` (or `~/.dsh/sessions`). Every generation-addressed log is discovered by its canonical basename — `session.jsonl`, `session.v2.jsonl`, `session.v3.jsonl`, each optionally `.zstd`-compressed — so pick the mode by generation:
+`--home` 默认 `$DSH_HOME/sessions`（或 `~/.dsh/sessions`）。工具按规范基名发现每一代日志——`session.jsonl`、`session.v2.jsonl`、`session.v3.jsonl`，各自可选 `.zstd` 压缩——请按世代选择模式：
 
-- **v3 (`session.v3.jsonl`, written natively by the `0.1.5-alpha` line)** — the read path accepts marked plugin rows, so `repair` is enough.
-- **v2 (`session.v2.jsonl`, written by the `0.1.3-alpha` line)** — `repair` opens it on the host that wrote it, but the `0.1.5-alpha` v2→v3 migration refuses every unclassified event even when marked: run `strip` on v2 logs **before** upgrading to a `0.1.5-alpha` host.
-- **v1 (`session.jsonl`)** — the `0.1.3-alpha` v1→v2 migration refuses unknown v1 events even when marked: run `strip` before a 0.1.3-or-later host first opens the log.
+- **v3（`session.v3.jsonl`，`0.1.5-alpha` 线原生写出）** —— 读取路径接受已标记的插件行，`repair` 即可。
+- **v2（`session.v2.jsonl`，`0.1.3-alpha` 线写出）** —— `repair` 可让写出它的宿主打开日志，但 `0.1.5-alpha` 的 v2→v3 迁移连已标记的未分类事件也拒绝：请在升级到 `0.1.5-alpha` 宿主**之前**对 v2 日志执行 `strip`。
+- **v1（`session.jsonl`）** —— `0.1.3-alpha` 的 v1→v2 迁移连已标记的未知 v1 事件也拒绝：请在 0.1.3 或更新宿主首次打开日志前执行 `strip`。
 
-## Development
+## 兼容性
+
+| 维度 | 状态 |
+|---|---|
+| Harness | DeepSeek Harness `dsh-v0.2.1-alpha.1`（2026-09-22 已适配，完整门禁链）：其插件配置即新的 live settings 契约——每个字段都以 `.volatile()` 声明，Loader 向 `apply` 逐个交付活引用，保存的编辑直接写入运行中的引用、**不重挂插件**，越界值在写入前即被 schema 拒绝。Schemastery 早于 `volatile()`（3.18.3 之前）的宿主仍能挂载并运行本插件——字段退化为普通值、live 配置表单不可用——因为该标记是**能力探测**而非假定存在。本线的 `Session.append` 仍无法盖章 `ignorable` 标记（第三参数是 surface-intent 包，信封字段仅用于存量日志读取），故整条 `0.2-alpha` 线在首次追加前即被预检为未盖章，会话日志审计默认停用——其 `append` 只读取 `sourceEventSeqs`/`surfaceOp` 并冻结信封，没有任何可盖章标记的代码路径；更早的 `0.1.7-alpha`（2026-09-22 已适配）、`0.1.5-rc.2`（2026-09-09 已适配）与 `0.1.3-alpha` 线同样沿用 surface-only 追加签名，且每个 `0.2` 预发布版都与它们同类（`0.2.x` 的**稳定版**交由追加探测判定，因此恢复盖章能力无需本插件再发版）。这些线的日志迁移连已标记的未分类插件事件也拒绝：在 `0.1.3-alpha` 宿主打开日志前 `strip` 掉 v1 审计行，在 `0.1.5-alpha` 宿主迁移前 `strip` 掉 v2 审计行（v3 原生日志只需 `repair`）。 |
+| Node | `^22.19.0 || >=24.9.0` |
+| Platforms | 全部（host + Web 设置客户端） |
+| Model | 任意（deny/ask 原因经工具结果呈现） |
+
+## 生态与质量
+
+- [Gitee 镜像](https://gitee.com/perrylink/dsh-permission-rules)（同步镜像，以 GitHub 为准）
+- [dshfind 插件页](https://dshfind.com/plugins/PerryLink/dsh-permission-rules)（安装量与排名）
+- [OpenSSF Scorecard 报告](https://securityscorecards.dev/viewer/?uri=github.com/PerryLink/dsh-permission-rules)（由 [.github/workflows/scorecard.yml](.github/workflows/scorecard.yml) 驱动）
+- [dsh-plugin-doctor 验证报告](https://github.com/PerryLink/dsh-plugin-doctor#verified-徽章)（K10–K13 全 `pass`）
+- [DSH Market](https://dsh.market/)（已上架）
+- **1024 商店渠道**：先 `npm i -g dsh1024`，再 `dsh1024 plugin --profile web add dsh-permission-rules`（计入 [deepseek1024.com](https://deepseek1024.com) 安装排行）
+- [生态实测知识库](https://perrylink.github.io/dsh-plugin-guide/)：插件开发指南 · 选型实测数据 · 维护取舍判据
+
+## 开发
 
 ```sh
-pnpm install            # node ^22.19 || >=24
+pnpm install            # node ^22.19 || >=24.9
 pnpm run typecheck      # tsc, src + tests
 pnpm run lint           # eslint, src + tests + scripts
 pnpm test               # vitest: 24 spec files
 pnpm run test:coverage  # coverage gate (90/80/90/90)
 pnpm run build          # tsc declarations + tsdown bundles (lib/)
 pnpm run pack:check     # build + pack (the published artifact)
-node scripts/check-readme-sync.mjs   # five-language README sync gate (also in CI)
+node scripts/check-readme-sync.mjs   # 五语 README 一致性门（CI 同款）
 ```
 
-See [VERIFICATION.md](VERIFICATION.md) for the headless end-to-end verification record.
+无头端到端验证记录见 [VERIFICATION.md](VERIFICATION.md)。README 配图由 [`scripts/gen-readme-assets.py`](scripts/gen-readme-assets.py) 程序化生成（Python + Pillow 字体探测，无 UI 插件输出深浅双版 SVG），可重复执行。
 
-## Interoperability with other DSH plugins
+Topics：`dsh`, `dsh-plugin`, `deepseek-harness`, `permission`, `policy`, `allow-deny-ask`, `approval`, `safety`, `network`, `network-policy`, `proxy`
 
-Verified against **DSH `0.2.0-rc.2`** (the runtime this README ships for) and the high-star plugin set surveyed on 2026-10-05.
+## 家族与致谢
 
-This plugin **does not interfere** with other plugins, including the widely installed high-star ones:
+本项目是 [PerryLink](https://github.com/PerryLink) 维护的 DeepSeek Harness 插件家族成员（全部 Apache-2.0）。如果这个插件帮到了你，**给个 star**——它不解锁任何功能，但会让下一个人更容易找到它。
 
-- **No tool-name collision.** Every tool is namespaced; no bare name owned by a shipped tool or another plugin is registered.
-- **No service-key collision.** It provides `permissionRules`, `permissionRulesRuntime`; those keys are not a built-in seam and are not provided by any surveyed high-star plugin.
-- **No slot collision.** It registers no client slot key, so it cannot contend for a `shadows-shipped-ui` seat.
-- **No HTTP route collision.** It registers no `webServer` prefix.
-- **No patch-layer collision.** The bundle patch only `insert`s its own row; it never overrides a built-in row's `config`.
-- **No global mutation.** It does not patch prototypes, rewrite `process.env`, or replace the global fetch dispatcher.
-
-**Shared event listeners are non-interfering by construction.** It observes the ordering-sensitive events `tools/post-execute`, `tools/pre-execute` with `ctx.on()` — Cordis's broadcast registration, where every listener runs and none can starve another. **Every listener here delegates through `next()`**, so the chain is never short-circuited, and a mutation is applied to the value `next()` produced rather than returned in its place:
-  - `tools/post-execute` — also used by `cc-safety-net` (1576★).
-  - `tools/pre-execute` — also used by `cc-safety-net` (1576★).
-
-Static evidence: `dsh-plugin-doctor` K10–K13 report `pass` for every check on this repository.
-
-## Topics
-
-`dsh`, `dsh-plugin`, `deepseek-harness`, `permission`, `policy`, `allow-deny-ask`, `approval`, `safety`, `network`, `network-policy`, `proxy`
-
-## Contributors
-
-- [@am-i-dead](https://github.com/am-i-dead) — split the client-safe allow-host helpers out of the host-only module (#24).
-
-- [@PerryLink](https://github.com/PerryLink) — creator and maintainer: rule vocabulary and evaluation, runtime, HMR watch, session-log audit, network policy + proxy, and the five-language docs.
-- [@22xuan](https://github.com/22xuan) — the detailed report on rc.6 hosts silently dropping the audit event's `ignorable` marker ([#2](https://github.com/PerryLink/dsh-permission-rules/issues/2)) and the upstream harness discussion; the v0.4.1 runtime host-capability detection and the documentation correction drew directly from that analysis.
-- [@sjh9714](https://github.com/sjh9714) — proposed the shared rule-syntax test-vector corpus ([#4](https://github.com/PerryLink/dsh-permission-rules/issues/4), [#5](https://github.com/PerryLink/dsh-permission-rules/issues/5)), shipped in v0.5.1 as `docs/rule-test-vectors/`, and supplied the AST-decomposition boundary cases on the [design discussion](https://github.com/PerryLink/dsh-permission-rules/discussions/10).
-- [@weipeng1999](https://github.com/weipeng1999) — the AST-based command-decomposition feature proposal ([#8](https://github.com/PerryLink/dsh-permission-rules/issues/8)) behind the design discussion.
-- [@alexchenzl](https://github.com/alexchenzl) — the DSH Directory listing request ([#7](https://github.com/PerryLink/dsh-permission-rules/issues/7)).
-- [@zl190](https://github.com/zl190) — reported and verified the `0.1.0-rc.7` harness compatibility gap ([PR #9](https://github.com/PerryLink/dsh-permission-rules/pulls/9)).
-- [@cuohua](https://github.com/cuohua) — reported that the `0.1.1-rc` line still drops the `ignorable` marker even though the version gate covered only `0.1.0` ([#11](https://github.com/PerryLink/dsh-permission-rules/issues/11)); the widened gate drew directly from that analysis.
-
-## PerryLink DSH Plugin Family
-
-This project is part of the DeepSeek Harness plugin family from [PerryLink](https://github.com/PerryLink). The roster stays collapsed below so every README keeps a short first screen; expand it to see every row and its status.
+- [@PerryLink](https://github.com/PerryLink) —— 创建者与维护者：规则词汇与求值、运行时、HMR 监听、会话日志审计、网络策略 + 代理，以及五语文档。
+- [@am-i-dead](https://github.com/am-i-dead) —— 把客户端安全的 allow-host helper 从 host-only 模块中拆出（[#24](https://github.com/PerryLink/dsh-permission-rules/issues/24)）。
+- [@22xuan](https://github.com/22xuan) —— 关于 rc.6 宿主静默丢弃审计事件 `ignorable` 标记的详细报告（[#2](https://github.com/PerryLink/dsh-permission-rules/issues/2)）与上游 harness 讨论；v0.4.1 的运行时宿主能力检测与文档更正直接源自该分析。
+- [@sjh9714](https://github.com/sjh9714) —— 提出共享规则语法测试向量语料（[#4](https://github.com/PerryLink/dsh-permission-rules/issues/4)、[#5](https://github.com/PerryLink/dsh-permission-rules/issues/5)），已于 v0.5.1 以 `docs/rule-test-vectors/` 落地，并在[方案讨论](https://github.com/PerryLink/dsh-permission-rules/discussions/10)中补充了 AST 分解的边界用例。
+- [@weipeng1999](https://github.com/weipeng1999) —— 提出基于 AST 的命令分解功能（[#8](https://github.com/PerryLink/dsh-permission-rules/issues/8)），促成该方案讨论。
+- [@alexchenzl](https://github.com/alexchenzl) —— DSH 目录收录请求（[#7](https://github.com/PerryLink/dsh-permission-rules/issues/7)）。
+- [@zl190](https://github.com/zl190) —— 报告并验证了 `0.1.0-rc.7` harness 兼容性缺口（[PR #9](https://github.com/PerryLink/dsh-permission-rules/pulls/9)）。
+- [@cuohua](https://github.com/cuohua) —— 报告版本门仅覆盖 `0.1.0` 线后，`0.1.1-rc` 线仍静默丢弃 `ignorable` 标记（[#11](https://github.com/PerryLink/dsh-permission-rules/issues/11)）；加宽后的版本门直接源自该分析。
 
 <details>
-<summary>Expand all plugins</summary>
+<summary>展开全部插件</summary>
 
-| Plugin | Status |
+| 插件 | 状态 |
 |---|---|
 | **[dsh-aqua-input-check](https://github.com/PerryLink/dsh-aqua-input-check)** |  |
 | **[dsh-archive-check](https://github.com/PerryLink/dsh-archive-check)** |  |
 | **[dsh-auto-review](https://github.com/PerryLink/dsh-auto-review)** |  |
-| **[dsh-autotier](https://github.com/PerryLink/dsh-autotier)** | 🧊 FROZEN — see the repo README |
+| **[dsh-autotier](https://github.com/PerryLink/dsh-autotier)** | 🧊 已冻结 — 见仓库 README |
 | **[dsh-bid-ca-precheck](https://github.com/PerryLink/dsh-bid-ca-precheck)** |  |
 | **[dsh-bid-qual-check](https://github.com/PerryLink/dsh-bid-qual-check)** |  |
-| **[dsh-cert-mcp](https://github.com/PerryLink/dsh-cert-mcp)** | 🧊 FROZEN — see the repo README |
+| **[dsh-cert-mcp](https://github.com/PerryLink/dsh-cert-mcp)** | 🧊 已冻结 — 见仓库 README |
 | **[dsh-checkpoint-rewind](https://github.com/PerryLink/dsh-checkpoint-rewind)** |  |
 | **[dsh-click](https://github.com/PerryLink/dsh-click)** |  |
 | **[dsh-composer-history](https://github.com/PerryLink/dsh-composer-history)** |  |
 | **[dsh-contract-stance](https://github.com/PerryLink/dsh-contract-stance)** |  |
 | **[dsh-customs-doc-check](https://github.com/PerryLink/dsh-customs-doc-check)** |  |
-| **[dsh-data-quality](https://github.com/PerryLink/dsh-data-quality)** |  |
+| **[dsh-data-quality](https://github.com/PerryLink/dsh-data-quality)** | 🧊 已冻结 — 见仓库 README |
 | **[dsh-demurrage-ledger](https://github.com/PerryLink/dsh-demurrage-ledger)** |  |
 | **[dsh-doublecheck](https://github.com/PerryLink/dsh-doublecheck)** |  |
 | **[dsh-drill-script-check](https://github.com/PerryLink/dsh-drill-script-check)** |  |
@@ -384,7 +437,7 @@ This project is part of the DeepSeek Harness plugin family from [PerryLink](http
 | **[dsh-mask](https://github.com/PerryLink/dsh-mask)** |  |
 | **[dsh-mcp-panel](https://github.com/PerryLink/dsh-mcp-panel)** |  |
 | **[dsh-medrec-qc](https://github.com/PerryLink/dsh-medrec-qc)** |  |
-| **[dsh-memento](https://github.com/PerryLink/dsh-memento)** |  |
+| **[dsh-memento](https://github.com/PerryLink/dsh-memento)** | 🧊 已冻结 — 见仓库 README |
 | **[dsh-nsfc-form-check](https://github.com/PerryLink/dsh-nsfc-form-check)** |  |
 | **[dsh-nurse-record-check](https://github.com/PerryLink/dsh-nurse-record-check)** |  |
 | **[dsh-observe](https://github.com/PerryLink/dsh-observe)** |  |
@@ -396,10 +449,10 @@ This project is part of the DeepSeek Harness plugin family from [PerryLink](http
 | **[dsh-permit-report-check](https://github.com/PerryLink/dsh-permit-report-check)** |  |
 | **[dsh-pipeline-check](https://github.com/PerryLink/dsh-pipeline-check)** |  |
 | **[dsh-pleading-draft](https://github.com/PerryLink/dsh-pleading-draft)** |  |
-| **[dsh-plugin-doctor](https://github.com/PerryLink/dsh-plugin-doctor)** |  |
+| **[dsh-plugin-doctor](https://github.com/PerryLink/dsh-plugin-doctor)** | 🚫 已退役（仓库已归档） |
 | **[dsh-plugin-guide](https://github.com/PerryLink/dsh-plugin-guide)** |  |
-| **[dsh-plugin-kit](https://github.com/PerryLink/dsh-plugin-kit)** |  |
-| **[dsh-plugin-upgrade](https://github.com/PerryLink/dsh-plugin-upgrade)** |  |
+| **[dsh-plugin-kit](https://github.com/PerryLink/dsh-plugin-kit)** | 🚫 已退役（仓库已归档） |
+| **[dsh-plugin-upgrade](https://github.com/PerryLink/dsh-plugin-upgrade)** | 🚫 已退役（仓库已归档） |
 | **[dsh-policy-brief-draft](https://github.com/PerryLink/dsh-policy-brief-draft)** |  |
 | **[dsh-power-loss-split](https://github.com/PerryLink/dsh-power-loss-split)** |  |
 | **[dsh-power-ticket-check](https://github.com/PerryLink/dsh-power-ticket-check)** |  |
@@ -411,7 +464,7 @@ This project is part of the DeepSeek Harness plugin family from [PerryLink](http
 | **[dsh-review-reply-check](https://github.com/PerryLink/dsh-review-reply-check)** |  |
 | **[dsh-rulefile-check](https://github.com/PerryLink/dsh-rulefile-check)** |  |
 | **[dsh-safety-brief-check](https://github.com/PerryLink/dsh-safety-brief-check)** |  |
-| **[dsh-score](https://github.com/PerryLink/dsh-score)** |  |
+| **[dsh-score](https://github.com/PerryLink/dsh-score)** | 🧊 已冻结 — 见仓库 README |
 | **[dsh-session-sync](https://github.com/PerryLink/dsh-session-sync)** |  |
 | **[dsh-site-log-check](https://github.com/PerryLink/dsh-site-log-check)** |  |
 | **[dsh-skill-pack-security](https://github.com/PerryLink/dsh-skill-pack-security)** |  |
@@ -423,20 +476,22 @@ This project is part of the DeepSeek Harness plugin family from [PerryLink](http
 | **[dsh-tender-extract](https://github.com/PerryLink/dsh-tender-extract)** |  |
 | **[dsh-tender-matrix](https://github.com/PerryLink/dsh-tender-matrix)** |  |
 | **[dsh-test-drive](https://github.com/PerryLink/dsh-test-drive)** |  |
-| **[dsh-ticktick](https://github.com/PerryLink/dsh-ticktick)** |  |
+| **[dsh-ticktick](https://github.com/PerryLink/dsh-ticktick)** | 🚫 已退役（仓库已归档） |
 | **[dsh-translate](https://github.com/PerryLink/dsh-translate)** |  |
 | **[dsh-warranty-calc](https://github.com/PerryLink/dsh-warranty-calc)** |  |
-| **[dsh-budget](https://github.com/PerryLink/dsh-budget)** | 🧊 FROZEN — see the repo README |
-| **[dsh-claude-move](https://github.com/PerryLink/dsh-claude-move)** | 🧊 FROZEN — see the repo README |
-| **[dsh-defend](https://github.com/PerryLink/dsh-defend)** | 🧊 FROZEN — see the repo README |
-| **[dsh-draw](https://github.com/PerryLink/dsh-draw)** | 🧊 FROZEN — see the repo README |
-| **[dsh-reach](https://github.com/PerryLink/dsh-reach)** | 🧊 FROZEN — see the repo README |
-| **[dsh-background-agents](https://github.com/PerryLink/dsh-background-agents)** | 🚫 RETIRED — see the repo README |
-| **[dsh-session-pin](https://github.com/PerryLink/dsh-session-pin)** | 🚫 RETIRED — see the repo README |
-| **[dsh-team-rooms](https://github.com/PerryLink/dsh-team-rooms)** | 🚫 RETIRED — see the repo README |
+| **[dsh-budget](https://github.com/PerryLink/dsh-budget)** | 🧊 已冻结 — 见仓库 README |
+| **[dsh-claude-move](https://github.com/PerryLink/dsh-claude-move)** | 🧊 已冻结 — 见仓库 README |
+| **[dsh-defend](https://github.com/PerryLink/dsh-defend)** | 🧊 已冻结 — 见仓库 README |
+| **[dsh-draw](https://github.com/PerryLink/dsh-draw)** | 🧊 已冻结 — 见仓库 README |
+| **[dsh-reach](https://github.com/PerryLink/dsh-reach)** | 🧊 已冻结 — 见仓库 README |
+| **[dsh-background-agents](https://github.com/PerryLink/dsh-background-agents)** | 🚫 已退役（仓库已归档） |
+| **[dsh-session-pin](https://github.com/PerryLink/dsh-session-pin)** | 🚫 已退役（仓库已归档） |
+| **[dsh-team-rooms](https://github.com/PerryLink/dsh-team-rooms)** | 🚫 已退役（仓库已归档） |
 
 </details>
 
 ## License
 
-[Apache License 2.0](LICENSE) © 2026 dsh-permission-rules contributors
+[LICENSE](LICENSE)（Apache License 2.0）© 2026 dsh-permission-rules contributors
+
+<p align="center"><sub>Apache-2.0 · 社区插件，与 DeepSeek 无关。</sub></p>
