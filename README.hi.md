@@ -1,8 +1,8 @@
 <div align="center">
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/dsh-permission-rules-flow-dark.svg">
-  <img src="docs/assets/dsh-permission-rules-flow-light.svg" width="100%" alt="dsh-permission-rules डेटा प्रवाह: tools/pre-execute → .dsh/rules.yaml (पहला मेल) → allow/ask/deny → permissionRules/decision → सत्र लॉग; शेल चाइल्ड HTTP/CONNECT प्रॉक्सी से भी गुज़रते हैं जिसे नेटवर्क नियम तय करते हैं">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/dsh-permission-rules-hero-en-dark.webp">
+  <img src="docs/assets/dsh-permission-rules-hero-en-light.webp" width="100%" alt="dsh-permission-rules का निर्णय लेजर: क्रमबद्ध नियम श्रृंखला का पहला मेल, उसका deny निर्णय कार्ड, और शेल आउटबाउंड के लिए प्रॉक्सी पट्टी">
 </picture>
 
 # dsh-permission-rules
@@ -37,6 +37,13 @@ dsh plugin --profile <name> add dsh-permission-rules
 ## यह क्या है
 
 `dsh-permission-rules` हर टूल कॉल से पहले `tools/pre-execute` waterfall पर **`allow` / `deny` / `ask`** नियमों की क्रमबद्ध सूची रखता है — निर्धारक, तत्काल, ऑडिट-योग्य और आपके द्वारा शुद्ध YAML में लिखी गई। नियम ज्ञात कॉल तय करते हैं; अनिश्चित कॉल आधिकारिक approval seam पर जाती हैं, जहाँ समीक्षक मॉडल या इंसान उत्तर देता है। दूसरी परत Codex शैली की प्रोसेस-स्तरीय नेटवर्क नीति जोड़ती है: शेल सबप्रोसेस की आउटबाउंड ट्रैफ़िक अंतर्निहित स्थानीय HTTP/CONNECT प्रॉक्सी से गुज़रती है, जिसे नेटवर्क नियम या आधिकारिक sandbox presets पर मैप किए गए तीन मोड तय करते हैं।
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/dsh-permission-rules-flow-v5-dark.svg">
+  <img src="docs/assets/dsh-permission-rules-flow-v5-light.svg" width="100%" alt="dsh-permission-rules संरचना: टूल कॉल और शेल आउटबाउंड दो चैनल एक क्रमबद्ध नियम श्रृंखला में मिलते हैं, फिर टूल-कॉल और नेटवर्क-आउटबाउंड निर्णयों में बँटते हैं, और दो केवल-लॉग ऑडिट घटनाओं पर समाप्त होते हैं">
+</picture>
+
+*संरचना: दो चैनल (टूल कॉल / शेल आउटबाउंड) एक क्रमबद्ध नियम श्रृंखला में मिलते हैं — पहला मेल जीतता है — फिर टूल-कॉल और नेटवर्क-आउटबाउंड निर्णयों में बँटते हैं, और दो केवल-लॉग ऑडिट घटनाओं पर समाप्त होते हैं।*
 
 ## तीन चरणों में शुरुआत
 
@@ -370,7 +377,7 @@ pnpm run pack:check     # build + pack (the published artifact)
 node scripts/check-readme-sync.mjs   # पाँच-भाषा README सिंक द्वार (CI में भी)
 ```
 
-हेडलेस end-to-end सत्यापन रिकॉर्ड [VERIFICATION.md](VERIFICATION.md) में देखें। README चित्र [`scripts/gen-readme-assets.py`](scripts/gen-readme-assets.py) से प्रोग्रामेटिक रूप से बनते हैं (Python + Pillow फ़ॉन्ट probe; बिना UI वाले प्लगइन को light/dark SVG मिलता है) और दोबारा चलाना सुरक्षित है।
+हेडलेस end-to-end सत्यापन रिकॉर्ड [VERIFICATION.md](VERIFICATION.md) में देखें। README चित्र [`scripts/gen-readme-assets.py`](scripts/gen-readme-assets.py) से प्रोग्रामेटिक रूप से बनते हैं (Pillow 1440×576 के zh/en और light/dark hero बैनर बनाता है; 1100×660 की हस्तलिखित dual-channel SVG संरचना आकृति है) और दोबारा चलाना सुरक्षित है।
 
 Topics: `dsh`, `dsh-plugin`, `deepseek-harness`, `permission`, `policy`, `allow-deny-ask`, `approval`, `safety`, `network`, `network-policy`, `proxy`
 

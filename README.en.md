@@ -1,8 +1,8 @@
 <div align="center">
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/dsh-permission-rules-flow-dark.svg">
-  <img src="docs/assets/dsh-permission-rules-flow-light.svg" width="100%" alt="dsh-permission-rules data flow: tools/pre-execute → .dsh/rules.yaml (first match) → allow/ask/deny → permissionRules/decision → session log; shell children also traverse an HTTP/CONNECT proxy adjudicated by network rules">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/dsh-permission-rules-hero-en-dark.webp">
+  <img src="docs/assets/dsh-permission-rules-hero-en-light.webp" width="100%" alt="The dsh-permission-rules decision ledger: the first match in an ordered rule chain, its deny verdict card, and the proxy strip of the shell-egress channel">
 </picture>
 
 # dsh-permission-rules
@@ -37,6 +37,13 @@ dsh plugin --profile <name> add dsh-permission-rules
 ## What it is
 
 `dsh-permission-rules` puts an ordered **`allow` / `deny` / `ask`** rule list in front of every tool call on the `tools/pre-execute` waterfall — deterministic, instant, auditable, and written by you in plain YAML. Rules decide the calls you know; the uncertain ones go to the official approval seam, answered by a reviewer model or a human. A second layer adds a Codex-style process-level network policy: shell-subprocess egress flows through a built-in local HTTP/CONNECT proxy, adjudicated by network rules or by three modes mapped onto the official sandbox presets.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/dsh-permission-rules-flow-v5-dark.svg">
+  <img src="docs/assets/dsh-permission-rules-flow-v5-light.svg" width="100%" alt="dsh-permission-rules structure: tool calls and shell egress converge on one ordered rule chain, fork into tool-call and network-egress verdict banks, and close on two log-only audit events">
+</picture>
+
+*Structure: two channels (tool calls / shell egress) converge on one ordered rule chain — first match wins — then fork into tool-call and network-egress verdicts, closed by two log-only audit events.*
 
 ## Three-step setup
 
@@ -370,7 +377,7 @@ pnpm run pack:check     # build + pack (the published artifact)
 node scripts/check-readme-sync.mjs   # five-language README sync gate (also in CI)
 ```
 
-See [VERIFICATION.md](VERIFICATION.md) for the headless end-to-end verification record. README images are generated programmatically by [`scripts/gen-readme-assets.py`](scripts/gen-readme-assets.py) (Python + Pillow font probe; a no-UI plugin gets light/dark SVG) and are safe to re-run.
+See [VERIFICATION.md](VERIFICATION.md) for the headless end-to-end verification record. README images are generated programmatically by [`scripts/gen-readme-assets.py`](scripts/gen-readme-assets.py) (Pillow draws the 1440×576 zh/en light/dark hero banners; a hand-written 1100×660 dual-channel SVG is the structure figure) and are safe to re-run.
 
 Topics: `dsh`, `dsh-plugin`, `deepseek-harness`, `permission`, `policy`, `allow-deny-ask`, `approval`, `safety`, `network`, `network-policy`, `proxy`
 

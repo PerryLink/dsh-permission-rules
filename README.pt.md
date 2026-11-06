@@ -1,8 +1,8 @@
 <div align="center">
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/dsh-permission-rules-flow-dark.svg">
-  <img src="docs/assets/dsh-permission-rules-flow-light.svg" width="100%" alt="Fluxo do dsh-permission-rules: tools/pre-execute → .dsh/rules.yaml (primeira correspondência) → allow/ask/deny → permissionRules/decision → registro de sessão; os filhos de shell também passam por um proxy HTTP/CONNECT regido por regras de rede">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/dsh-permission-rules-hero-en-dark.webp">
+  <img src="docs/assets/dsh-permission-rules-hero-en-light.webp" width="100%" alt="O livro de decisões do dsh-permission-rules: a primeira correspondência de uma cadeia ordenada de regras, seu cartão de veredito deny e a faixa do proxy para a saída de shell">
 </picture>
 
 # dsh-permission-rules
@@ -37,6 +37,13 @@ dsh plugin --profile <name> add dsh-permission-rules
 ## O que é
 
 O `dsh-permission-rules` coloca uma lista ordenada de regras **`allow` / `deny` / `ask`** na frente de cada chamada de ferramenta no waterfall `tools/pre-execute`: determinística, instantânea, auditável e escrita por você em YAML puro. As regras decidem as chamadas que você conhece; as incertas vão para o seam oficial de aprovação, respondido por um modelo revisor ou por uma pessoa. Uma segunda camada adiciona uma política de rede em nível de processo no estilo Codex: a saída dos subprocessos de shell passa por um proxy local HTTP/CONNECT embutido, julgado por regras de rede ou por três modos mapeados nos presets oficiais de sandbox.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/dsh-permission-rules-flow-v5-dark.svg">
+  <img src="docs/assets/dsh-permission-rules-flow-v5-light.svg" width="100%" alt="Estrutura do dsh-permission-rules: chamadas de ferramentas e saída de shell convergem em uma cadeia ordenada de regras, bifurcam em vereditos de ferramentas e de rede, e fecham com dois eventos de auditoria somente-log">
+</picture>
+
+*Estrutura: dois canais (chamadas de ferramentas / saída de shell) convergem em uma cadeia ordenada de regras —a primeira correspondência vence— e bifurcam em vereditos de ferramentas e de rede, fechados por dois eventos de auditoria somente-log.*
 
 ## Instalação em três passos
 
@@ -370,7 +377,7 @@ pnpm run pack:check     # build + pack (the published artifact)
 node scripts/check-readme-sync.mjs   # porta de sincronização dos README em cinco idiomas (também na CI)
 ```
 
-Veja [VERIFICATION.md](VERIFICATION.md) para o registro de verificação end-to-end sem interface. As imagens do README são geradas programaticamente por [`scripts/gen-readme-assets.py`](scripts/gen-readme-assets.py) (Python + sonda de fontes Pillow; um plugin sem UI recebe SVG claro/escuro) e podem ser reexecutadas com segurança.
+Veja [VERIFICATION.md](VERIFICATION.md) para o registro de verificação end-to-end sem interface. As imagens do README são geradas programaticamente por [`scripts/gen-readme-assets.py`](scripts/gen-readme-assets.py) (Pillow desenha os banners hero de 1440×576 em chinês/inglês e claro/escuro; um SVG de 1100×660 desenhado à mão é a figura de estrutura) e podem ser reexecutadas com segurança.
 
 Topics: `dsh`, `dsh-plugin`, `deepseek-harness`, `permission`, `policy`, `allow-deny-ask`, `approval`, `safety`, `network`, `network-policy`, `proxy`
 

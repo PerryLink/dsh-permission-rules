@@ -1,8 +1,8 @@
 <div align="center">
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/dsh-permission-rules-flow-dark.svg">
-  <img src="docs/assets/dsh-permission-rules-flow-light.svg" width="100%" alt="dsh-permission-rules 数据流：tools/pre-execute → .dsh/rules.yaml（首个匹配）→ allow/ask/deny → permissionRules/decision → 会话日志；shell 子进程另经 HTTP/CONNECT 代理按网络规则裁决">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/dsh-permission-rules-hero-zh-dark.webp">
+  <img src="docs/assets/dsh-permission-rules-hero-zh-light.webp" width="100%" alt="dsh-permission-rules 的裁决台账：有序规则链首个匹配命中、deny 裁决卡，以及 shell 出站流量的代理侧带">
 </picture>
 
 # dsh-permission-rules
@@ -37,6 +37,13 @@ dsh plugin --profile <name> add dsh-permission-rules
 ## 它是什么
 
 `dsh-permission-rules` 在 `tools/pre-execute` waterfall 上为每次工具调用前置一份有序的 **`allow` / `deny` / `ask`** 规则列表——确定、即时、可审计，由你用纯 YAML 编写。规则裁决已知的调用；没把握的交给官方审批接缝，由评审模型或人裁决。它另外带一层 Codex 风格的进程级网络策略：shell 子进程的出站流量经内置本地 HTTP/CONNECT 代理，由网络规则或映射到官方沙箱预设的三档模式裁决。
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/dsh-permission-rules-flow-v5-dark.svg">
+  <img src="docs/assets/dsh-permission-rules-flow-v5-light.svg" width="100%" alt="dsh-permission-rules 结构：工具调用与 shell 出站两条通道汇入同一条有序规则链，分流为工具裁决与网络出口两组结果，底部是两个仅日志审计事件">
+</picture>
+
+*结构：两条通道（工具调用 / shell 出站）汇入同一条有序规则链，首个匹配胜出；随后分流为工具调用与网络出口两组裁决，收束于两个仅日志审计事件。*
 
 ## 三步上手
 
@@ -370,7 +377,7 @@ pnpm run pack:check     # build + pack (the published artifact)
 node scripts/check-readme-sync.mjs   # 五语 README 一致性门（CI 同款）
 ```
 
-无头端到端验证记录见 [VERIFICATION.md](VERIFICATION.md)。README 配图由 [`scripts/gen-readme-assets.py`](scripts/gen-readme-assets.py) 程序化生成（Python + Pillow 字体探测，无 UI 插件输出深浅双版 SVG），可重复执行。
+无头端到端验证记录见 [VERIFICATION.md](VERIFICATION.md)。README 配图由 [`scripts/gen-readme-assets.py`](scripts/gen-readme-assets.py) 程序化生成（Pillow 绘制 1440×576 中英深浅双版 hero，手写 1100×660 双通道结构 SVG），可重复执行。
 
 Topics：`dsh`, `dsh-plugin`, `deepseek-harness`, `permission`, `policy`, `allow-deny-ask`, `approval`, `safety`, `network`, `network-policy`, `proxy`
 
