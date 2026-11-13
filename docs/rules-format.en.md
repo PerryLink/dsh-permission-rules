@@ -90,7 +90,7 @@ rules:
 
 - `action: allow | deny | ask` (required).
 - `reason: string` (required, non-empty). A `deny` reason becomes the model-visible error in the denied tool result; an `ask` reason becomes the approval reason on the official approval seam.
-- `id: string` (optional) — the stable rule identity used for audit attribution (issue #48). 1–128 characters of `[A-Za-z0-9._:@-]`, starting with a letter or digit; the `auto:` prefix is reserved for generated fingerprints. When omitted, compile time generates `auto:<16 hex>`: a SHA-256 over the parsed rule content (everything except its position). Reordering, reformatting, or moving the file keeps it; editing `match`/`action`/`reason`/`enabled`/`tags` changes it. Aggregate "deny rate per rule" on this, never on the drifting `ruleIndex` or the rule text.
+- `id: string` (optional) — the stable rule identity used for audit attribution (issue #48). 1–128 characters of `[A-Za-z0-9._:@-]`, starting with a letter or digit; the `auto:` prefix is reserved for generated fingerprints. When omitted, compile time generates `auto:<16 hex>`: a SHA-256 over the parsed rule content (everything except its position). Reordering, reformatting, or moving the file keeps it; editing `match`/`action`/`reason`/`enabled`/`tags` changes it. Aggregate "deny rate per rule" on this, never on the drifting `ruleIndex` or the rule text. Two rules with identical content get the same `auto:` fingerprint — give them explicit `id`s when they must stay distinct.
 - `enabled: false` keeps the rule visible but inert (displayed as disabled); `description` and `tags` are free-form annotations shown by `/rules`.
 
 ## Pattern interpretation (patternMode)

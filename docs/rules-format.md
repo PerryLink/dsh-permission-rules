@@ -90,7 +90,7 @@ rules:
 
 - `action: allow | deny | ask`（必填）。
 - `reason: string`（必填，非空）。`deny` 的 reason 会进入被拒绝工具的结果、对模型可见；`ask` 的 reason 会作为审批理由进入官方审批 seam。
-- `id: string`（可选）——稳定的规则身份，用于审计归因（issue #48）。1–128 个 `[A-Za-z0-9._:@-]` 字符、以字母或数字开头，`auto:` 前缀保留给自动指纹。缺省时编译期生成 `auto:<16 hex>`：解析后规则内容（去掉位置）的 SHA-256 指纹。重排规则、改格式、移动文件都不变；改 `match`/`action`/`reason`/`enabled`/`tags` 等内容才变。跨主机聚合「每条规则的拒绝率」时请用它，不要用会漂移的 `ruleIndex` 或规则文本。
+- `id: string`（可选）——稳定的规则身份，用于审计归因（issue #48）。1–128 个 `[A-Za-z0-9._:@-]` 字符、以字母或数字开头，`auto:` 前缀保留给自动指纹。缺省时编译期生成 `auto:<16 hex>`：解析后规则内容（去掉位置）的 SHA-256 指纹。重排规则、改格式、移动文件都不变；改 `match`/`action`/`reason`/`enabled`/`tags` 等内容才变。跨主机聚合「每条规则的拒绝率」时请用它，不要用会漂移的 `ruleIndex` 或规则文本。内容完全相同的两条规则会得到相同的 `auto:` 指纹——需要把它们分开统计时请显式写 `id`。
 - `enabled: false` 保留规则但使其失效（显示为已禁用）；`description`、`tags` 为 `/rules` 展示的自由注解。
 
 ## 模式解释（patternMode）
