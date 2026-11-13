@@ -905,7 +905,7 @@ function parseRuleEntry(raw: unknown, index: number): RuleDocEntry {
 function parseRuleId(raw: unknown, at: string): string | undefined {
   if (raw === undefined) return undefined
   if (typeof raw !== 'string') throw new RuleError(`${at}: id must be a non-empty string`)
-  const id = raw.trim()
+  const id = raw
   if (id.length === 0) throw new RuleError(`${at}: id must be a non-empty string`)
   if (id.startsWith('auto:')) {
     throw new RuleError(`${at}: id ${JSON.stringify(id)} uses the reserved "auto:" prefix (it is generated for rules without an explicit id)`)
