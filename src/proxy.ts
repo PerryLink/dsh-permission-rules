@@ -22,6 +22,7 @@ import { lookup } from 'node:dns/promises'
 import type { AddressInfo } from 'node:net'
 import type { Duplex } from 'node:stream'
 import type { Server, IncomingMessage, RequestOptions, ServerResponse } from 'node:http'
+import type { Session } from '@deepseek-ai/dsh-session'
 import type { CallId } from './call-id.ts'
 import type { NetworkDecision, NetworkMode } from './network.ts'
 import { blockMessage, isLoopbackTarget } from './network.ts'
@@ -139,7 +140,11 @@ export interface ProxyAttribution {
     readonly session: {
       /** The session header the block's workspace is read from. */
       readonly header: { readonly cwd?: string }
-      append(type: 'permissionRules/network', data: unknown, options?: { ignorable?: true }): unknown
+      /**
+       * The host's own `Session.append`, whose rc.3 overloads (batch first,
+       * typed second) a one-signature structural copy no longer satisfies.
+       */
+      append: Session['append']
     }
   }
 }
