@@ -70,10 +70,38 @@ export class RuleError extends Error {
 /** A parsed, shape-validated rule document (patterns not yet compiled). */
 export interface RulesFileDoc {
   rules: RuleDocEntry[]
+  /**
+   * Rules an ISOLATED parse could not validate and therefore skipped. The
+   * strict {@link parseRulesDocument} throws on the first one instead and
+   * never populates this list.
+   */
+  issues?: readonly RuleIssue[]
+}
+
+/**
+ * One rule the loader disabled instead of failing the whole file: the
+ * per-rule blast radius of issue #49. `index` is the rule's 0-based
+ * position in the source document's `rules` list, so an error keeps
+ * pointing at the entry the author wrote even when other entries were
+ * skipped (a bare array position would drift).
+ */
+export interface RuleIssue {
+  /** 0-based position in the source document's `rules` list. */
+  readonly index: number
+  /** The `RuleError`-shaped message naming the rule and the bad field/pattern. */
+  readonly message: string
+}
+
+/** The isolated per-source compile result: the rules that loaded plus the ones disabled. */
+export interface CompiledSourceRules {
+  readonly rules: readonly CompiledRule[]
+  readonly issues: readonly RuleIssue[]
 }
 
 /** One parsed rule: match dimensions plus the action, reason, and metadata. */
 export interface RuleDocEntry {
+  /** 0-based position in the source document's `rules` list. */
+  readonly index: number
   match: RuleMatchDoc
   action: RuleAction
   reason: string
@@ -287,28 +315,71 @@ export interface MatchContext {
  * Parse one rules file body. Unknown document/rule/match fields, invalid
  * actions, missing reasons, and wrong-shaped collections all throw
  * {@link RuleError} — a malformed file fails loudly at load, never silently.
+ * This is the STRICT shape: editor saves use it so a hand edit is refused
+ * with its error instead of being silently dropped. The loader uses
+ * {@link parseRulesDocumentIsolated} instead, where one bad rule disables
+ * only itself.
  * @param text - the raw YAML text.
  * @returns the validated document.
  */
 export function parseRulesDocument(text: string): RulesFileDoc {
+  return { rules: parseRulesSection(text).map((raw, index) => parseRuleEntry(raw, index)) }
+}
+
+/**
+ * Parse one rules file body with per-rule isolation (issue #49): a rule
+ * whose shape is invalid is skipped and reported in
+ * {@link RulesFileDoc.issues}, and every other rule still loads. Document
+ * STRUCTURE errors (invalid YAML, an unknown top-level field, a `rules`
+ * value that is not a list) are still file-level and throw: they leave no
+ * rule list to isolate.
+ * @param text - the raw YAML text.
+ * @returns the validated document plus the skipped-rule reports.
+ */
+export function parseRulesDocumentIsolated(text: string): RulesFileDoc {
+  const rules: RuleDocEntry[] = []
+  const issues: RuleIssue[] = []
+  parseRulesSection(text).forEach((raw, index) => {
+    try {
+      rules.push(parseRuleEntry(raw, index))
+    } catch (error: unknown) {
+      issues.push({ index, message: ruleErrorMessage(error) })
+    }
+  })
+  return issues.length === 0 ? { rules } : { rules, issues }
+}
+
+/**
+ * Parse the document SHELL: validate the YAML, the top-level mapping, and
+ * the `rules` list, returning the raw rule entries. Everything below this
+ * level can be isolated per rule.
+ */
+function parseRulesSection(text: string): unknown[] {
   const parsed = parseYaml(normalizeLineEndings(text))
   // An empty (or comment-only) file is a valid empty rule set.
-  if (parsed === null || parsed === undefined) return { rules: [] }
+  if (parsed === null || parsed === undefined) return []
   const root = asRecord(parsed, 'rules document root')
   const unknownRoot = Object.keys(root).filter(key => key !== 'rules')
   if (unknownRoot.length > 0) {
     throw new RuleError(`unknown top-level field${unknownRoot.length > 1 ? 's' : ''} ${unknownRoot.map(k => JSON.stringify(k)).join(', ')} (only "rules" is allowed)`)
   }
   const rawRules = root['rules']
-  if (rawRules === undefined) return { rules: [] }
+  if (rawRules === undefined) return []
   if (!Array.isArray(rawRules)) throw new RuleError('"rules" must be a list')
-  return { rules: rawRules.map((raw, index) => parseRuleEntry(raw, index)) }
+  return rawRules
+}
+
+/** One error's message, for an isolated-rule report. */
+function ruleErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
 }
 
 /**
- * Compile a parsed document for the hot path: pattern strings become
- * RegExps (invalid globs/regexes throw here, at load), and the rule count
- * is capped by `maxRules`.
+ * Compile a parsed document for the hot path STRICTLY: pattern strings
+ * become RegExps (invalid globs/regexes throw here), and the rule count is
+ * capped by `maxRules`. Used by editor saves (and the generated allow-host
+ * rule), so a hand edit never has a rule silently dropped. The loader uses
+ * {@link compileRulesText} instead.
  * @param doc - the parsed document.
  * @param options - pattern mode, caps, and case handling.
  * @returns the compiled ruleset (every rule attributed to source 0).
@@ -317,21 +388,55 @@ export function compileRules(doc: RulesFileDoc, options: CompileOptions): Compil
   if (doc.rules.length > options.maxRules) {
     throw new RuleError(`rule count ${doc.rules.length} exceeds maxRules ${options.maxRules}`)
   }
-  return mergeCompiledRules([compileSourceRules(doc, options)], options)
+  return mergeCompiledRules([doc.rules.map(entry => compileRule(entry, 0, options))], options)
 }
 
 /**
- * Compile one parsed document into per-source compiled rules. The returned
- * rules carry source-local `index` values and `sourceIndex` 0 — the
- * cacheable unit a runtime can reuse across chains (keyed by source path +
- * content hash). The total-count cap is NOT applied here; it bounds the
- * merged chain in {@link mergeCompiledRules}.
- * @param doc - the parsed document.
+ * Compile one parsed document into per-source compiled rules with
+ * per-rule isolation (issue #49): a rule whose patterns cannot compile is
+ * disabled and reported in {@link CompiledSourceRules.issues}, while every
+ * other rule still loads. The returned rules carry source-local `index`
+ * values and `sourceIndex` 0 — the cacheable unit a runtime can reuse
+ * across chains (keyed by source path + content hash). The total-count cap
+ * is NOT applied here; it bounds the merged chain in
+ * {@link mergeCompiledRules}.
+ * @param doc - the parsed document (isolated or strict).
  * @param options - compile options.
- * @returns the compiled rules of one source.
+ * @returns the compiled rules of one source plus the disabled-rule reports.
  */
-export function compileSourceRules(doc: RulesFileDoc, options: CompileOptions): CompiledRule[] {
-  return doc.rules.map((entry, index) => compileRule(entry, index, 0, options))
+export function compileSourceRules(doc: RulesFileDoc, options: CompileOptions): CompiledSourceRules {
+  const rules: CompiledRule[] = []
+  const issues: RuleIssue[] = [...(doc.issues ?? [])]
+  for (const entry of doc.rules) {
+    try {
+      rules.push(compileRule(entry, 0, options))
+    } catch (error: unknown) {
+      issues.push({ index: entry.index, message: ruleErrorMessage(error) })
+    }
+  }
+  issues.sort((left, right) => left.index - right.index)
+  return { rules, issues }
+}
+
+/**
+ * Parse and compile one rule-file text with per-rule isolation — the
+ * loader-facing entry point for issue #49. A bad rule disables only itself
+ * (reported with its 0-based document index); the rest of the file stays
+ * active. A file-level failure still throws, so `badFilePolicy` keeps
+ * choosing how a whole unreadable/unparseable file is handled.
+ * @param text - the raw YAML text.
+ * @param options - compile options.
+ * @returns the compiled rules plus the disabled-rule reports.
+ */
+export function compileRulesText(text: string, options: CompileOptions): CompiledSourceRules {
+  const doc = parseRulesDocumentIsolated(text)
+  // The cap counts RAW entries, so a file full of invalid rules cannot
+  // sidestep the DoS bound by having its entries skipped.
+  const total = doc.rules.length + (doc.issues?.length ?? 0)
+  if (total > options.maxRules) {
+    throw new RuleError(`rule count ${total} exceeds maxRules ${options.maxRules}`)
+  }
+  return compileSourceRules(doc, options)
 }
 
 /**
@@ -356,23 +461,25 @@ export function mergeCompiledRules(sources: readonly CompiledRule[][], options: 
 }
 
 /**
- * Parse and compile an ordered source chain (nearest file first). Rules
- * keep per-file order and are evaluated in chain order, so a nearer file
- * can override a farther one on first-match semantics; `sourceIndex`
+ * Parse and compile an ordered source chain (nearest file first) STRICTLY.
+ * Rules keep per-file order and are evaluated in chain order, so a nearer
+ * file can override a farther one on first-match semantics; `sourceIndex`
  * attributes every rule to its file. The TOTAL rule count is capped by
- * `maxRules`.
+ * `maxRules`. The plugin's loader does not use this helper — it compiles
+ * each file through {@link compileRulesText} so one bad rule cannot take
+ * the chain down.
  * @param entries - the rule-file texts, nearest file first.
  * @param options - compile options.
  * @returns the merged ruleset and the source paths it references.
  */
 export function compileRulesChain(entries: readonly RulesChainEntry[], options: CompileOptions): { ruleset: CompiledRuleset; sources: string[] } {
   const sources = entries.map(entry => entry.path)
-  const compiledSources = entries.map(entry => compileSourceRules(parseRulesDocument(entry.text), options))
+  const compiledSources = entries.map(entry => parseRulesDocument(entry.text).rules.map(rule => compileRule(rule, 0, options)))
   return { ruleset: mergeCompiledRules(compiledSources, options), sources }
 }
 
 /** Compile one parsed rule into its hot-path form. */
-function compileRule(entry: RuleDocEntry, index: number, sourceIndex: number, options: CompileOptions): CompiledRule {
+function compileRule(entry: RuleDocEntry, sourceIndex: number, options: CompileOptions): CompiledRule {
   const tools = entry.match.tools.map(pattern => compileToolPattern(pattern, options.maxGlobStars))
   const agents = entry.match.agents.map(pattern => compileToolPattern(pattern, options.maxGlobStars))
   const params = new Map<string, { positive: readonly RegExp[]; negative: readonly RegExp[] }>()
@@ -386,7 +493,7 @@ function compileRule(entry: RuleDocEntry, index: number, sourceIndex: number, op
   }
   const argv = entry.match.argv === undefined ? undefined : compileArgv(entry.match.argv, options)
   return {
-    index,
+    index: entry.index,
     sourceIndex,
     action: entry.action,
     reason: entry.reason,
@@ -768,7 +875,7 @@ function parseRuleEntry(raw: unknown, index: number): RuleDocEntry {
     throw new RuleError(`${at}: description must be a non-empty string`)
   }
   const match = parseMatch(record['match'], at)
-  return { match, action: action as RuleAction, reason, enabled: enabled !== false, ...(description !== undefined ? { description } : {}), tags: parseStringList(record['tags'], `${at}.tags`) }
+  return { index, match, action: action as RuleAction, reason, enabled: enabled !== false, ...(description !== undefined ? { description } : {}), tags: parseStringList(record['tags'], `${at}.tags`) }
 }
 
 /** Validate the `match` block of one rule. */

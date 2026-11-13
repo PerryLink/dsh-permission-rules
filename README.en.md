@@ -108,8 +108,8 @@ Every hit **and** every passthrough is audit-logged as a `permissionRules/decisi
 - **Built-in high-risk baseline** — a shipped deny/ask ruleset (destructive commands, privilege escalation, download-and-execute, sensitive paths) enabled by default and appended after user rules so a nearer user rule can override it; toggle with `builtin.enabled`.
 - **Hierarchical rule files** — optional `searchUp` merges every `.dsh/rules.yaml` from the session cwd to the filesystem root, nearest first.
 - **Dry-run rollout** — `enforce: false` audits what the policy *would* do while passing every call through.
-- **Hot reload** — Chokidar watch with debounce; a broken edit keeps the previous rules, never crashes. On a WSL host, or for a rule file under `/mnt/<drive>`, the watch switches to polling because native change events are unreliable there.
-- **Fail loud** — invalid YAML, unknown actions/fields, bad globs/regexes, backtracking-prone patterns, or more than `maxRules` rules fail the load.
+- **Hot reload** — Chokidar watch with debounce; a file-level broken edit keeps the previous rules and never crashes, while a single bad rule only disables itself. On a WSL host, or for a rule file under `/mnt/<drive>`, the watch switches to polling because native change events are unreliable there.
+- **Loud, but bounded** — file-level errors (invalid YAML and friends) follow `badFilePolicy`; a single bad rule (bad glob/regex, unknown field/action) disables only itself and is surfaced at startup and in `/rules`, while every other rule keeps working (issue #49).
 
 ### Commands & tools surface
 
@@ -198,7 +198,7 @@ Most-used keys:
 |---|---|---|
 | `rulesFile` | `.dsh/rules.yaml` | Rule file location; relative = resolved against the calling session's cwd, absolute = global and validated at mount |
 | `fallbackPath` | *(none)* | Rule file used when per-cwd discovery finds nothing; validated at mount |
-| `badFilePolicy` | `fail` | Bad rule file: `fail` errors the pending tool call loudly; `ignore-with-warning` warns and continues empty |
+| `badFilePolicy` | `fail` | File-level failures: `fail` errors the pending tool call loudly; `ignore-with-warning` warns and continues empty. A single bad rule is always isolated: that rule is disabled and reported at startup and in `/rules` |
 | `maxRules` | `256` | Hard cap on rule count across the effective source chain |
 | `patternMode` | `glob` | `params`/`paths`/`when.env` pattern flavor: `glob` or `regex` (tool names are always globs) |
 | `watch` | `true` | Chokidar watch + reload on change |
@@ -212,7 +212,7 @@ Most-used keys:
 |---|---|---|
 | `rulesFile` | `.dsh/rules.yaml` | Rule file location; relative = resolved against the calling session's cwd, absolute = global and validated at mount |
 | `fallbackPath` | *(none)* | Rule file used when per-cwd discovery finds nothing; validated at mount |
-| `badFilePolicy` | `fail` | Bad rule file: `fail` errors the pending tool call loudly; `ignore-with-warning` warns and continues empty |
+| `badFilePolicy` | `fail` | File-level failures: `fail` errors the pending tool call loudly; `ignore-with-warning` warns and continues empty. A single bad rule is always isolated: that rule is disabled and reported at startup and in `/rules` |
 | `maxRules` | `256` | Hard cap on rule count across the effective source chain |
 | `maxCachedWorkspaces` | `512` | Hard cap on cached per-workspace rule loads (LRU eviction) |
 | `patternMode` | `glob` | `params`/`paths`/`when.env` pattern flavor: `glob` or `regex` (tool names are always globs) |

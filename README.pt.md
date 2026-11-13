@@ -108,8 +108,8 @@ Cada acerto **e** cada passagem direta é auditado como evento de sessão `permi
 - **Linha de base de alto risco embutida** — um conjunto deny/ask incluído (comandos destrutivos, escalada de privilégios, baixar e executar, caminhos sensíveis) ativado por padrão e acrescentado após as regras do usuário, de modo que uma regra mais próxima pode sobrepô-lo; controlado por `builtin.enabled`.
 - **Arquivos de regras hierárquicos** — `searchUp` opcional mescla cada `.dsh/rules.yaml` do cwd da sessão até a raiz do sistema de arquivos, o mais próximo primeiro.
 - **Implantação em simulação** — `enforce: false` audita o que a política *faria* enquanto deixa cada chamada passar.
-- **Recarga a quente** — watch do Chokidar com debounce; uma edição quebrada mantém as regras anteriores e nunca derruba o processo. Em um host WSL, ou para um arquivo em `/mnt/<unidade>`, o watch passa a polling porque os eventos nativos não são confiáveis ali.
-- **Falha ruidosa** — YAML inválido, ações/campos desconhecidos, globs/regex ruins, padrões propensos a backtracking ou mais de `maxRules` regras falham no carregamento.
+- **Recarga a quente** — watch do Chokidar com debounce; uma edição quebrada no nível do arquivo mantém as regras anteriores e nunca derruba o processo, enquanto uma única regra inválida desativa apenas a si mesma. Em um host WSL, ou para um arquivo em `/mnt/<unidade>`, o watch passa a polling porque os eventos nativos não são confiáveis ali.
+- **Ruidosa, mas limitada** — erros de arquivo (YAML inválido e afins) seguem `badFilePolicy`; uma regra inválida (glob/regex ruim, campo/ação desconhecido) desativa apenas a si mesma e aparece na inicialização e em `/rules`, enquanto as demais continuam funcionando (issue #49).
 
 ### Superfície de comandos e ferramentas
 
@@ -198,7 +198,7 @@ Chaves mais usadas:
 |---|---|---|
 | `rulesFile` | `.dsh/rules.yaml` | Local do arquivo de regras; relativo = resolvido contra o cwd da sessão chamadora, absoluto = global e validado na montagem |
 | `fallbackPath` | *(none)* | Arquivo de regras usado quando a descoberta por cwd não acha nada; validado na montagem |
-| `badFilePolicy` | `fail` | Arquivo de regras inválido: `fail` faz a chamada pendente falhar ruidosamente; `ignore-with-warning` avisa e continua vazio |
+| `badFilePolicy` | `fail` | Falhas de arquivo: `fail` faz a chamada pendente falhar ruidosamente; `ignore-with-warning` avisa e continua vazio. Uma regra inválida é sempre isolada: ela é desativada e reportada na inicialização e em `/rules` |
 | `maxRules` | `256` | Limite rígido de regras na cadeia efetiva de fontes |
 | `patternMode` | `glob` | Estilo de padrão de `params`/`paths`/`when.env`: `glob` ou `regex` (nomes de ferramenta são sempre globs) |
 | `watch` | `true` | Watch do Chokidar + recarga ao mudar |
@@ -212,7 +212,7 @@ Chaves mais usadas:
 |---|---|---|
 | `rulesFile` | `.dsh/rules.yaml` | Local do arquivo de regras; relativo = resolvido contra o cwd da sessão chamadora, absoluto = global e validado na montagem |
 | `fallbackPath` | *(none)* | Arquivo de regras usado quando a descoberta por cwd não acha nada; validado na montagem |
-| `badFilePolicy` | `fail` | Arquivo de regras inválido: `fail` faz a chamada pendente falhar ruidosamente; `ignore-with-warning` avisa e continua vazio |
+| `badFilePolicy` | `fail` | Falhas de arquivo: `fail` faz a chamada pendente falhar ruidosamente; `ignore-with-warning` avisa e continua vazio. Uma regra inválida é sempre isolada: ela é desativada e reportada na inicialização e em `/rules` |
 | `maxRules` | `256` | Limite rígido de regras na cadeia efetiva de fontes |
 | `maxCachedWorkspaces` | `512` | Limite rígido de cargas de regras por workspace em cache (expulsão LRU) |
 | `patternMode` | `glob` | Estilo de padrão de `params`/`paths`/`when.env`: `glob` ou `regex` (nomes de ferramenta são sempre globs) |

@@ -85,9 +85,11 @@ describe('/rules command', () => {
       const text = execution?.result.kind === 'error' ? execution.result.text : ''
       expect(text).toContain('Reload failed')
       expect(text).toContain('previous rules are still active')
-      // The old rules still decide.
+      // The old rules still decide, and the degraded state renders as an
+      // error (not a neutral listing) so it cannot be mistaken for healthy.
       const status = await harness.ctx.commands.execute(harness.agent, '/rules', [], new AbortController().signal)
-      const statusText = status?.result.kind === 'success' ? status.result.text ?? '' : ''
+      expect(status?.result.kind).toBe('error')
+      const statusText = status?.result.text ?? ''
       expect(statusText).toContain('2 rule(s)')
       expect(statusText).toContain('last reload failed')
     } finally {

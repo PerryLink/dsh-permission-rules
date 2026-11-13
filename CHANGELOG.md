@@ -1,3 +1,10 @@
+## Unreleased
+
+### Fixed
+
+- **One bad rule no longer takes the whole policy (and the plugin's activation) down (issue #49).** `compileSourceRules` compiles a document rule by rule: a bad glob/regex, a backtracking-cap refusal, an unknown field/action, or a missing reason now disables ONLY that rule, keeps every other rule in the file and in the chain active, and reports the failure with the rule's 0-based position in the `rules` list and its source file. Before, the first bad rule aborted the whole load — an absolute `rulesFile` took the plugin's activation down before any session existed, so a typo silently removed every protection. FILE-level failures (invalid YAML, unknown top-level field, `rules` not a list, over `maxRules`) still follow `badFilePolicy`, and editor saves stay strict so a hand-written invalid rule is refused instead of dropped.
+- **The degraded state is visible, not just a stderr line.** The plugin now checks the configured chain at mount (and each session's workspace at `session/created`) and emits a `STARTUP:` summary naming the disabled rules; `/rules` and `/rules reload` render the per-rule errors as an `error` result (red in the GUI) with one line per disabled rule. A fixed file clears the state through the normal watch reload or `/rules reload`.
+
 ## v0.7.21 - 2026-11-05
 
 ### Changed

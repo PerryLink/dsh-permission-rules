@@ -26,8 +26,8 @@ import type { CallId } from './call-id.ts'
 import { insertAllowRule, isWritableHost, normalizeAllowHost, resolveAllowHostTarget } from './allow-host.ts'
 import type { AllowHostInsertion } from './allow-host.ts'
 import type { AllowHostRequest, AllowHostResult } from './wire.ts'
-import { compileRules, compileSourceRules, describeRule, findUnreachableRules, isShellTool, matchRules, mergeCompiledRules, normalizeWorkspacePath, parseRulesDocument, PLATFORMS, RuleError } from './rules.ts'
-import type { CompileOptions, CompiledRule, CompiledRuleset, MatchContext, NetworkTarget, RuleHit } from './rules.ts'
+import { compileRules, compileRulesText, describeRule, findUnreachableRules, isShellTool, matchRules, mergeCompiledRules, normalizeWorkspacePath, parseRulesDocument, PLATFORMS, RuleError } from './rules.ts'
+import type { CompileOptions, CompiledRule, CompiledRuleset, MatchContext, NetworkTarget, RuleHit, RuleIssue } from './rules.ts'
 import { DESCRIBE_TOKENS, UI_PROSE } from './prose.ts'
 import type { UiProse } from './prose.ts'
 import { blockMessage, decideNetworkTarget, defaultDecision, networkModeForSandbox } from './network.ts'
@@ -50,6 +50,12 @@ export const name = 'permission-rules'
 /** Services required before the plugin mounts. */
 export const inject = ['commands', 'tools']
 
+/** One rule disabled at load, attributed to the source file that declared it (issue #49). */
+export interface RuleFileIssue extends RuleIssue {
+  /** Absolute path of the rule file whose rule was disabled. */
+  readonly source: string
+}
+
 /** The rule state bound to one workspace cwd. */
 interface LoadedRules {
   /** The workspace root these rules were resolved for. */
@@ -57,7 +63,9 @@ interface LoadedRules {
   /** Absolute paths of the rule files in effect, nearest first; `[]` = empty rule set. */
   readonly sources: readonly string[]
   readonly compiled: CompiledRuleset
-  /** Last load error, when one is being reported (see {@link PermissionRulesRuntime.rulesFor}). */
+  /** Rules disabled by per-rule parse/compile errors; the rest of the policy stays active. */
+  readonly issues?: readonly RuleFileIssue[]
+  /** Last FILE-level load error, when one is being reported (see {@link PermissionRulesRuntime.rulesFor}). */
   readonly lastError?: string
   /** `true` when the last initial load threw under `badFilePolicy: 'fail'`. */
   readonly failed?: true
@@ -162,7 +170,7 @@ export class PermissionRulesRuntime {
   private readonly byCwd = new Map<string, LoadedRules>()
 
   /** Compiled per-source rules keyed by absolute path, with the content hash they were compiled from (LRU-refreshed). */
-  private readonly compileCache = new Map<string, { hash: string; rules: CompiledRule[] }>()
+  private readonly compileCache = new Map<string, { hash: string; rules: readonly CompiledRule[]; issues: readonly RuleIssue[] }>()
 
   /** Live watchers per watched path (rule file or candidate ancestor directory), with the cwds each serves. */
   private readonly watchers = new Map<string, WatcherEntry>()
@@ -277,10 +285,17 @@ export class PermissionRulesRuntime {
   }
 
   /**
-   * Read, parse, and compile the rule-file chain serving `cwd`. Under
-   * `badFilePolicy: 'ignore-with-warning'` a bad file degrades to an empty
-   * rule set with a warning and keeps its source paths (so a later fix is
-   * watched and adopted); under `'fail'` it throws.
+   * Read, parse, and compile the rule-file chain serving `cwd`.
+   *
+   * Per-rule failures (a bad glob/regex, an unknown field or action, a
+   * missing reason) no longer fail the whole load: that rule is disabled,
+   * reported with its 0-based document index and source file, and every
+   * other rule — in that file and in every other file of the chain — stays
+   * active (issue #49). FILE-level failures (unreadable file, invalid YAML,
+   * unknown top-level field, `rules` not a list, or a total over
+   * `maxRules`) still follow `badFilePolicy`: `'ignore-with-warning'`
+   * degrades to an empty rule set with a warning and keeps the source paths
+   * (so a later fix is watched and adopted); `'fail'` throws.
    * @param cwd - the workspace root.
    * @returns the loaded state.
    */
@@ -288,9 +303,15 @@ export class PermissionRulesRuntime {
     const sources = this.resolveSources(cwd)
     if (sources.length === 0) return { cwd, sources: [], compiled: { rules: [], caseInsensitivePaths: this.config.caseInsensitivePaths } }
     try {
-      const compiledSources = sources.map(path => this.compileSourceFile(path))
+      const compiledSources: CompiledRule[][] = []
+      const issues: RuleFileIssue[] = []
+      for (const path of sources) {
+        const source = this.compileSourceFile(path)
+        compiledSources.push([...source.rules])
+        for (const issue of source.issues) issues.push({ source: path, index: issue.index, message: issue.message })
+      }
       const ruleset = mergeCompiledRules(compiledSources, this.compileOptions())
-      return { cwd, sources, compiled: ruleset }
+      return { cwd, sources, compiled: ruleset, ...(issues.length === 0 ? {} : { issues }) }
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error)
       if (this.config.badFilePolicy === 'ignore-with-warning') {
@@ -306,23 +327,79 @@ export class PermissionRulesRuntime {
    * file's content hash is unchanged. The cache key is the source path plus
    * the content hash, so the same file read by many workspaces (the
    * built-in baseline and any shared fallback/absolute `rulesFile`) is
-   * parsed and compiled ONCE, not once per cwd.
+   * parsed and compiled ONCE, not once per cwd. Per-rule failures are
+   * isolated by {@link compileRulesText}; they are logged here (once per
+   * recompiled content, at `error` under `badFilePolicy: 'fail'` and at
+   * `warn` under `'ignore-with-warning'`) instead of being thrown.
    * @param path - the absolute source path.
-   * @returns that source's compiled rules (source-local index, sourceIndex 0).
+   * @returns that source's compiled rules (source-local index, sourceIndex 0) and disabled-rule reports.
    */
-  private compileSourceFile(path: string): CompiledRule[] {
+  private compileSourceFile(path: string): { rules: readonly CompiledRule[]; issues: readonly RuleIssue[] } {
     const text = readFileSync(path, 'utf8')
     const hash = createHash('sha256').update(text).digest('hex')
     const cached = this.compileCache.get(path)
     if (cached !== undefined && cached.hash === hash) {
       this.compileCache.delete(path)
       this.compileCache.set(path, cached)
-      return cached.rules
+      return cached
     }
-    const rules = compileSourceRules(parseRulesDocument(text), this.compileOptions())
-    this.compileCache.set(path, { hash, rules })
+    const { rules, issues } = compileRulesText(text, this.compileOptions())
+    this.compileCache.set(path, { hash, rules, issues })
     this.evictCompileCache()
-    return rules
+    this.reportRuleIssues(path, issues)
+    return { rules, issues }
+  }
+
+  /**
+   * Report the rules an isolated load disabled. The file still loads, so
+   * this is not a file-level failure: `badFilePolicy: 'fail'` reports each
+   * disabled rule at `error` level and `'ignore-with-warning'` at `warn`,
+   * both naming the file and the 1-based rule position the author can find in
+   * the document (the `RuleIssue.index` itself is 0-based). The same errors stay queryable through `/rules`.
+   * @param path - the rule file the rules came from.
+   * @param issues - the disabled-rule reports for that file.
+   */
+  private reportRuleIssues(path: string, issues: readonly RuleIssue[]): void {
+    if (issues.length === 0) return
+    const log = this.config.badFilePolicy === 'fail' ? this.ctx.logger.error.bind(this.ctx.logger) : this.ctx.logger.warn.bind(this.ctx.logger)
+    const shown = issues.slice(0, 5)
+    for (const issue of shown) {
+      log(`permission-rules: ${path}: rule ${issue.index + 1} disabled by a load error: ${issue.message}`)
+    }
+    if (issues.length > shown.length) {
+      log(`permission-rules: ${path}: ${issues.length - shown.length} more rule(s) disabled by load errors (run /rules for the full list)`)
+    }
+  }
+
+  /**
+   * ONE process's startup check: load the chain for `cwd` eagerly and, when
+   * it is degraded, emit a single prominent warning instead of waiting for
+   * the first dangerous tool call. The per-rule errors themselves are logged
+   * by {@link compileSourceFile}; this adds the summary that makes the state
+   * impossible to miss in the host log, and `/rules` stays the
+   * session-visible surface with the detailed list. Never throws: a startup
+   * check must not take the plugin down (issue #49).
+   * @param cwd - the workspace to check (the host cwd at mount, the session cwd on creation).
+   */
+  startupNotice(cwd: string = process.cwd()): void {
+    let loaded: LoadedRules
+    try {
+      // `load`, not `rulesFor`: a startup probe must not claim a cache slot or
+      // install watchers for the host's own directory, and the compile cache
+      // already makes the later first-use load free.
+      loaded = this.load(cwd)
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error)
+      this.ctx.logger.error(`permission-rules: STARTUP: cannot load the rule chain for ${cwd}: ${message} — tool calls in this workspace will fail until the file is fixed (run /rules reload after fixing it)`)
+      return
+    }
+    const issues = loaded.issues ?? []
+    if (issues.length > 0) {
+      this.ctx.logger.error(`permission-rules: STARTUP: ${issues.length} rule(s) could not be loaded and are disabled; ${loaded.compiled.rules.length} rule(s) from ${loaded.sources.join(', ')} stay active. Run /rules for the per-rule errors, then fix the named entries.`)
+    }
+    if (loaded.lastError !== undefined) {
+      this.ctx.logger.error(`permission-rules: STARTUP: the rule chain for ${cwd} is degraded (${loaded.lastError}); the previous/empty rule set is in effect. Run /rules for details.`)
+    }
   }
 
   /** Bound the compile cache: drop the least-recently-used source beyond the workspace cap (compile results are cheap to rebuild). */
@@ -1169,6 +1246,16 @@ export class PermissionRulesRuntime {
       if (reloaded?.lastError !== undefined) return { kind: 'error', text: prose.reloadFailed(reloaded.lastError) }
       const rules = reloaded?.compiled.rules ?? []
       const source = reloaded === undefined || reloaded.sources.length === 0 ? prose.emptySource : reloaded.sources.join(', ')
+      const issues = reloaded?.issues ?? []
+      if (issues.length > 0) {
+        return {
+          kind: 'error',
+          text: [
+            prose.reloadDegraded(rules.length, source, issues.length),
+            ...issues.map(issue => prose.ruleIssueLine(this.displaySource(issue.source, cwd), issue.index, issue.message)),
+          ].join('\n'),
+        }
+      }
       return { kind: 'success', text: prose.reloaded(rules.length, source) }
     }
     if (verb === 'list' && rest.length > 0) return { kind: 'error', text: prose.unknownArg(invocation.rawInput.trim()) }
@@ -1197,10 +1284,15 @@ export class PermissionRulesRuntime {
       return { kind: 'error', text: error instanceof Error ? error.message : String(error) }
     }
     const lines: string[] = []
+    const issues = loaded.issues ?? []
     if (loaded.sources.length === 0) {
       lines.push(prose.noRules(cwd, this.config.fallbackPath !== undefined ? prose.fallbackMissing : ''))
     } else {
       lines.push(prose.rulesHeader(loaded.compiled.rules.length, loaded.sources, cwd))
+      if (issues.length > 0) {
+        lines.push(prose.degradedRules(issues.length, loaded.compiled.rules.length))
+        for (const issue of issues) lines.push(prose.ruleIssueLine(this.displaySource(issue.source, cwd), issue.index, issue.message))
+      }
       const multiSource = loaded.sources.length > 1
       lines.push(...loaded.compiled.rules.map(rule => describeRule(rule, DESCRIBE_TOKENS[this.config.language], multiSource ? this.displaySource(loaded.sources[rule.sourceIndex] ?? '', cwd) : undefined)))
       const unreachable = findUnreachableRules(loaded.compiled)
@@ -1213,7 +1305,9 @@ export class PermissionRulesRuntime {
       lines.push(prose.dryRunNotice)
     }
     lines.push(prose.usage)
-    return { kind: 'success', text: lines.join('\n') }
+    // A degraded policy must be visible where the user looks: the command
+    // result renders as an error (red) instead of a neutral listing.
+    return { kind: issues.length > 0 || loaded.lastError !== undefined ? 'error' : 'success', text: lines.join('\n') }
   }
 
   /**
@@ -1339,9 +1433,13 @@ export class PermissionRulesRuntime {
   /**
    * Validate deployment-level file references at mount — the earliest
    * resolvable point. An absolute `rulesFile` or a configured
-   * `fallbackPath` must exist and parse; a missing referent fails the mount
-   * loudly instead of silently degrading later.
-   * @throws when a mandated file is missing or invalid.
+   * `fallbackPath` must exist and parse; a missing referent or a FILE-level
+   * failure fails the mount loudly instead of silently degrading later. A
+   * single bad RULE inside such a file no longer fails the mount (issue
+   * #49): it is disabled, reported, and the rest of the file stays active —
+   * otherwise one typo would take the whole plugin (and its protection)
+   * down before any session exists.
+   * @throws when a mandated file is missing or unparseable as a document.
    */
   validateDeploymentFiles(): void {
     if (isAbsolute(this.config.rulesFile)) {
@@ -1362,11 +1460,15 @@ export class PermissionRulesRuntime {
     }
   }
 
-  /** Parse and compile one mandated file, rethrowing as a mount failure. */
+  /**
+   * Parse and compile one mandated file with per-rule isolation, rethrowing
+   * only a FILE-level failure as a mount failure. The disabled-rule reports
+   * are logged here (the mount is the first place they can be seen).
+   * @param filePath - the deployment-level rule file to validate.
+   */
   private loadForValidation(filePath: string): void {
     try {
-      const doc = parseRulesDocument(readFileSync(filePath, 'utf8'))
-      compileRules(doc, this.compileOptions())
+      this.compileSourceFile(filePath)
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error)
       throw error instanceof RuleError ? error : new RuleError(`permission-rules: cannot load ${filePath}: ${message}`)
@@ -1667,6 +1769,20 @@ export async function apply(ctx: Context, config: LiveConfig): Promise<void> {
     description: 'list, reload, audit, dry-test, or inspect the network policy of the active permission rules for this workspace',
     input: { hint: '[list | reload | network | decisions [n] | test [--cwd <dir>] [--env K=V] [--agent <sel>] [--platform <name>] <tool> <json-args>]' },
     handler: invocation => runtime.command(invocation),
+  })
+  // Issue #49: a broken rule used to be visible only as one line in the host
+  // log (or not at all when it aborted activation). Check the configured
+  // chain NOW, and again for every session's workspace as it is created, so
+  // the state is announced at startup instead of on the first dangerous call.
+  runtime.startupNotice()
+  ctx.inject(['sessions'], (scope) => {
+    scope.on('session/created', (session) => {
+      try {
+        runtime.startupNotice(session.header.cwd ?? process.cwd())
+      } catch {
+        // A startup notice must never veto session creation.
+      }
+    })
   })
   if (resolved.network.enabled) await runtime.attachNetworkProxy()
   ctx.inject(['systemPrompt'], (scope) => {

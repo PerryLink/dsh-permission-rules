@@ -108,8 +108,8 @@ dsh plugin --profile <name> add dsh-permission-rules
 - **内置高危基线** —— 随附的 deny/ask 规则集（破坏性命令、权限提升、下载即执行、敏感路径），默认开启并追加在用户规则之后（更近的用户规则可覆盖）；用 `builtin.enabled` 开关。
 - **分层规则文件** —— 可选 `searchUp` 从会话 cwd 到文件系统根合并每个 `.dsh/rules.yaml`，就近优先。
 - **试运行上线** —— `enforce: false` 审计策略*会*做什么，同时放行每个调用。
-- **热重载** —— Chokidar 监听带去抖；损坏的编辑保留旧规则、绝不崩溃。在 WSL 主机上（或规则文件位于 `/mnt/<盘符>` 下时）监听切换为轮询，因为该处的原生变更事件不可靠。
-- **失败大声** —— 非法 YAML、未知 action/字段、坏 glob/正则、易回溯模式或超过 `maxRules` 的规则在加载期失败。
+- **热重载** —— Chokidar 监听带去抖；文件级损坏的编辑保留旧规则、绝不崩溃，单条规则错误只禁用该条。在 WSL 主机上（或规则文件位于 `/mnt/<盘符>` 下时）监听切换为轮询，因为该处的原生变更事件不可靠。
+- **失败大声、爆炸半径受限** —— 非法 YAML 等文件级错误按 `badFilePolicy` 处理；单条规则的坏 glob/正则、未知字段/action 只禁用该条，并在启动提示与 `/rules` 中标红，其余规则照常生效（issue #49）。
 
 ### 命令与工具面
 
@@ -198,7 +198,7 @@ Codex 风格的**进程级网络策略**：shell 子进程流量经内置本地 
 |---|---|---|
 | `rulesFile` | `.dsh/rules.yaml` | 规则文件位置；相对 = 相对调用会话 cwd 解析，绝对 = 全局并在挂载时校验 |
 | `fallbackPath` | *(none)* | 按 cwd 发现无果时使用的规则文件；挂载时校验 |
-| `badFilePolicy` | `fail` | 坏规则文件：`fail` 响亮地令待处理工具调用出错；`ignore-with-warning` 警告并空继续 |
+| `badFilePolicy` | `fail` | 文件级坏规则文件：`fail` 响亮地令待处理工具调用出错；`ignore-with-warning` 警告并空继续。单条规则的错误总是只禁用该条，并在启动提示与 `/rules` 中报告 |
 | `maxRules` | `256` | 生效源链上规则总数的硬上限 |
 | `patternMode` | `glob` | `params`/`paths`/`when.env` 模式风格：`glob` 或 `regex`（工具名始终为 glob） |
 | `watch` | `true` | Chokidar 监听 + 变更重载 |
@@ -212,7 +212,7 @@ Codex 风格的**进程级网络策略**：shell 子进程流量经内置本地 
 |---|---|---|
 | `rulesFile` | `.dsh/rules.yaml` | 规则文件位置；相对 = 相对调用会话 cwd 解析，绝对 = 全局并在挂载时校验 |
 | `fallbackPath` | *(none)* | 按 cwd 发现无果时使用的规则文件；挂载时校验 |
-| `badFilePolicy` | `fail` | 坏规则文件：`fail` 响亮地令待处理工具调用出错；`ignore-with-warning` 警告并空继续 |
+| `badFilePolicy` | `fail` | 文件级坏规则文件：`fail` 响亮地令待处理工具调用出错；`ignore-with-warning` 警告并空继续。单条规则的错误总是只禁用该条，并在启动提示与 `/rules` 中报告 |
 | `maxRules` | `256` | 生效源链上规则总数的硬上限 |
 | `maxCachedWorkspaces` | `512` | 缓存的工作区规则加载硬上限（LRU 逐出） |
 | `patternMode` | `glob` | `params`/`paths`/`when.env` 模式风格：`glob` 或 `regex`（工具名始终为 glob） |

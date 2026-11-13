@@ -44,7 +44,8 @@ vi.mock('chokidar', () => ({
 
 const GOOD_1 = 'rules:\n  - match: { tools: [bash] }\n    action: deny\n    reason: no bash v1\n'
 const GOOD_2 = 'rules:\n  - match: { tools: [bash] }\n    action: deny\n    reason: no bash v2\n'
-const BAD = 'rules:\n  - match: { tools: [bash] }\n    action: maybe\n    reason: x\n'
+/** A FILE-level failure (invalid YAML): the HMR path keeps the previous rules. */
+const BAD_FILE = 'rules: {'
 
 function workspaceWithRules(body = GOOD_1): string {
   const cwd = tempWorkspace()
@@ -84,7 +85,7 @@ describe('rule-file watching', () => {
     const warn = vi.spyOn(harness.ctx.logger, 'warn').mockImplementation(() => undefined)
     try {
       await dispatchPreExecute(harness.ctx, makeExec({ name: 'bash', arguments: {}, agent: harness.agent }))
-      writeFileSync(join(cwd, '.dsh', 'rules.yaml'), BAD, 'utf8')
+      writeFileSync(join(cwd, '.dsh', 'rules.yaml'), BAD_FILE, 'utf8')
       watchers.at(-1)?.emit('change', join(cwd, '.dsh', 'rules.yaml'))
       await vi.waitFor(() => {
         expect(warn.mock.calls.some(([message]) => String(message).includes('reload failed'))).toBe(true)
