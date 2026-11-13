@@ -162,10 +162,11 @@ rules:
 
 ## 加载与热更新
 
-- 按会话 cwd 惰性发现，首次 `tools/pre-execute` 时加载并缓存（超出 `maxCachedWorkspaces` 逐出最久未用项）；缓存键为解析后的 cwd（Windows 上折叠大小写），同一目录的不同拼写共享同一条目。
-- 非法 YAML / 未知字段或 action / 坏 glob 与正则 / 易回溯灾难的模式 / 超 `maxRules` 都是加载期错误：`badFilePolicy: fail`（默认）时首个使用该工作区的工具调用响亮失败；`ignore-with-warning` 时告警并降级为空规则集。
-- 绝对 `rulesFile` 或配置的 `fallbackPath` 在插件挂载时即校验，缺失/非法直接挂载失败。
-- 文件变更后经 Chokidar 去抖重读（`watch`、`watchStabilityThresholdMs`）；重读失败保留旧规则、只告警，绝不崩溃。`/rules reload` 手动触发同样路径；`/rules decisions` 回放审计轨迹，`/rules test` 对假设调用干跑规则。
+- 按会话 cwd 惰性发现：插件挂载与每个会话创建时先做一次只读探测（只用于启动提示，不占缓存、不装监听），首次 `tools/pre-execute` 时正式加载并缓存（超出 `maxCachedWorkspaces` 逐出最久未用项）；缓存键为解析后的 cwd（Windows 上折叠大小写），同一目录的不同拼写共享同一条目。
+- **文件级**错误（非法 YAML、未知顶层字段、`rules` 不是列表、超 `maxRules`）仍按 `badFilePolicy` 处理：`fail`（默认）时首个使用该工作区的工具调用响亮失败；`ignore-with-warning` 时告警并降级为空规则集。
+- **单条规则**错误（坏 glob/正则、易回溯模式、未知字段/action、缺失 reason）不再连坐整份文件：该条被禁用，报错带上规则下标（`rules` 列表中的 0 基位置，显示为第 N 条）与所在文件，其余规则照常生效。插件挂载和每个会话创建时会把降级状态汇总到启动提示，`/rules` 以 error 状态（GUI 中显示为错误）逐条列出被禁用的规则（issue #49）。编辑器保存仍是严格校验：手写的非法规则会被拒绝并返回错误，不会被静默丢弃。
+- 绝对 `rulesFile` 或配置的 `fallbackPath` 在插件挂载时即校验：缺失或文件级非法直接挂载失败；文件内单条规则非法只禁用该条。
+- 文件变更后经 Chokidar 去抖重读（`watch`、`watchStabilityThresholdMs`）；文件级重读失败保留旧规则、只告警，绝不崩溃；单条规则错误只禁用该条。`/rules reload` 手动触发同样路径；`/rules decisions` 回放审计轨迹，`/rules test` 对假设调用干跑规则。
 - 预期存在但缺失的规则文件（未生效的项目文件、被删除后的 fallback）会通过其最近存在祖先目录被监听：会话中途创建即自动采纳，无需手动重载。`searchUp` 下只监听 cwd 层级的候选——更上层祖先新建规则文件仍需 `/rules reload`。
 - `/rules` 列出当前规则（`list` 为显式别名）；多文件链中每条规则行标注自己的来源文件。
 - `/rules test` 支持前置标志：`--cwd <目录>` 换一个工作区求值（规则发现与路径归一化都切换）；`--env 键=值`（可重复）覆盖宿主环境变量以测试 `when.env`；`--agent <选择器>`（可重复）为 `agents` 维度提供身份候选；`--platform <平台名>` 覆盖宿主平台以测试 `when.platform`。

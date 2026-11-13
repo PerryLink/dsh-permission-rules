@@ -112,10 +112,15 @@ export interface Config {
    */
   fallbackPath?: string | undefined
   /**
-   * How an unreadable/invalid rule file is handled at load: `'fail'` throws
-   * (the pending tool call errors loudly; HMR reloads keep the previous
-   * rules and report the error), `'ignore-with-warning'` logs a warning and
-   * continues with an empty (initial) or previous (reload) rule set.
+   * How a FILE-level rule-file failure (unreadable, invalid YAML, unknown
+   * top-level field, `rules` not a list, over `maxRules`) is handled at
+   * load: `'fail'` throws (the pending tool call errors loudly; HMR reloads
+   * keep the previous rules and report the error), `'ignore-with-warning'`
+   * logs a warning and continues with an empty (initial) or previous
+   * (reload) rule set. A single invalid RULE is isolated either way
+   * (issue #49): it is disabled and reported at startup and in `/rules`
+   * while every other rule stays active, so the policy can never disappear
+   * because of one typo.
    */
   badFilePolicy?: BadFilePolicy
   /** Hard cap on the number of rules across the effective source chain; a larger chain fails the load. */

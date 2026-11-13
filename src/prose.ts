@@ -24,6 +24,12 @@ export interface UiProse {
   reloadFailed: (error: string) => string
   /** Warning appended to a listing whose last reload failed. */
   lastReloadWarning: (error: string) => string
+  /** Warning header of a listing whose chain disabled rule(s) by isolated load errors. */
+  degradedRules: (disabled: number, active: number) => string
+  /** One disabled-rule line: source file, 1-based rule number, and the load error. */
+  ruleIssueLine: (source: string, index: number, message: string) => string
+  /** `/rules reload` result when valid rules loaded but others were disabled. */
+  reloadDegraded: (active: number, source: string, disabled: number) => string
   /** Notice appended to a listing when dry-run mode (`enforce: false`) is active. */
   dryRunNotice: string
   /** Rejection of an unknown `/rules` argument. */
@@ -105,6 +111,9 @@ const EN: UiProse = {
   reloaded: (count, source) => `Reloaded ${count} rule(s) from ${source}.`,
   reloadFailed: error => `Reload failed: ${error}. The previous rules are still active.`,
   lastReloadWarning: error => `Warning: the last reload failed (${error}); the rules listed above are the previous ones.`,
+  degradedRules: (disabled, active) => `Warning: ${disabled} rule(s) could not be loaded and are disabled; the other ${active} rule(s) stay active:`,
+  ruleIssueLine: (source, index, message) => `- ${source.length > 0 ? source : '(unknown file)'}: rule ${index + 1} (disabled): ${message}`,
+  reloadDegraded: (active, source, disabled) => `Reloaded ${active} rule(s) from ${source}; ${disabled} rule(s) are disabled by load errors — fix the entries below and run /rules reload:`,
   dryRunNotice: 'Dry-run mode (enforce: false): deny/ask hits are audit-logged only — every call is passed through.',
   unknownArg: arg => `Unknown /rules argument "${arg}". ${EN.usage}`,
   usage: 'Usage: /rules [list | reload | network | decisions [n] | test <tool> <json-args>]',
@@ -149,6 +158,9 @@ const ZH: UiProse = {
   reloaded: (count, source) => `已重载 ${count} 条规则，来自 ${source}。`,
   reloadFailed: error => `重载失败：${error}。之前的规则仍然生效。`,
   lastReloadWarning: error => `警告：上次重载失败（${error}）；以上列出的是之前的规则。`,
+  degradedRules: (disabled, active) => `警告：${disabled} 条规则无法加载，已禁用；其余 ${active} 条仍然生效：`,
+  ruleIssueLine: (source, index, message) => `- ${source.length > 0 ? source : '（未知文件）'}：第 ${index + 1} 条（已禁用）：${message}`,
+  reloadDegraded: (active, source, disabled) => `已重载 ${active} 条规则，来自 ${source}；另有 ${disabled} 条因加载错误被禁用——请修正下列条目后执行 /rules reload：`,
   dryRunNotice: '干跑模式（enforce: false）：deny/ask 命中仅写入审计日志——所有调用照常透传。',
   unknownArg: arg => `未知的 /rules 参数 "${arg}"。${ZH.usage}`,
   usage: '用法：/rules [list | reload | network | decisions [n] | test <工具名> <json-参数>]',
@@ -193,6 +205,9 @@ const ES: UiProse = {
   reloaded: (count, source) => `Recargadas ${count} regla(s) desde ${source}.`,
   reloadFailed: error => `Error de recarga: ${error}. Las reglas anteriores siguen activas.`,
   lastReloadWarning: error => `Aviso: la última recarga falló (${error}); las reglas mostradas son las anteriores.`,
+  degradedRules: (disabled, active) => `Aviso: ${disabled} regla(s) no se pudieron cargar y están deshabilitadas; las otras ${active} siguen activas:`,
+  ruleIssueLine: (source, index, message) => `- ${source.length > 0 ? source : '(archivo desconocido)'}: regla ${index + 1} (deshabilitada): ${message}`,
+  reloadDegraded: (active, source, disabled) => `Recargadas ${active} regla(s) desde ${source}; ${disabled} regla(s) están deshabilitadas por errores de carga — corrige las entradas siguientes y ejecuta /rules reload:`,
   dryRunNotice: 'Modo simulación (enforce: false): los aciertos deny/ask solo se registran en auditoría — todas las llamadas pasan.',
   unknownArg: arg => `Argumento de /rules desconocido "${arg}". ${ES.usage}`,
   usage: 'Uso: /rules [list | reload | network | decisions [n] | test <herramienta> <json-args>]',
@@ -237,6 +252,9 @@ const PT: UiProse = {
   reloaded: (count, source) => `Recarregadas ${count} regra(s) de ${source}.`,
   reloadFailed: error => `Falha ao recarregar: ${error}. As regras anteriores continuam ativas.`,
   lastReloadWarning: error => `Aviso: a última recarga falhou (${error}); as regras listadas são as anteriores.`,
+  degradedRules: (disabled, active) => `Aviso: ${disabled} regra(s) não puderam ser carregadas e estão desativadas; as outras ${active} continuam ativas:`,
+  ruleIssueLine: (source, index, message) => `- ${source.length > 0 ? source : '(arquivo desconhecido)'}: regra ${index + 1} (desativada): ${message}`,
+  reloadDegraded: (active, source, disabled) => `Recarregadas ${active} regra(s) de ${source}; ${disabled} regra(s) estão desativadas por erros de carregamento — corrija as entradas abaixo e execute /rules reload:`,
   dryRunNotice: 'Modo simulação (enforce: false): acertos deny/ask são apenas registrados na auditoria — todas as chamadas passam.',
   unknownArg: arg => `Argumento de /rules desconhecido "${arg}". ${PT.usage}`,
   usage: 'Uso: /rules [list | reload | network | decisions [n] | test <ferramenta> <json-args>]',
@@ -281,6 +299,9 @@ const HI: UiProse = {
   reloaded: (count, source) => `${count} नियम पुनः लोड किए गए, स्रोत ${source}।`,
   reloadFailed: error => `पुनः लोड विफल: ${error}। पिछले नियम अब भी सक्रिय हैं।`,
   lastReloadWarning: error => `चेतावनी: अंतिम पुनः लोड विफल रहा (${error}); ऊपर सूचीबद्ध नियम पिछले वाले हैं।`,
+  degradedRules: (disabled, active) => `चेतावनी: ${disabled} नियम लोड नहीं हो सके और अक्षम हैं; शेष ${active} नियम सक्रिय रहते हैं:`,
+  ruleIssueLine: (source, index, message) => `- ${source.length > 0 ? source : '(अज्ञात फ़ाइल)'}: नियम ${index + 1} (अक्षम): ${message}`,
+  reloadDegraded: (active, source, disabled) => `${source} से ${active} नियम पुनः लोड हुए; ${disabled} नियम लोड त्रुटियों से अक्षम हैं — नीचे दी प्रविष्टियाँ ठीक करें और /rules reload चलाएँ:`,
   dryRunNotice: 'ड्राई-रन मोड (enforce: false): deny/ask हिट केवल ऑडिट में दर्ज होते हैं — हर कॉल पास हो जाती है।',
   unknownArg: arg => `अज्ञात /rules तर्क "${arg}"। ${HI.usage}`,
   usage: 'उपयोग: /rules [list | reload | network | decisions [n] | test <टूल> <json-args>]',

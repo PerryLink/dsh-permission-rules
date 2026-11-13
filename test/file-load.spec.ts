@@ -13,6 +13,8 @@ import { dispatchPreExecute, makeExec, mountHarness, removeWorkspace, tempWorksp
 
 const GOOD = 'rules:\n  - match: { tools: [bash] }\n    action: deny\n    reason: no bash\n'
 const BAD = 'rules:\n  - match: { tools: [bash] }\n    action: maybe\n    reason: x\n'
+/** A FILE-level failure (invalid YAML), unlike BAD, whose one rule is merely invalid. */
+const BAD_FILE = 'rules: {\n  - match: { tools: [bash] }\n    action: deny\n    reason: x\n'
 
 describe('rule-file loading', () => {
   it('uses the fallback path when per-cwd discovery finds no project file', async () => {
@@ -37,7 +39,7 @@ describe('rule-file loading', () => {
   it('bad project file with badFilePolicy fail throws on every use and errors the tool call loudly', async () => {
     const cwd = tempWorkspace()
     mkdirSync(join(cwd, '.dsh'), { recursive: true })
-    writeFileSync(join(cwd, '.dsh', 'rules.yaml'), BAD, 'utf8')
+    writeFileSync(join(cwd, '.dsh', 'rules.yaml'), BAD_FILE, 'utf8')
     const harness = await mountHarness({}, { cwd })
     try {
       await expect(dispatchPreExecute(
@@ -48,7 +50,7 @@ describe('rule-file loading', () => {
       await expect(dispatchPreExecute(
         harness.ctx,
         makeExec({ name: 'bash', arguments: {}, agent: harness.agent }),
-      )).rejects.toThrow(/action must be one of/)
+      )).rejects.toThrow(/invalid YAML/)
     } finally {
       removeWorkspace(cwd)
     }
@@ -80,12 +82,38 @@ describe('rule-file loading', () => {
     await expect(mountHarness({ rulesFile: missing }, {})).rejects.toThrow(/cannot load/)
   })
 
-  it('an absolute rulesFile that is invalid fails the mount loudly', async () => {
+  it('an absolute rulesFile that is invalid as a document fails the mount loudly', async () => {
     const dir = tempWorkspace()
     const file = join(dir, 'rules.yaml')
-    writeFileSync(file, BAD, 'utf8')
+    writeFileSync(file, BAD_FILE, 'utf8')
     await expect(mountHarness({ rulesFile: file }, {})).rejects.toThrowError(RuleError)
     removeWorkspace(dir)
+  })
+
+  it('an absolute rulesFile with one bad rule still mounts and keeps the good rule active (issue #49)', async () => {
+    const dir = tempWorkspace()
+    const file = join(dir, 'rules.yaml')
+    // The bad rule comes FIRST: before the fix its glob took the whole file
+    // (and the plugin's activation) down.
+    writeFileSync(file, 'rules:\n  - match: { tools: [bash], params: { command: "*Remove-Item* -Recurse*" } }\n    action: deny\n    reason: too many stars\n  - match: { tools: [read] }\n    action: deny\n    reason: no read\n', 'utf8')
+    const cwd = tempWorkspace()
+    const harness = await mountHarness({ rulesFile: file }, { cwd })
+    try {
+      const read = await dispatchPreExecute(
+        harness.ctx,
+        makeExec({ name: 'read', arguments: {}, agent: harness.agent }),
+      )
+      expect(read).toEqual({ kind: 'deny', reason: 'no read' })
+      const status = await harness.ctx.commands.execute(harness.agent, '/rules', [], new AbortController().signal)
+      expect(status?.result.kind).toBe('error')
+      const text = status?.result.text ?? ''
+      expect(text).toContain('could not be loaded')
+      expect(text).toContain('rule 1')
+      expect(text).toContain('unbounded star')
+    } finally {
+      removeWorkspace(cwd)
+      removeWorkspace(dir)
+    }
   })
 
   it('a configured fallbackPath that is missing fails the mount loudly', async () => {
