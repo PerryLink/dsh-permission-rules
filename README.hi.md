@@ -102,7 +102,7 @@ dsh plugin --profile <name> add dsh-permission-rules
 - **`ask`** आधिकारिक approval seam से जाता है (`dsh-auto-review` माउंट करें तो दूसरा मॉडल उत्तर देता है, या इंसान उत्तर देता है; दोनों न हों तो harness fail closed होता है)।
 - **`allow`** (और कोई मेल न होना) सख्ती से `next()` से प्रत्यायोजित होता है — डाउनस्ट्रीम listeners कभी short-circuit नहीं होते।
 
-हर हिट **और** हर passthrough `permissionRules/decision` सत्र ईवेंट के रूप में ऑडिट-लॉग होता है (केवल लॉग — मॉडल संदर्भ में कुछ अतिरिक्त नहीं डाला जाता)।
+हर हिट **और** हर passthrough `permissionRules/decision` सत्र ईवेंट के रूप में ऑडिट-लॉग होता है (केवल लॉग — मॉडल संदर्भ में कुछ अतिरिक्त नहीं डाला जाता)। हिट पंक्तियाँ स्थिर `ruleId` रखती हैं (स्पष्ट `id` या `auto:<16 hex>` सामग्री-फ़िंगरप्रिंट; `ruleIndex` बना रहता है); passthrough पंक्तियाँ `passthroughReason` रखती हैं (`no-match` / `rules-not-loaded` / `out-of-scope`), ताकि सत्र- और होस्ट-पार का लेजर प्रति-नियम निर्णय एकत्र कर सके और सामान्य ट्रैफ़िक को गिरी हुई नीति से अलग पहचान सके।
 
 - **समृद्ध मिलान** — टूल-नाम globs (`mcp__*` सहित), agent-identity चयनकर्ता (`main` / `subagent` / `preset:*`), argument key/value globs **या** regexes (`!pattern` निषेध और `absent` key आयाम सहित), **किसी भी नेस्टिंग गहराई** पर workspace-सापेक्ष path globs, `when` होस्ट शर्तें (env वेरिएबल, प्लेटफ़ॉर्म), और token-सटीक कमांड मिलान के लिए **शेल कमांड विघटन** (`argv`: कमांड शब्द, argument tokens, pipeline signature)।
 - **अंतर्निहित उच्च-जोखिम बेसलाइन** — शिप किया गया deny/ask नियम-सेट (विनाशकारी कमांड, privilege escalation, download-and-execute, संवेदनशील paths) डिफ़ॉल्ट रूप से सक्षम और उपयोगकर्ता नियमों के बाद जोड़ा गया, ताकि निकटतर उपयोगकर्ता नियम उसे ओवरराइड कर सके; `builtin.enabled` से टॉगल करें।

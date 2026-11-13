@@ -102,7 +102,7 @@ Every PerryLink plugin is listed in the built-in DSH Desktop market: **Market �
 - **`ask`** rides the official approval seam (mount `dsh-auto-review` for a second-model answerer, or a human answers; with neither, the harness fails closed).
 - **`allow`** (and no-match) strictly delegates via `next()` — downstream listeners are never short-circuited.
 
-Every hit **and** every passthrough is audit-logged as a `permissionRules/decision` session event (log-only — nothing extra is injected into the model context).
+Every hit **and** every passthrough is audit-logged as a `permissionRules/decision` session event (log-only — nothing extra is injected into the model context). Hit rows carry a stable `ruleId` (an explicit `id` or an `auto:<16 hex>` content fingerprint; `ruleIndex` is retained); passthrough rows carry `passthroughReason` (`no-match` / `rules-not-loaded` / `out-of-scope`), so a cross-session, cross-host ledger can aggregate per-rule decisions and tell routine traffic from a degraded policy.
 
 - **Rich matching** — tool-name globs (including `mcp__*`), agent-identity selectors (`main` / `subagent` / `preset:*`), argument key/value globs **or** regexes (with `!pattern` negation and an `absent` key dimension), workspace-relative path globs at **any nesting depth**, `when` host conditions (env vars, platform), and **shell command decomposition** (`argv`: command word, argument tokens, pipeline signature) for token-precise command matching.
 - **Built-in high-risk baseline** — a shipped deny/ask ruleset (destructive commands, privilege escalation, download-and-execute, sensitive paths) enabled by default and appended after user rules so a nearer user rule can override it; toggle with `builtin.enabled`.

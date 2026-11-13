@@ -17,7 +17,7 @@ rules:        # rule list, evaluated in written order; may be omitted or empty
     reason: ...
 ```
 
-Only `rules` is allowed at the top level; each rule allows only `match`, `action`, `reason`, `enabled`, `description`, `tags`; each `match` allows only `tools`, `agents`, `params`, `paths`, `absent`, `when`, `network`. Any unknown field fails the load loudly — never silently ignored.
+Only `rules` is allowed at the top level; each rule allows only `match`, `action`, `reason`, `enabled`, `id`, `description`, `tags`; each `match` allows only `tools`, `agents`, `params`, `paths`, `absent`, `when`, `network`. Any unknown field fails the load loudly — never silently ignored.
 
 ## match dimensions (AND)
 
@@ -90,6 +90,7 @@ rules:
 
 - `action: allow | deny | ask` (required).
 - `reason: string` (required, non-empty). A `deny` reason becomes the model-visible error in the denied tool result; an `ask` reason becomes the approval reason on the official approval seam.
+- `id: string` (optional) — the stable rule identity used for audit attribution (issue #48). 1–128 characters of `[A-Za-z0-9._:@-]`, starting with a letter or digit; the `auto:` prefix is reserved for generated fingerprints. When omitted, compile time generates `auto:<16 hex>`: a SHA-256 over the parsed rule content (everything except its position). Reordering, reformatting, or moving the file keeps it; editing `match`/`action`/`reason`/`enabled`/`tags` changes it. Aggregate "deny rate per rule" on this, never on the drifting `ruleIndex` or the rule text. Two rules with identical content get the same `auto:` fingerprint — give them explicit `id`s when they must stay distinct.
 - `enabled: false` keeps the rule visible but inert (displayed as disabled); `description` and `tags` are free-form annotations shown by `/rules`.
 
 ## Pattern interpretation (patternMode)
@@ -161,6 +162,18 @@ The shipped baseline is an example, not an exhaustive policy — extend it with 
 ## Division of labor with dsh-auto-review
 
 This plugin only produces `ask` decisions; the `ask` goes to the official `ctx.approval` approval seam. With `dsh-auto-review` mounted, its answerer claims matching requests and delivers a second-model verdict; otherwise a human answers; with neither, the official seam fails closed (`unavailable` → denied). This plugin **never** starts a reviewer subagent.
+
+## Audit event (`permissionRules/decision`)
+
+Every `tools/pre-execute` decision is written as a **log-only** `permissionRules/decision` session event (nothing is injected into the model context). Hit rows and passthrough rows both carry `outcome` (the final downstream decision); this release adds two **backward-compatible optional fields** — old consumers ignore them, no stored-log migration is needed, and existing logs stay readable:
+
+| Field | Rows | Semantics |
+|---|---|---|
+| `ruleIndex` | hit | 0-based position in the **merged chain**. Rule reordering, insertion/removal, or isolated load errors move it; kept for cross-checking `/rules` numbering. |
+| `ruleId` | hit | Stable rule identity: the explicit `id`, or `auto:<16 hex>`, a content fingerprint (see the previous section). Stable across reorders, reformatting, and file moves; changes when the rule content changes. |
+| `passthroughReason` | passthrough | Why nothing hit. `no-match` = a healthy chain was evaluated and no rule matched (routine traffic); `rules-not-loaded` = the effective rules are not the full policy on disk — a file-level load/reload failure left an empty or previous chain, or per-rule load errors disabled entries (a governance event); `out-of-scope` = no rule file applies to this workspace, so there was no policy to match. |
+
+`source` names the matched rule's file on a hit, or the nearest effective file (or `''`) on a passthrough. The existing `action`, `ruleIndex`, `reason`, `outcome`, `source`, and `dryRun` semantics are unchanged; `permissionRules/network` is untouched this round (it still carries only `ruleIndex`).
 
 ## Loading and hot reload
 

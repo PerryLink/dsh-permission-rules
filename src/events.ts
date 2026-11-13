@@ -51,6 +51,17 @@ declare module '@deepseek-ai/dsh-session/types' {
      * decision the waterfall settled on. `cwd` names the workspace the
      * rules were resolved for. `dryRun` marks audit-only dry-run records
      * (`enforce: false`): the plugin matched but did not enforce.
+     *
+     * Issue #48 adds two BACKWARD-COMPATIBLE optional fields; old
+     * consumers ignore them and no stored-log migration is needed:
+     * - `ruleId` on a hit: the author's explicit rule `id`, else
+     *   `auto:<16 hex>` (a content fingerprint). Stable across reorders
+     *   and unrelated edits, unlike `ruleIndex`, which is retained.
+     * - `passthroughReason` on a passthrough: `'no-match'` (a healthy
+     *   chain was evaluated and no rule matched), `'rules-not-loaded'` (a
+     *   file-level failure left an empty/previous chain, or per-rule load
+     *   errors disabled part of it), or `'out-of-scope'` (no rule file
+     *   applied to this workspace at all).
      */
     'permissionRules/decision': {
       toolName: string
@@ -59,6 +70,8 @@ declare module '@deepseek-ai/dsh-session/types' {
       action: 'allow' | 'deny' | 'ask' | 'passthrough'
       outcome?: 'allow' | 'deny' | 'ask'
       ruleIndex?: number
+      ruleId?: string
+      passthroughReason?: PassthroughReason
       reason?: string
       cwd: string
       dryRun?: true
@@ -97,6 +110,15 @@ declare module '@deepseek-ai/dsh-session/types' {
 /** Every action a decision event can carry. */
 export type DecisionAction = 'allow' | 'deny' | 'ask' | 'passthrough'
 
+/**
+ * Why a passthrough row produced no rule hit (issue #48). The distinction
+ * matters to a fleet ledger: `no-match` is routine traffic, while
+ * `rules-not-loaded` means the policy is degraded (a rejected file edit
+ * left stale or empty rules, or per-rule load errors disabled entries) and
+ * `out-of-scope` means the workspace has no rule file at all.
+ */
+export type PassthroughReason = 'no-match' | 'rules-not-loaded' | 'out-of-scope'
+
 /** The final pre-execute decision kinds a host can settle on. */
 export type DecisionOutcome = PreToolDecision['kind']
 
@@ -108,6 +130,10 @@ export interface AuditDecision {
   action: DecisionAction
   outcome?: DecisionOutcome
   ruleIndex?: number
+  /** Stable rule identity on a hit: the explicit `id`, else `auto:<16 hex>` (issue #48). */
+  ruleId?: string
+  /** Why a passthrough produced no hit (issue #48); absent on hit rows. */
+  passthroughReason?: PassthroughReason
   reason?: string
   /** The workspace cwd the rule chain was resolved for. */
   cwd: string

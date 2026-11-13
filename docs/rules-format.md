@@ -17,7 +17,7 @@ rules:        # 规则列表，按书写顺序求值；可以省略或为空
     reason: ...
 ```
 
-顶层只允许 `rules` 一个键；每条规则只允许 `match`、`action`、`reason`、`enabled`、`description`、`tags` 六个键；`match` 只允许 `tools`、`agents`、`params`、`paths`、`absent`、`when`、`argv`、`network` 八个键。出现任何未知键都在加载期报错（响亮失败），绝不静默忽略。
+顶层只允许 `rules` 一个键；每条规则只允许 `match`、`action`、`reason`、`enabled`、`id`、`description`、`tags` 七个键；`match` 只允许 `tools`、`agents`、`params`、`paths`、`absent`、`when`、`argv`、`network` 八个键。出现任何未知键都在加载期报错（响亮失败），绝不静默忽略。
 
 ## match 维度（全部 AND）
 
@@ -90,6 +90,7 @@ rules:
 
 - `action: allow | deny | ask`（必填）。
 - `reason: string`（必填，非空）。`deny` 的 reason 会进入被拒绝工具的结果、对模型可见；`ask` 的 reason 会作为审批理由进入官方审批 seam。
+- `id: string`（可选）——稳定的规则身份，用于审计归因（issue #48）。1–128 个 `[A-Za-z0-9._:@-]` 字符、以字母或数字开头，`auto:` 前缀保留给自动指纹。缺省时编译期生成 `auto:<16 hex>`：解析后规则内容（去掉位置）的 SHA-256 指纹。重排规则、改格式、移动文件都不变；改 `match`/`action`/`reason`/`enabled`/`tags` 等内容才变。跨主机聚合「每条规则的拒绝率」时请用它，不要用会漂移的 `ruleIndex` 或规则文本。内容完全相同的两条规则会得到相同的 `auto:` 指纹——需要把它们分开统计时请显式写 `id`。
 - `enabled: false` 保留规则但使其失效（显示为已禁用）；`description`、`tags` 为 `/rules` 展示的自由注解。
 
 ## 模式解释（patternMode）
@@ -159,6 +160,18 @@ rules:
 ## 与 dsh-auto-review 的分工
 
 本插件只产出 `ask` 决定；`ask` 交给官方 `ctx.approval` 审批 seam。挂载 `dsh-auto-review` 后，其 answerer 会认领符合策略的请求并给出第二模型裁决，否则交给人类审批；两者都没有时官方 fail-closed（`unavailable` → 拒绝）。本插件**不**自己启动 reviewer 子代理。
+
+## 审计事件（permissionRules/decision）
+
+`tools/pre-execute` 的每个决定都以**仅日志**的 `permissionRules/decision` 会话事件落盘（不注入模型上下文）。命中行与透传行都带 `outcome`（下游最终裁决）；本版新增两个**向后兼容的可选字段**——旧消费者忽略即可，不需要日志迁移，已存日志照常可读：
+
+| 字段 | 出现于 | 语义 |
+|---|---|---|
+| `ruleIndex` | 命中行 | 0 基的**合并链位置**。规则重排、增删或加载隔离都会让它漂移；保留用于对照 `/rules` 的编号。 |
+| `ruleId` | 命中行 | 稳定规则身份：显式 `id`，或 `auto:<16 hex>` 内容指纹（见上一节）。重排、改格式、移动文件不变；改规则内容则变。 |
+| `passthroughReason` | 透传行 | 为什么没有命中。`no-match` = 链健康加载并被求值，但没有规则命中（日常流量）；`rules-not-loaded` = 生效规则不是磁盘上的完整策略——文件级加载/重载失败留下了空链或旧链，或逐条加载错误禁用了部分规则（治理事件）；`out-of-scope` = 该工作区没有任何规则文件，本来就没有策略可匹配。 |
+
+命中行的 `source` 是命中规则所在文件，透传行是最近的生效文件或 `''`。`action`、`ruleIndex`、`reason`、`outcome`、`source`、`dryRun` 的既有语义不变；`permissionRules/network` 事件本轮未改（仍只有 `ruleIndex`）。
 
 ## 加载与热更新
 
