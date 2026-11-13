@@ -43,7 +43,7 @@ import type { AmbientUpstream, NetworkBlockRecord, ProxyAttribution } from './pr
 import { PermissionRulesRemoteService } from './remote-service.ts'
 import { attachSettingsSection } from './settings.ts'
 import { isMarkedAuditEvent } from './events.ts'
-import type { AuditAppend, AuditDecision, AuditNetworkBlock, DecisionOutcome } from './events.ts'
+import type { AuditAppend, AuditDecision, AuditNetworkBlock, DecisionOutcome, PassthroughReason } from './events.ts'
 
 export const name = 'permission-rules'
 
@@ -583,7 +583,11 @@ export class PermissionRulesRuntime {
    * passthrough; `cwd`
    * names the workspace the rules were resolved for; `dryRun` marks
    * would-be deny/ask hits under `enforce: false`; `modeDefault` records a
-   * network mode-default decision on a web tool (no rule fired).
+   * network mode-default decision on a web tool (no rule fired). Issue #48
+   * adds `ruleId` to every hit row (explicit `id` or content fingerprint;
+   * `ruleIndex` is retained) and `passthroughReason` to every passthrough
+   * row, so a fleet consumer can tell routine no-match traffic from a
+   * degraded/stale policy and from a workspace with no rule file.
    * Agentless calls have no session to audit; append failures are
    * contained so an audit hiccup can never change a permission decision.
    * @param exec - the pending call.
@@ -615,7 +619,8 @@ export class PermissionRulesRuntime {
         action,
         outcome,
         cwd: loaded.cwd,
-        ...hit !== undefined ? { ruleIndex: hit.ruleIndex, reason: hit.rule.reason } : {},
+        ...hit !== undefined ? { ruleIndex: hit.ruleIndex, ruleId: hit.rule.ruleId, reason: hit.rule.reason } : {},
+        ...hit === undefined && modeDefault === undefined ? { passthroughReason: this.passthroughReason(loaded) } : {},
         ...modeDefault !== undefined ? { reason: `${modeDefault === 'deny' ? '[network: denied]' : '[network: approval required]'} network mode default (no rule matched)` } : {},
         ...dryRun ? { dryRun: true as const } : {},
       })
@@ -623,6 +628,20 @@ export class PermissionRulesRuntime {
     } catch (error: unknown) {
       this.ctx.logger.warn(`permission-rules: audit append failed: ${String(error)}`)
     }
+  }
+
+  /**
+   * Why a passthrough row produced no hit (issue #48):
+   * `rules-not-loaded` when the effective chain is degraded (a file-level
+   * load/reload failure left empty or previous rules, or per-rule load
+   * errors disabled entries), `out-of-scope` when no rule file applies to
+   * the workspace at all, `no-match` otherwise. A `fail`-policy initial
+   * load never reaches this point — it throws instead.
+   */
+  private passthroughReason(loaded: LoadedRules): PassthroughReason {
+    if (loaded.lastError !== undefined || (loaded.issues?.length ?? 0) > 0) return 'rules-not-loaded'
+    if (loaded.sources.length === 0) return 'out-of-scope'
+    return 'no-match'
   }
 
   /** After the first append, probe the returned envelope for the ignorable marker (host capability detection). */

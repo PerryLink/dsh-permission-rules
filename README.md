@@ -102,7 +102,7 @@ dsh plugin --profile <name> add dsh-permission-rules
 - **`ask`** 走官方审批接缝（挂载 `dsh-auto-review` 用第二模型作答，或由人作答；两者皆无时 harness 失败关闭）。
 - **`allow`**（及未命中）严格经 `next()` 委托——下游监听器绝不会被短路。
 
-每次命中**和**每次透传都作为 `permissionRules/decision` 会话事件审计落盘（仅日志——不会向模型上下文额外注入任何内容）。
+每次命中**和**每次透传都作为 `permissionRules/decision` 会话事件审计落盘（仅日志——不会向模型上下文额外注入任何内容）。命中行带稳定 `ruleId`（显式 `id` 或 `auto:<16 hex>` 内容指纹，`ruleIndex` 保留）；透传行带 `passthroughReason`（`no-match` / `rules-not-loaded` / `out-of-scope`），供跨会话、跨主机的账本聚合与策略失效判别。
 
 - **丰富匹配** —— 工具名 glob（含 `mcp__*`）、agent 身份选择器（`main` / `subagent` / `preset:*`）、参数键/值 glob **或** 正则（含 `!pattern` 取反与 `absent` 键维度）、**任意嵌套深度**的工作区相对路径 glob、`when` 宿主条件（环境变量、平台），以及 **shell 命令分解**（`argv`：命令词、参数 token、管道签名）用于 token 级精确命令匹配。
 - **内置高危基线** —— 随附的 deny/ask 规则集（破坏性命令、权限提升、下载即执行、敏感路径），默认开启并追加在用户规则之后（更近的用户规则可覆盖）；用 `builtin.enabled` 开关。

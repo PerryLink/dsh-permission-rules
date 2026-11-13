@@ -32,6 +32,13 @@
           "description": "false keeps the rule visible but inert (displayed as disabled).",
           "type": "boolean"
         },
+        "id": {
+          "description": "Stable rule identity for audit attribution. Omit to get auto:<16 hex>, a SHA-256 fingerprint of the parsed rule content. The auto: prefix is reserved.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^(?!auto:)[A-Za-z0-9][A-Za-z0-9._:@-]{0,127}$"
+        },
         "description": {
           "description": "Optional one-line explanation shown by /rules.",
           "type": "string",

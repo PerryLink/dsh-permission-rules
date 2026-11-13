@@ -7,6 +7,7 @@
  * @module dsh-permission-rules/rules
  */
 
+import { createHash } from 'node:crypto'
 import { parse } from 'yaml'
 import { compileGlob, compilePatternRegex } from './glob.ts'
 import { decomposeShellCommand } from './shell.ts'
@@ -107,6 +108,12 @@ export interface RuleDocEntry {
   reason: string
   /** `false` keeps the rule visible but inert (displayed as disabled). */
   enabled: boolean
+  /**
+   * Optional stable identity for audit attribution (issue #48). When
+   * omitted, the compiled rule gets a content fingerprint instead; see
+   * {@link CompiledRule.ruleId}.
+   */
+  readonly id?: string
   /** Optional one-line explanation shown by `/rules`. */
   description?: string
   /** Free-form labels shown by `/rules`. */
@@ -212,6 +219,15 @@ export interface CompiledRule {
   readonly index: number
   /** 0-based index into the merged source-chain paths (audit attribution). */
   readonly sourceIndex: number
+  /**
+   * Stable identity used by the audit row (issue #48): the author's
+   * explicit `id`, or `auto:<16 hex>` — a SHA-256 fingerprint of the
+   * parsed rule content (everything except its position). Unlike
+   * `index`, it does not move when rules are reordered or when an
+   * unrelated rule is edited, so a fleet consumer can aggregate
+   * "decisions per rule" without keying on rule text.
+   */
+  readonly ruleId: string
   readonly action: RuleAction
   readonly reason: string
   readonly enabled: boolean
@@ -495,6 +511,7 @@ function compileRule(entry: RuleDocEntry, sourceIndex: number, options: CompileO
   return {
     index: entry.index,
     sourceIndex,
+    ruleId: entry.id ?? ruleFingerprint(entry),
     action: entry.action,
     reason: entry.reason,
     enabled: entry.enabled,
@@ -854,9 +871,9 @@ function parseYaml(text: string): unknown {
 function parseRuleEntry(raw: unknown, index: number): RuleDocEntry {
   const at = `rule ${index + 1}`
   const record = asRecord(raw, at)
-  const unknownFields = Object.keys(record).filter(key => key !== 'match' && key !== 'action' && key !== 'reason' && key !== 'enabled' && key !== 'description' && key !== 'tags')
+  const unknownFields = Object.keys(record).filter(key => key !== 'match' && key !== 'action' && key !== 'reason' && key !== 'enabled' && key !== 'id' && key !== 'description' && key !== 'tags')
   if (unknownFields.length > 0) {
-    throw new RuleError(`${at}: unknown field${unknownFields.length > 1 ? 's' : ''} ${unknownFields.map(k => JSON.stringify(k)).join(', ')} (allowed: match, action, reason, enabled, description, tags)`)
+    throw new RuleError(`${at}: unknown field${unknownFields.length > 1 ? 's' : ''} ${unknownFields.map(k => JSON.stringify(k)).join(', ')} (allowed: match, action, reason, enabled, id, description, tags)`)
   }
   const action = record['action']
   if (typeof action !== 'string' || !RULE_ACTIONS.includes(action as RuleAction)) {
@@ -874,8 +891,53 @@ function parseRuleEntry(raw: unknown, index: number): RuleDocEntry {
   if (description !== undefined && (typeof description !== 'string' || description.trim().length === 0)) {
     throw new RuleError(`${at}: description must be a non-empty string`)
   }
+  const id = parseRuleId(record['id'], at)
   const match = parseMatch(record['match'], at)
-  return { index, match, action: action as RuleAction, reason, enabled: enabled !== false, ...(description !== undefined ? { description } : {}), tags: parseStringList(record['tags'], `${at}.tags`) }
+  return { index, ...(id !== undefined ? { id } : {}), match, action: action as RuleAction, reason, enabled: enabled !== false, ...(description !== undefined ? { description } : {}), tags: parseStringList(record['tags'], `${at}.tags`) }
+}
+
+/**
+ * Validate one rule's optional stable `id` (issue #48). The identity is
+ * author-chosen, unique per author intent, and must survive file reorders;
+ * the generated `auto:` namespace is reserved for content fingerprints so
+ * the two kinds can never be confused in a ledger.
+ */
+function parseRuleId(raw: unknown, at: string): string | undefined {
+  if (raw === undefined) return undefined
+  if (typeof raw !== 'string') throw new RuleError(`${at}: id must be a non-empty string`)
+  const id = raw.trim()
+  if (id.length === 0) throw new RuleError(`${at}: id must be a non-empty string`)
+  if (id.startsWith('auto:')) {
+    throw new RuleError(`${at}: id ${JSON.stringify(id)} uses the reserved "auto:" prefix (it is generated for rules without an explicit id)`)
+  }
+  if (!/^[A-Za-z0-9][A-Za-z0-9._:@-]{0,127}$/.test(id)) {
+    throw new RuleError(`${at}: id ${JSON.stringify(id)} must be 1-128 characters of [A-Za-z0-9._:@-], starting with a letter or digit`)
+  }
+  return id
+}
+
+/** Deterministic JSON for fingerprinting: object keys sorted, undefined treated as JSON null. */
+function canonicalJson(value: unknown): string {
+  if (value === undefined || value === null) return 'null'
+  if (Array.isArray(value)) return `[${value.map(item => canonicalJson(item)).join(',')}]`
+  if (typeof value === 'object') {
+    const record = value as Record<string, unknown>
+    return `{${Object.keys(record).sort().map(key => `${JSON.stringify(key)}:${canonicalJson(record[key])}`).join(',')}}`
+  }
+  return JSON.stringify(value)
+}
+
+/**
+ * The `auto:<16 hex>` identity of a rule without an explicit `id`: a
+ * SHA-256 over the parsed CONTENT (every field except its position).
+ * Reformatting the YAML or moving the rule file keeps it; editing the
+ * rule's match/action/reason changes it. That is the point — the id
+ * tracks what the rule says, not where it sits (issue #48).
+ */
+function ruleFingerprint(entry: RuleDocEntry): string {
+  const content: Record<string, unknown> = { ...entry }
+  delete content['index']
+  return `auto:${createHash('sha256').update(canonicalJson(content)).digest('hex').slice(0, 16)}`
 }
 
 /** Validate the `match` block of one rule. */
