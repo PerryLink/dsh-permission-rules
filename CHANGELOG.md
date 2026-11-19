@@ -1,5 +1,12 @@
 ## v0.8.0 - 2026-11-13
 
+## [0.8.3] - 2026-11-18
+
+### Changed
+
+- Align with the 0.2.2-rc.4 host line and refresh the language READMEs.
+
+
 ### Added
 
 - **Stable rule identity and a passthrough discriminator in `permissionRules/decision` (issue #48).** Each hit row now carries `ruleId` — the rule's optional new `id`, else `auto:<16 hex>`, a SHA-256 fingerprint of the parsed rule content — while `ruleIndex` stays for `/rules` cross-checking. Each passthrough row carries `passthroughReason`: `no-match` (a healthy chain was evaluated and nothing matched), `rules-not-loaded` (a file-level failure left empty or previous rules, or per-rule load errors disabled entries) or `out-of-scope` (no rule file applies to the workspace). Both fields are optional and additive: old consumers ignore them and stored logs need no migration. Aggregate "deny rate per rule" across sessions/hosts on `ruleId`; use `passthroughReason` to separate routine traffic from a rejected policy edit.
