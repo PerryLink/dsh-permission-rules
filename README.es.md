@@ -43,6 +43,11 @@ dsh plugin --profile <name> add dsh-permission-rules
   <img src="docs/assets/dsh-permission-rules-flow-v5-light.svg" width="100%" alt="Estructura de dsh-permission-rules: las llamadas de herramientas y la salida de shell confluyen en una cadena de reglas ordenada, se bifurcan en veredictos de herramientas y de red, y cierran con dos eventos de auditoría solo-log">
 </picture>
 
+![dsh-permission-rules: ejecución real de terminal](docs/assets/dsh-permission-rules-demo.gif)
+
+*Repetición animada de una ejecución real registrada en este repositorio.*
+
+
 *Estructura: dos canales (llamadas de herramientas / salida de shell) confluyen en una cadena de reglas ordenada —gana la primera coincidencia— y se bifurcan en veredictos de herramientas y de red, cerrados por dos eventos de auditoría solo-log.*
 
 ## Instalación en tres pasos

@@ -36,6 +36,10 @@ dsh plugin --profile <name> add dsh-permission-rules
 
 ## 它是什么
 
+![dsh-permission-rules 真实终端运行](docs/assets/dsh-permission-rules-demo.gif)
+
+*本仓库一次真实运行的动图回放。*
+
 `dsh-permission-rules` 在 `tools/pre-execute` waterfall 上为每次工具调用前置一份有序的 **`allow` / `deny` / `ask`** 规则列表——确定、即时、可审计，由你用纯 YAML 编写。规则裁决已知的调用；没把握的交给官方审批接缝，由评审模型或人裁决。它另外带一层 Codex 风格的进程级网络策略：shell 子进程的出站流量经内置本地 HTTP/CONNECT 代理，由网络规则或映射到官方沙箱预设的三档模式裁决。
 
 <picture>

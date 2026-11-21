@@ -134,6 +134,10 @@ Every hit **and** every passthrough is audit-logged as a `permissionRules/decisi
 
 ### Examples
 
+![dsh-permission-rules: real terminal run](docs/assets/dsh-permission-rules-demo.gif)
+
+*Animated replay of a real run recorded in this repository.*
+
 These are the plugin's real entry points; install once, then call one.
 
 **Detailed example** — command `/rules test bash {"command":"git push origin main","cwd":"src/secrets/app"}`, output:

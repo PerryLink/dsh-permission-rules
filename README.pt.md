@@ -43,6 +43,11 @@ O `dsh-permission-rules` coloca uma lista ordenada de regras **`allow` / `deny` 
   <img src="docs/assets/dsh-permission-rules-flow-v5-light.svg" width="100%" alt="Estrutura do dsh-permission-rules: chamadas de ferramentas e saída de shell convergem em uma cadeia ordenada de regras, bifurcam em vereditos de ferramentas e de rede, e fecham com dois eventos de auditoria somente-log">
 </picture>
 
+![dsh-permission-rules: execução real de terminal](docs/assets/dsh-permission-rules-demo.gif)
+
+*Repetição animada de uma execução real registrada neste repositório.*
+
+
 *Estrutura: dois canais (chamadas de ferramentas / saída de shell) convergem em uma cadeia ordenada de regras —a primeira correspondência vence— e bifurcam em vereditos de ferramentas e de rede, fechados por dois eventos de auditoria somente-log.*
 
 ## Instalação em três passos
