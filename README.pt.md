@@ -11,6 +11,8 @@
 
 Um middleware de permissões declarativo no estilo Claude Code para o DeepSeek Harness: as regras decidem o que é conhecido e um modelo revisor decide o que não é; ele também traz uma política de rede em nível de processo no estilo Codex e um proxy local que governam a saída dos subprocessos de shell.
 
+Última verificação: DeepSeek Harness `dsh-v0.2.3-alpha.1` (2026-11-22).
+
 [Instalar](#instalação-em-três-passos) · [Configuração](#configuração) · [FAQ](#faq) · [简体中文](README.md) · [English](README.en.md) · [Español](README.es.md) · [Português](README.pt.md) · [हिन्दी](README.hi.md)
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-3366CC?style=flat-square&labelColor=2B3245)](LICENSE)
@@ -46,7 +48,6 @@ O `dsh-permission-rules` coloca uma lista ordenada de regras **`allow` / `deny` 
 ![dsh-permission-rules: execução real de terminal](docs/assets/dsh-permission-rules-demo.gif)
 
 *Repetição animada de uma execução real registrada neste repositório.*
-
 
 *Estrutura: dois canais (chamadas de ferramentas / saída de shell) convergem em uma cadeia ordenada de regras —a primeira correspondência vence— e bifurcam em vereditos de ferramentas e de rede, fechados por dois eventos de auditoria somente-log.*
 

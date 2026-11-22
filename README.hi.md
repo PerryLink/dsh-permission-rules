@@ -11,6 +11,8 @@
 
 DeepSeek Harness के लिए Claude Code शैली का डिक्लेरेटिव परमिशन मिडलवेयर: नियम ज्ञात को तय करते हैं और समीक्षक मॉडल अज्ञात को; साथ में Codex शैली की प्रोसेस-स्तरीय नेटवर्क नीति और स्थानीय प्रॉक्सी है जो शेल सबप्रोसेस की आउटबाउंड ट्रैफ़िक को नियंत्रित करती है।
 
+अंतिम सत्यापन: DeepSeek Harness `dsh-v0.2.3-alpha.1` (2026-11-22).
+
 [इंस्टॉल](#तीन-चरणों-में-शुरुआत) · [कॉन्फ़िगरेशन](#कॉन्फ़िगरेशन) · [FAQ](#faq) · [简体中文](README.md) · [English](README.en.md) · [Español](README.es.md) · [Português](README.pt.md) · [हिन्दी](README.hi.md)
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-3366CC?style=flat-square&labelColor=2B3245)](LICENSE)
@@ -46,7 +48,6 @@ dsh plugin --profile <name> add dsh-permission-rules
 ![dsh-permission-rules का असली टर्मिनल रन](docs/assets/dsh-permission-rules-demo.gif)
 
 *इस रिपॉज़िटरी में दर्ज असली रन का एनिमेटेड रीप्ले।*
-
 
 *संरचना: दो चैनल (टूल कॉल / शेल आउटबाउंड) एक क्रमबद्ध नियम श्रृंखला में मिलते हैं — पहला मेल जीतता है — फिर टूल-कॉल और नेटवर्क-आउटबाउंड निर्णयों में बँटते हैं, और दो केवल-लॉग ऑडिट घटनाओं पर समाप्त होते हैं।*
 
