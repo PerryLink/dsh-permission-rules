@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Permission Rules",
+    "description": "Take back decision authority over tool calls — every allow / deny / ask lives in YAML, deterministic, instant, and auditable."
+  }
+}

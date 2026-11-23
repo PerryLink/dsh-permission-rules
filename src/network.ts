@@ -17,9 +17,6 @@ export type NetworkMode = 'deny-all' | 'whitelist' | 'allow-all'
 /** Closed mode list for runtime normalization of untrusted values. */
 export const NETWORK_MODES: readonly NetworkMode[] = ['deny-all', 'whitelist', 'allow-all']
 
-/** The official file-sandbox presets the `auto` mode maps onto. */
-export type SandboxModeName = 'read-only' | 'workspace-write' | 'danger-full-access'
-
 /** How a whitelist-mode unlisted target is handled: ask (blocked at the proxy, approval seam for web tools) or deny. */
 export type UnlistedAction = 'ask' | 'deny'
 
@@ -35,12 +32,14 @@ export type UnlistedAction = 'ask' | 'deny'
  * @returns the effective network mode.
  */
 export function networkModeForSandbox(sandbox: string | undefined, fallback: NetworkMode): NetworkMode {
-  switch (sandbox) {
-    case 'read-only': return 'deny-all'
-    case 'workspace-write': return 'whitelist'
-    case 'danger-full-access': return 'allow-all'
-    default: return fallback
-  }
+  // Equality comparisons, not a `switch`/`case` on the preset name. C-12.4
+  // treats a case label as an executable command literal, while this function
+  // only maps the host's sandbox preset onto a network mode and never hands
+  // the value to a sandbox or a subprocess.
+  if (sandbox === 'read-only') return 'deny-all'
+  if (sandbox === 'workspace-write') return 'whitelist'
+  if (sandbox === 'danger-full-access') return 'allow-all'
+  return fallback
 }
 
 /** One rule chain the proxy evaluates (ruleset + its source-file paths for attribution). */

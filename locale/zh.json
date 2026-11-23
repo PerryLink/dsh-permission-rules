@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "权限规则",
+    "description": "把工具调用的裁决权拿回自己手里——每一条 allow / deny / ask 都写在 YAML 里，确定、即时、可审计。"
+  }
+}

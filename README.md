@@ -7,6 +7,8 @@
 
 # dsh-permission-rules
 
+当前版本 `0.8.6`。
+
 **把工具调用的裁决权拿回自己手里——每一条 allow / deny / ask 都写在 YAML 里，确定、即时、可审计。**
 
 面向 DeepSeek Harness 的 Claude Code 风格声明式权限中间件：规则裁决已知的，评审模型裁决未知的；另带一套 Codex 风格的进程级网络策略与本地代理，管住 shell 子进程的出站流量。

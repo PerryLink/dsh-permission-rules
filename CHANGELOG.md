@@ -348,6 +348,12 @@
 
 ## [Unreleased]
 
+## [0.8.6] - 2026-11-22
+
+### Changed
+
+- Marketplace display metadata: icon, localized title/description, author.
+
 ## [0.8.5] - 2026-11-22
 
 

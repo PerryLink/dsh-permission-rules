@@ -7,6 +7,8 @@
 
 # dsh-permission-rules
 
+Current version `0.8.6`.
+
 **Take back decision authority over tool calls — every allow / deny / ask lives in YAML, deterministic, instant, and auditable.**
 
 A Claude Code-style declarative permission middleware for DeepSeek Harness: rules decide what is known, a reviewer model decides what is not; it also ships a Codex-style process-level network policy and a local proxy that govern shell-subprocess egress.
