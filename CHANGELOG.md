@@ -1,3 +1,13 @@
+## v0.8.8 - 2026-11-25
+
+### Fixed
+
+- **DSH 0.2.3-alpha.2 compatibility: drop the removed `@deepseek-ai/dsh-client-web` reference.** The package is not a client plugin row on the 0.2.x host line, so the `dsh.client.inject` edge and the `peerDependencies` entry pointed at something the shell no longer serves. Both are removed, together with the stale `peerDependenciesMeta` entry and the unused devDependency; the three injected client rows that do exist on the alpha line (`@deepseek-ai/dsh-client-connection`, `@deepseek-ai/dsh-client-locale`, `@deepseek-ai/dsh-client-ui-settings`) are kept. Verified against the 0.2.3-alpha.2 package set.
+
+### Changed
+
+- README: refresh the current-version line.
+
 ## v0.8.0 - 2026-11-13
 
 ## v0.8.3 - 2026-11-18

@@ -7,7 +7,7 @@
 
 # dsh-permission-rules
 
-Current version `0.8.6`.
+Current version `0.8.8`.
 
 **Take back decision authority over tool calls — every allow / deny / ask lives in YAML, deterministic, instant, and auditable.**
 
